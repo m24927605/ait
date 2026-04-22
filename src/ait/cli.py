@@ -5,7 +5,16 @@ from dataclasses import asdict
 import json
 from pathlib import Path
 
-from ait.app import create_attempt, create_intent, init_repo
+from ait.app import (
+    create_attempt,
+    create_intent,
+    discard_attempt,
+    init_repo,
+    promote_attempt,
+    show_attempt,
+    show_intent,
+    verify_attempt,
+)
 from ait.daemon import daemon_status, serve_daemon, start_daemon, stop_daemon
 from ait.db import connect_db
 from ait.query import blame_path, execute_query, list_shortcut_expression, parse_blame_target
@@ -22,6 +31,8 @@ def build_parser() -> argparse.ArgumentParser:
     intent_new.add_argument("title")
     intent_new.add_argument("--description")
     intent_new.add_argument("--kind")
+    intent_show = intent_subparsers.add_parser("show")
+    intent_show.add_argument("intent_id")
     intent_list = intent_subparsers.add_parser("list")
     intent_list.add_argument("--status")
     intent_list.add_argument("--kind")
@@ -34,6 +45,15 @@ def build_parser() -> argparse.ArgumentParser:
     attempt_subparsers = attempt_parser.add_subparsers(dest="attempt_command")
     attempt_new = attempt_subparsers.add_parser("new")
     attempt_new.add_argument("intent_id")
+    attempt_show = attempt_subparsers.add_parser("show")
+    attempt_show.add_argument("attempt_id")
+    attempt_promote = attempt_subparsers.add_parser("promote")
+    attempt_promote.add_argument("attempt_id")
+    attempt_promote.add_argument("--to", required=True)
+    attempt_discard = attempt_subparsers.add_parser("discard")
+    attempt_discard.add_argument("attempt_id")
+    attempt_verify = attempt_subparsers.add_parser("verify")
+    attempt_verify.add_argument("attempt_id")
     attempt_list = attempt_subparsers.add_parser("list")
     attempt_list.add_argument("--intent")
     attempt_list.add_argument("--reported-status")
@@ -91,6 +111,10 @@ def main() -> int:
         )
         print(json.dumps({"intent_id": result.intent_id, "repo_id": result.repo_id}, indent=2))
         return 0
+    if args.command == "intent" and args.intent_command == "show":
+        result = show_intent(repo_root, intent_id=args.intent_id)
+        print(json.dumps(asdict(result), indent=2))
+        return 0
     if args.command == "intent" and args.intent_command == "list":
         return _run_query_command(
             repo_root,
@@ -118,6 +142,22 @@ def main() -> int:
                 indent=2,
             )
         )
+        return 0
+    if args.command == "attempt" and args.attempt_command == "show":
+        result = show_attempt(repo_root, attempt_id=args.attempt_id)
+        print(json.dumps(asdict(result), indent=2))
+        return 0
+    if args.command == "attempt" and args.attempt_command == "promote":
+        result = promote_attempt(repo_root, attempt_id=args.attempt_id, target_ref=args.to)
+        print(json.dumps(asdict(result), indent=2))
+        return 0
+    if args.command == "attempt" and args.attempt_command == "discard":
+        result = discard_attempt(repo_root, attempt_id=args.attempt_id)
+        print(json.dumps(asdict(result), indent=2))
+        return 0
+    if args.command == "attempt" and args.attempt_command == "verify":
+        result = verify_attempt(repo_root, attempt_id=args.attempt_id)
+        print(json.dumps(asdict(result), indent=2))
         return 0
     if args.command == "attempt" and args.attempt_command == "list":
         return _run_query_command(

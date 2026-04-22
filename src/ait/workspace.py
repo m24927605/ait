@@ -112,6 +112,100 @@ def create_attempt_workspace(
     )
 
 
+def remove_attempt_workspace(workspace_ref: str | Path) -> None:
+    worktree_path = Path(workspace_ref).resolve()
+    if not worktree_path.exists():
+        return
+    repo_root = _resolve_worktree_repo_root(worktree_path)
+    _git_run(
+        repo_root,
+        "worktree",
+        "remove",
+        "--force",
+        str(worktree_path),
+    )
+
+
+def list_attempt_commit_oids(workspace_ref: str | Path, base_ref_oid: str) -> tuple[str, ...]:
+    worktree_path = Path(workspace_ref).resolve()
+    output = _git_stdout(
+        worktree_path,
+        "rev-list",
+        "--reverse",
+        f"{base_ref_oid}..HEAD",
+        allow_failure=True,
+    )
+    if not output:
+        return ()
+    return tuple(line.strip() for line in output.splitlines() if line.strip())
+
+
+def commit_parent_oid(workspace_ref: str | Path, commit_oid: str) -> str | None:
+    worktree_path = Path(workspace_ref).resolve()
+    line = _git_stdout(worktree_path, "rev-list", "--parents", "-n", "1", commit_oid)
+    parts = [part for part in line.split() if part]
+    if len(parts) <= 1:
+        return None
+    return parts[1]
+
+
+def commit_stats(
+    workspace_ref: str | Path,
+    commit_oid: str,
+) -> tuple[int | None, int | None, tuple[str, ...]]:
+    worktree_path = Path(workspace_ref).resolve()
+    output = _git_stdout(
+        worktree_path,
+        "show",
+        "--numstat",
+        "--format=",
+        commit_oid,
+    )
+    insertions = 0
+    deletions = 0
+    touched_files: list[str] = []
+    for line in output.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 3:
+            continue
+        add_text, del_text, file_path = parts
+        if add_text.isdigit():
+            insertions += int(add_text)
+        else:
+            insertions = None
+        if del_text.isdigit():
+            deletions += int(del_text)
+        else:
+            deletions = None
+        touched_files.append(file_path)
+    return insertions, deletions, tuple(touched_files)
+
+
+def ref_contains_commits(repo_root: str | Path, ref_name: str, commit_oids: tuple[str, ...]) -> bool:
+    root = Path(repo_root).resolve()
+    ref_oid = _git_stdout(root, "rev-parse", "--verify", ref_name, allow_failure=True)
+    if not ref_oid:
+        return False
+    for commit_oid in commit_oids:
+        merge_base = _git_stdout(root, "merge-base", commit_oid, ref_name, allow_failure=True)
+        if merge_base != commit_oid:
+            return False
+    return True
+
+
+def update_ref_to_workspace_head(repo_root: str | Path, ref_name: str, workspace_ref: str | Path) -> str:
+    root = Path(repo_root).resolve()
+    worktree_path = Path(workspace_ref).resolve()
+    head_oid = _git_stdout(worktree_path, "rev-parse", "--verify", "HEAD")
+    _git_run(root, "update-ref", ref_name, head_oid)
+    return head_oid
+
+
+def _resolve_worktree_repo_root(worktree_path: Path) -> Path:
+    root_text = _git_stdout(worktree_path, "rev-parse", "--show-toplevel")
+    return Path(root_text).resolve()
+
+
 def _git_stdout(
     repo_root: Path,
     *args: str,

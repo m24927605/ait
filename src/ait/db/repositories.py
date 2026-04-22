@@ -113,6 +113,16 @@ class EvidenceSummaryRecord:
     logs_ref: str | None
 
 
+@dataclass(frozen=True)
+class AttemptCommitRecord:
+    attempt_id: str
+    commit_oid: str
+    base_commit_oid: str
+    insertions: int | None
+    deletions: int | None
+    touched_files: tuple[str, ...]
+
+
 def insert_intent(conn: sqlite3.Connection, new_intent: NewIntent) -> IntentRecord:
     root_intent_id = new_intent.root_intent_id or new_intent.id
     with conn:
@@ -154,6 +164,14 @@ def get_intent(conn: sqlite3.Connection, intent_id: str) -> IntentRecord | None:
     if row is None:
         return None
     return _row_to_intent(row)
+
+
+def list_intent_attempts(conn: sqlite3.Connection, intent_id: str) -> list[AttemptRecord]:
+    rows = conn.execute(
+        "SELECT * FROM attempts WHERE intent_id = ? ORDER BY ordinal ASC",
+        (intent_id,),
+    ).fetchall()
+    return [_row_to_attempt(row) for row in rows]
 
 
 def insert_attempt(conn: sqlite3.Connection, new_attempt: NewAttempt) -> AttemptRecord:
@@ -219,6 +237,18 @@ def get_attempt(conn: sqlite3.Connection, attempt_id: str) -> AttemptRecord | No
     return _row_to_attempt(row)
 
 
+def get_attempt_by_workspace_ref(
+    conn: sqlite3.Connection, workspace_ref: str
+) -> AttemptRecord | None:
+    row = conn.execute(
+        "SELECT * FROM attempts WHERE workspace_ref = ?",
+        (workspace_ref,),
+    ).fetchone()
+    if row is None:
+        return None
+    return _row_to_attempt(row)
+
+
 def get_evidence_summary(
     conn: sqlite3.Connection, attempt_id: str
 ) -> EvidenceSummaryRecord | None:
@@ -228,6 +258,35 @@ def get_evidence_summary(
     if row is None:
         return None
     return _row_to_evidence_summary(row)
+
+
+def list_evidence_files(conn: sqlite3.Connection, attempt_id: str) -> dict[str, tuple[str, ...]]:
+    rows = conn.execute(
+        """
+        SELECT kind, file_path
+        FROM evidence_files
+        WHERE attempt_id = ?
+        ORDER BY kind, file_path
+        """,
+        (attempt_id,),
+    ).fetchall()
+    grouped: dict[str, list[str]] = {}
+    for row in rows:
+        grouped.setdefault(str(row["kind"]), []).append(str(row["file_path"]))
+    return {kind: tuple(paths) for kind, paths in grouped.items()}
+
+
+def list_attempt_commits(conn: sqlite3.Connection, attempt_id: str) -> list[AttemptCommitRecord]:
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM attempt_commits
+        WHERE attempt_id = ?
+        ORDER BY rowid ASC
+        """,
+        (attempt_id,),
+    ).fetchall()
+    return [_row_to_attempt_commit(row) for row in rows]
 
 
 def insert_attempt_commit(
@@ -259,6 +318,33 @@ def insert_attempt_commit(
         )
 
 
+def replace_attempt_commits(
+    conn: sqlite3.Connection,
+    *,
+    attempt_id: str,
+    commits: tuple[AttemptCommitRecord, ...],
+) -> None:
+    with conn:
+        conn.execute("DELETE FROM attempt_commits WHERE attempt_id = ?", (attempt_id,))
+        for commit in commits:
+            conn.execute(
+                """
+                INSERT INTO attempt_commits(
+                    attempt_id, commit_oid, base_commit_oid, insertions, deletions, touched_files_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    commit.attempt_id,
+                    commit.commit_oid,
+                    commit.base_commit_oid,
+                    commit.insertions,
+                    commit.deletions,
+                    _json_dump(list(commit.touched_files)),
+                ),
+            )
+
+
 def insert_evidence_file(
     conn: sqlite3.Connection, *, attempt_id: str, file_path: str, kind: str
 ) -> None:
@@ -269,6 +355,74 @@ def insert_evidence_file(
             VALUES (?, ?, ?)
             """,
             (attempt_id, file_path, kind),
+        )
+
+
+def replace_evidence_files_kind(
+    conn: sqlite3.Connection,
+    *,
+    attempt_id: str,
+    kind: str,
+    file_paths: tuple[str, ...],
+) -> None:
+    with conn:
+        conn.execute(
+            "DELETE FROM evidence_files WHERE attempt_id = ? AND kind = ?",
+            (attempt_id, kind),
+        )
+        for file_path in file_paths:
+            conn.execute(
+                """
+                INSERT INTO evidence_files(attempt_id, file_path, kind)
+                VALUES (?, ?, ?)
+                """,
+                (attempt_id, file_path, kind),
+            )
+
+
+def update_attempt(
+    conn: sqlite3.Connection,
+    attempt_id: str,
+    *,
+    reported_status: str | None = None,
+    verified_status: str | None = None,
+    ended_at: str | None = None,
+    heartbeat_at: str | None = None,
+    raw_trace_ref: str | None = None,
+    logs_ref: str | None = None,
+    result_promotion_ref: str | None = None,
+    result_exit_code: int | None = None,
+) -> None:
+    updates: list[tuple[str, object]] = []
+    if reported_status is not None:
+        updates.append(("reported_status", reported_status))
+    if verified_status is not None:
+        updates.append(("verified_status", verified_status))
+    if ended_at is not None:
+        updates.append(("ended_at", ended_at))
+    if heartbeat_at is not None:
+        updates.append(("heartbeat_at", heartbeat_at))
+    if raw_trace_ref is not None:
+        updates.append(("raw_trace_ref", raw_trace_ref))
+    if logs_ref is not None:
+        updates.append(("logs_ref", logs_ref))
+    if result_promotion_ref is not None:
+        updates.append(("result_promotion_ref", result_promotion_ref))
+    if result_exit_code is not None:
+        updates.append(("result_exit_code", result_exit_code))
+    if not updates:
+        return
+    assignments = ", ".join(f"{column} = ?" for column, _ in updates)
+    params = tuple(value for _, value in updates) + (attempt_id,)
+    with conn:
+        conn.execute(f"UPDATE attempts SET {assignments} WHERE id = ?", params)
+
+
+def update_intent_status(conn: sqlite3.Connection, intent_id: str, status: str) -> None:
+    with conn:
+        conn.execute(
+            "UPDATE intents SET status = ? WHERE id = ?",
+            (status, intent_id),
         )
 
 
@@ -347,6 +501,17 @@ def _row_to_evidence_summary(row: sqlite3.Row) -> EvidenceSummaryRecord:
         raw_prompt_ref=_str_or_none(row["raw_prompt_ref"]),
         raw_trace_ref=_str_or_none(row["raw_trace_ref"]),
         logs_ref=_str_or_none(row["logs_ref"]),
+    )
+
+
+def _row_to_attempt_commit(row: sqlite3.Row) -> AttemptCommitRecord:
+    return AttemptCommitRecord(
+        attempt_id=str(row["attempt_id"]),
+        commit_oid=str(row["commit_oid"]),
+        base_commit_oid=str(row["base_commit_oid"]),
+        insertions=_int_or_none(row["insertions"]),
+        deletions=_int_or_none(row["deletions"]),
+        touched_files=tuple(_json_load(row["touched_files_json"])),
     )
 
 

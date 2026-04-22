@@ -10,10 +10,20 @@ from ait.config import (
     ensure_local_config,
 )
 from ait.db import NewAttempt, NewIntent, connect_db, get_intent, insert_attempt, insert_intent, run_migrations, utc_now
+from ait.db import (
+    get_attempt,
+    get_evidence_summary,
+    list_attempt_commits,
+    list_evidence_files,
+    list_intent_attempts,
+    update_attempt,
+    update_intent_status,
+)
 from ait.hooks import install_post_rewrite_hook
 from ait.ids import new_ulid
 from ait.repo import derive_repo_id, resolve_repo_root
-from ait.workspace import create_attempt_workspace
+from ait.verifier import verify_attempt_with_connection
+from ait.workspace import create_attempt_workspace, remove_attempt_workspace, update_ref_to_workspace_head
 
 
 @dataclass(slots=True)
@@ -37,6 +47,20 @@ class AttemptResult:
     workspace_ref: str
     base_ref_oid: str
     ownership_token: str
+
+
+@dataclass(slots=True)
+class IntentShowResult:
+    intent: dict[str, object]
+    attempts: list[dict[str, object]]
+
+
+@dataclass(slots=True)
+class AttemptShowResult:
+    attempt: dict[str, object]
+    evidence_summary: dict[str, object] | None
+    files: dict[str, tuple[str, ...]]
+    commits: list[dict[str, object]]
 
 
 def object_id(repo_id: str) -> str:
@@ -142,3 +166,120 @@ def create_attempt(repo_root: str | Path, *, intent_id: str) -> AttemptResult:
         base_ref_oid=attempt.base_ref_oid,
         ownership_token=ownership_token,
     )
+
+
+def show_intent(repo_root: str | Path, *, intent_id: str) -> IntentShowResult:
+    init_result = init_repo(repo_root)
+    conn = connect_db(init_result.db_path)
+    try:
+        intent = get_intent(conn, intent_id)
+        if intent is None:
+            raise ValueError(f"Unknown intent: {intent_id}")
+        attempts = list_intent_attempts(conn, intent_id)
+    finally:
+        conn.close()
+    return IntentShowResult(
+        intent=intent.__dict__,
+        attempts=[attempt.__dict__ for attempt in attempts],
+    )
+
+
+def show_attempt(repo_root: str | Path, *, attempt_id: str) -> AttemptShowResult:
+    init_result = init_repo(repo_root)
+    conn = connect_db(init_result.db_path)
+    try:
+        attempt = get_attempt(conn, attempt_id)
+        if attempt is None:
+            raise ValueError(f"Unknown attempt: {attempt_id}")
+        evidence = get_evidence_summary(conn, attempt_id)
+        files = list_evidence_files(conn, attempt_id)
+        commits = list_attempt_commits(conn, attempt_id)
+    finally:
+        conn.close()
+    return AttemptShowResult(
+        attempt=attempt.__dict__,
+        evidence_summary=None if evidence is None else evidence.__dict__,
+        files=files,
+        commits=[commit.__dict__ for commit in commits],
+    )
+
+
+def discard_attempt(repo_root: str | Path, *, attempt_id: str) -> AttemptShowResult:
+    init_result = init_repo(repo_root)
+    conn = connect_db(init_result.db_path)
+    try:
+        attempt = get_attempt(conn, attempt_id)
+        if attempt is None:
+            raise ValueError(f"Unknown attempt: {attempt_id}")
+        if attempt.verified_status == "promoted":
+            raise ValueError(f"Attempt is already promoted: {attempt_id}")
+        update_attempt(
+            conn,
+            attempt_id,
+            verified_status="discarded",
+            ended_at=utc_now(),
+        )
+        _refresh_intent_status(conn, attempt.intent_id)
+    finally:
+        conn.close()
+    remove_attempt_workspace(attempt.workspace_ref)
+    return show_attempt(repo_root, attempt_id=attempt_id)
+
+
+def promote_attempt(
+    repo_root: str | Path,
+    *,
+    attempt_id: str,
+    target_ref: str,
+) -> AttemptShowResult:
+    init_result = init_repo(repo_root)
+    conn = connect_db(init_result.db_path)
+    try:
+        attempt = get_attempt(conn, attempt_id)
+        if attempt is None:
+            raise ValueError(f"Unknown attempt: {attempt_id}")
+        intent = get_intent(conn, attempt.intent_id)
+        if intent is None:
+            raise ValueError(f"Missing intent for attempt: {attempt_id}")
+        if intent.status == "abandoned":
+            raise ValueError(f"Intent is abandoned: {intent.id}")
+        if attempt.reported_status != "finished":
+            raise ValueError(f"Attempt is not finished: {attempt_id}")
+        ref_name = target_ref if target_ref.startswith("refs/") else f"refs/heads/{target_ref}"
+        update_ref_to_workspace_head(init_result.repo_root, ref_name, attempt.workspace_ref)
+        update_attempt(conn, attempt_id, result_promotion_ref=ref_name)
+        verify_attempt_with_connection(conn, init_result.repo_root, attempt_id)
+    finally:
+        conn.close()
+    return show_attempt(repo_root, attempt_id=attempt_id)
+
+
+def verify_attempt(repo_root: str | Path, *, attempt_id: str) -> AttemptShowResult:
+    init_result = init_repo(repo_root)
+    conn = connect_db(init_result.db_path)
+    try:
+        attempt = get_attempt(conn, attempt_id)
+        if attempt is None:
+            raise ValueError(f"Unknown attempt: {attempt_id}")
+        verify_attempt_with_connection(conn, init_result.repo_root, attempt_id)
+    finally:
+        conn.close()
+    return show_attempt(repo_root, attempt_id=attempt_id)
+
+
+def _refresh_intent_status(conn, intent_id: str) -> None:
+    rows = conn.execute(
+        """
+        SELECT reported_status, verified_status
+        FROM attempts
+        WHERE intent_id = ?
+        """,
+        (intent_id,),
+    ).fetchall()
+    if any(str(row["verified_status"]) == "promoted" for row in rows):
+        update_intent_status(conn, intent_id, "finished")
+        return
+    if any(str(row["reported_status"]) == "running" for row in rows):
+        update_intent_status(conn, intent_id, "running")
+        return
+    update_intent_status(conn, intent_id, "open")
