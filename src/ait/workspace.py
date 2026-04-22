@@ -201,6 +201,28 @@ def update_ref_to_workspace_head(repo_root: str | Path, ref_name: str, workspace
     return head_oid
 
 
+def create_attempt_commit(
+    workspace_ref: str | Path,
+    *,
+    message: str,
+    intent_id: str,
+    attempt_id: str,
+) -> str:
+    worktree_path = Path(workspace_ref).resolve()
+    trailer_message = (
+        f"{message.rstrip()}\n\n"
+        f"Intent-Id: {intent_id}\n"
+        f"Attempt-Id: {attempt_id}\n"
+    )
+    _git_run(worktree_path, "commit", "-m", trailer_message)
+    return _git_stdout(worktree_path, "rev-parse", "--verify", "HEAD")
+
+
+def commit_message(workspace_ref: str | Path, commit_oid: str) -> str:
+    worktree_path = Path(workspace_ref).resolve()
+    return _git_stdout(worktree_path, "log", "-1", "--format=%B", commit_oid)
+
+
 def _resolve_worktree_repo_root(worktree_path: Path) -> Path:
     root_text = _git_stdout(worktree_path, "rev-parse", "--show-toplevel")
     return Path(root_text).resolve()

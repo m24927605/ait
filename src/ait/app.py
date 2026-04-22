@@ -23,7 +23,12 @@ from ait.hooks import install_post_rewrite_hook
 from ait.ids import new_ulid
 from ait.repo import derive_repo_id, resolve_repo_root
 from ait.verifier import verify_attempt_with_connection
-from ait.workspace import create_attempt_workspace, remove_attempt_workspace, update_ref_to_workspace_head
+from ait.workspace import (
+    create_attempt_commit,
+    create_attempt_workspace,
+    remove_attempt_workspace,
+    update_ref_to_workspace_head,
+)
 
 
 @dataclass(slots=True)
@@ -278,6 +283,43 @@ def verify_attempt(repo_root: str | Path, *, attempt_id: str) -> AttemptShowResu
     finally:
         conn.close()
     return show_attempt(repo_root, attempt_id=attempt_id)
+
+
+def create_commit_for_attempt(
+    repo_root: str | Path,
+    *,
+    attempt_id: str,
+    message: str,
+) -> AttemptShowResult:
+    if not message.strip():
+        raise ValueError("Commit message must not be empty")
+    init_result = init_repo(repo_root)
+    conn = connect_db(init_result.db_path)
+    try:
+        attempt = get_attempt(conn, attempt_id)
+        if attempt is None:
+            raise ValueError(f"Unknown attempt: {attempt_id}")
+        intent = get_intent(conn, attempt.intent_id)
+        if intent is None:
+            raise ValueError(f"Missing intent for attempt: {attempt_id}")
+        if intent.status == "abandoned":
+            raise ValueError(f"Intent is abandoned: {intent.id}")
+        create_attempt_commit(
+            attempt.workspace_ref,
+            message=message,
+            intent_id=intent.id,
+            attempt_id=attempt.id,
+        )
+        update_attempt(
+            conn,
+            attempt_id,
+            reported_status="finished",
+            ended_at=utc_now(),
+            result_exit_code=0,
+        )
+    finally:
+        conn.close()
+    return verify_attempt(repo_root, attempt_id=attempt_id)
 
 
 def abandon_intent(repo_root: str | Path, *, intent_id: str) -> IntentShowResult:

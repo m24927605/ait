@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ait.app import (
     abandon_intent,
+    create_commit_for_attempt,
     create_attempt,
     create_intent,
     discard_attempt,
@@ -51,6 +52,9 @@ def build_parser() -> argparse.ArgumentParser:
     attempt_new.add_argument("intent_id")
     attempt_show = attempt_subparsers.add_parser("show")
     attempt_show.add_argument("attempt_id")
+    attempt_commit = attempt_subparsers.add_parser("commit")
+    attempt_commit.add_argument("attempt_id")
+    attempt_commit.add_argument("-m", "--message", required=True)
     attempt_promote = attempt_subparsers.add_parser("promote")
     attempt_promote.add_argument("attempt_id")
     attempt_promote.add_argument("--to", required=True)
@@ -155,6 +159,14 @@ def main() -> int:
         return 0
     if args.command == "attempt" and args.attempt_command == "show":
         result = show_attempt(repo_root, attempt_id=args.attempt_id)
+        print(json.dumps(asdict(result), indent=2))
+        return 0
+    if args.command == "attempt" and args.attempt_command == "commit":
+        result = create_commit_for_attempt(
+            repo_root,
+            attempt_id=args.attempt_id,
+            message=args.message,
+        )
         print(json.dumps(asdict(result), indent=2))
         return 0
     if args.command == "attempt" and args.attempt_command == "promote":

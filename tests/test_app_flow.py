@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ait.app import (
     abandon_intent,
+    create_commit_for_attempt,
     create_attempt,
     create_intent,
     discard_attempt,
@@ -19,6 +20,7 @@ from ait.app import (
     verify_attempt,
 )
 from ait.db import connect_db, update_attempt
+from ait.workspace import commit_message
 
 
 class AppFlowTests(unittest.TestCase):
@@ -64,6 +66,32 @@ class AppFlowTests(unittest.TestCase):
                 _git_stdout(repo_root, "rev-parse", "--verify", "refs/heads/fix/auth"),
                 promoted.commits[0]["commit_oid"],
             )
+
+    def test_attempt_commit_writes_git_trailers_and_updates_attempt_commits(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            intent = create_intent(repo_root, title="Trailer", description=None, kind="bugfix")
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+            worktree = Path(attempt.workspace_ref)
+            _git(worktree, "config", "user.email", "test@example.com")
+            _git(worktree, "config", "user.name", "Test User")
+            (worktree / "feature.py").write_text("flag = True\n", encoding="utf-8")
+            _git(worktree, "add", "feature.py")
+
+            result = create_commit_for_attempt(
+                repo_root,
+                attempt_id=attempt.attempt_id,
+                message="add feature",
+            )
+
+            self.assertEqual("succeeded", result.attempt["verified_status"])
+            self.assertEqual(("feature.py",), result.files["changed"])
+            self.assertEqual(1, len(result.commits))
+            message = commit_message(attempt.workspace_ref, result.commits[0]["commit_oid"])
+            self.assertIn("Intent-Id: " + intent.intent_id, message)
+            self.assertIn("Attempt-Id: " + attempt.attempt_id, message)
 
     def test_discard_attempt_marks_record_and_removes_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
