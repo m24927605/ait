@@ -77,6 +77,11 @@ class EventProcessingTests(unittest.TestCase):
         self.assertEqual("2026-04-23T00:02:00Z", attempt.heartbeat_at)
         self.assertEqual("gpt-5", attempt.agent_model)
         self.assertEqual("codex", attempt.agent_harness)
+        intent_row = self.conn.execute(
+            "SELECT status FROM intents WHERE id = ?",
+            ("repo:01INTENT",),
+        ).fetchone()
+        self.assertEqual("running", intent_row["status"])
 
     def test_tool_event_updates_counters_files_and_dedupes_event_id(self) -> None:
         first = process_event(
@@ -216,6 +221,11 @@ class EventProcessingTests(unittest.TestCase):
         self.assertFalse(result.mutated)
         self.assertEqual("promoted", attempt.verified_status)
         self.assertEqual("refs/heads/fix/oauth-expiry", attempt.result_promotion_ref)
+        intent_row = self.conn.execute(
+            "SELECT status FROM intents WHERE id = ?",
+            ("repo:01INTENT",),
+        ).fetchone()
+        self.assertEqual("finished", intent_row["status"])
 
     def test_promoting_a_discarded_attempt_conflicts(self) -> None:
         process_event(
@@ -287,6 +297,38 @@ class EventProcessingTests(unittest.TestCase):
         self.assertEqual("crashed", stale_attempt.reported_status)
         self.assertEqual("failed", stale_attempt.verified_status)
         self.assertEqual("running", fresh_attempt.reported_status)
+
+    def test_discard_refreshes_intent_status_when_no_running_attempts_remain(self) -> None:
+        process_event(
+            self.conn,
+            {
+                "schema_version": 1,
+                "event_id": "repo:01EVENT10",
+                "event_type": "attempt_started",
+                "sent_at": "2026-04-23T00:02:00Z",
+                "attempt_id": "repo:01ATTEMPT1",
+                "ownership_token": "token-1",
+                "payload": {"agent": {"agent_id": "codex:worker-5"}},
+            },
+        )
+        process_event(
+            self.conn,
+            {
+                "schema_version": 1,
+                "event_id": "repo:01EVENT11",
+                "event_type": "attempt_discarded",
+                "sent_at": "2026-04-23T00:08:00Z",
+                "attempt_id": "repo:01ATTEMPT1",
+                "ownership_token": "token-1",
+                "payload": {"reason": "user-requested"},
+            },
+        )
+
+        intent_row = self.conn.execute(
+            "SELECT status FROM intents WHERE id = ?",
+            ("repo:01INTENT",),
+        ).fetchone()
+        self.assertEqual("open", intent_row["status"])
 
 
 if __name__ == "__main__":

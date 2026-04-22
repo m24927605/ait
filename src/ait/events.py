@@ -139,6 +139,17 @@ def handle_attempt_started(
             attempt.id,
         ),
     )
+    conn.execute(
+        """
+        UPDATE intents
+        SET status = CASE
+            WHEN status = 'open' THEN 'running'
+            ELSE status
+        END
+        WHERE id = ?
+        """,
+        (attempt.intent_id,),
+    )
 
 
 def handle_attempt_heartbeat(
@@ -288,6 +299,14 @@ def handle_attempt_promoted(
         """,
         (promotion_ref, attempt.id),
     )
+    conn.execute(
+        """
+        UPDATE intents
+        SET status = 'finished'
+        WHERE id = ?
+        """,
+        (attempt.intent_id,),
+    )
     return True
 
 
@@ -301,6 +320,10 @@ def handle_attempt_discarded(
         """
         UPDATE attempts
         SET verified_status = 'discarded',
+            reported_status = CASE
+                WHEN reported_status IN ('created', 'running') THEN 'finished'
+                ELSE reported_status
+            END,
             ended_at = CASE
                 WHEN ended_at IS NULL OR ended_at < ? THEN ?
                 ELSE ended_at
@@ -309,6 +332,7 @@ def handle_attempt_discarded(
         """,
         (sent_at, sent_at, attempt.id),
     )
+    _refresh_intent_status(conn, attempt.intent_id)
     return True
 
 
@@ -358,6 +382,11 @@ def _mark_stale_running_attempts(
                 (now_iso, now_iso, attempt_id),
             )
             stale_ids.append(attempt_id)
+            intent_id = conn.execute(
+                "SELECT intent_id FROM attempts WHERE id = ?",
+                (attempt_id,),
+            ).fetchone()["intent_id"]
+            _refresh_intent_status(conn, str(intent_id))
     return tuple(stale_ids)
 
 
@@ -438,3 +467,27 @@ def _parse_timestamp(value: str, *, to_datetime: bool = False) -> str | datetime
     if to_datetime:
         return datetime.fromisoformat(normalized.replace("Z", "+00:00"))
     return normalized
+
+
+def _refresh_intent_status(conn: sqlite3.Connection, intent_id: str) -> None:
+    row = conn.execute("SELECT status FROM intents WHERE id = ?", (intent_id,)).fetchone()
+    if row is None:
+        return
+    current = str(row["status"])
+    if current in {"abandoned", "superseded"}:
+        return
+    attempts = conn.execute(
+        """
+        SELECT reported_status, verified_status
+        FROM attempts
+        WHERE intent_id = ?
+        """,
+        (intent_id,),
+    ).fetchall()
+    if any(str(item["verified_status"]) == "promoted" for item in attempts):
+        status = "finished"
+    elif any(str(item["reported_status"]) == "running" for item in attempts):
+        status = "running"
+    else:
+        status = "open"
+    conn.execute("UPDATE intents SET status = ? WHERE id = ?", (status, intent_id))
