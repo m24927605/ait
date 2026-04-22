@@ -18,6 +18,7 @@ from ait.app import (
 from ait.daemon import daemon_status, serve_daemon, start_daemon, stop_daemon
 from ait.db import connect_db
 from ait.query import blame_path, execute_query, list_shortcut_expression, parse_blame_target
+from ait.reconcile import reconcile_repo
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -72,6 +73,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     blame_parser = subparsers.add_parser("blame")
     blame_parser.add_argument("target")
+
+    subparsers.add_parser("reconcile")
 
     daemon_parser = subparsers.add_parser("daemon")
     daemon_subparsers = daemon_parser.add_subparsers(dest="daemon_command")
@@ -192,6 +195,10 @@ def main() -> int:
         finally:
             conn.close()
         print(_format_rows([row.__dict__ for row in rows], "table"))
+        return 0
+    if args.command == "reconcile":
+        result = reconcile_repo(repo_root)
+        print(json.dumps(asdict(result), indent=2))
         return 0
     if args.command == "daemon":
         if args.daemon_command == "start":
