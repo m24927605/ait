@@ -426,6 +426,24 @@ def update_intent_status(conn: sqlite3.Connection, intent_id: str, status: str) 
         )
 
 
+def insert_intent_edge(
+    conn: sqlite3.Connection,
+    *,
+    parent_intent_id: str,
+    child_intent_id: str,
+    edge_type: str,
+    created_at: str,
+) -> None:
+    with conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO intent_edges(parent_intent_id, child_intent_id, edge_type, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (parent_intent_id, child_intent_id, edge_type, created_at),
+        )
+
+
 def _next_attempt_ordinal(conn: sqlite3.Connection, intent_id: str) -> int:
     row = conn.execute(
         "SELECT COALESCE(MAX(ordinal), 0) AS max_ordinal FROM attempts WHERE intent_id = ?",

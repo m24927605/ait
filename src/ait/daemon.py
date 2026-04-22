@@ -16,6 +16,7 @@ from ait.db import connect_db, run_migrations
 from ait.events import EventError, process_event, reap_stale_attempts, recover_running_attempts
 from ait.protocol import ProtocolError, envelope_to_dict
 from ait.repo import resolve_repo_root
+from ait.verifier import verify_attempt_with_connection
 
 DEFAULT_REAPER_TTL_SECONDS = 300
 
@@ -101,7 +102,7 @@ def serve_daemon(repo_root: str | Path) -> None:
         while True:
             client, _ = server.accept()
             with client:
-                _handle_client(conn, client)
+                _handle_client(conn, client, root)
             reap_stale_attempts(conn, now=_now(), heartbeat_ttl_seconds=_reaper_ttl(root))
     finally:
         conn.close()
@@ -112,7 +113,7 @@ def serve_daemon(repo_root: str | Path) -> None:
             pid_file.unlink()
 
 
-def _handle_client(conn, client: socket.socket) -> None:
+def _handle_client(conn, client: socket.socket, repo_root: Path | None = None) -> None:
     stream = NDJSONSocketStream(client.makefile("rwb"))
     while True:
         try:
@@ -124,6 +125,8 @@ def _handle_client(conn, client: socket.socket) -> None:
             return
         try:
             result = process_event(conn, envelope_to_dict(envelope))
+            if repo_root is not None and envelope.event_type in {"attempt_finished", "attempt_promoted"}:
+                verify_attempt_with_connection(conn, repo_root, envelope.attempt_id)
             _write_response(client, {"ok": True, **result.__dict__})
         except EventError as exc:
             _write_response(client, {"ok": False, "error": str(exc)})

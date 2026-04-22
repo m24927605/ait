@@ -218,14 +218,14 @@ class EventProcessingTests(unittest.TestCase):
         attempt = get_attempt(self.conn, "repo:01ATTEMPT1")
         assert attempt is not None
         self.assertFalse(result.duplicate)
-        self.assertFalse(result.mutated)
-        self.assertEqual("promoted", attempt.verified_status)
+        self.assertTrue(result.mutated)
+        self.assertEqual("discarded", attempt.verified_status)
         self.assertEqual("refs/heads/fix/oauth-expiry", attempt.result_promotion_ref)
         intent_row = self.conn.execute(
             "SELECT status FROM intents WHERE id = ?",
             ("repo:01INTENT",),
         ).fetchone()
-        self.assertEqual("finished", intent_row["status"])
+        self.assertEqual("open", intent_row["status"])
 
     def test_promoting_a_discarded_attempt_conflicts(self) -> None:
         process_event(

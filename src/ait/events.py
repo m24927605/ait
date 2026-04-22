@@ -293,19 +293,10 @@ def handle_attempt_promoted(
     conn.execute(
         """
         UPDATE attempts
-        SET verified_status = 'promoted',
-            result_promotion_ref = ?
+        SET result_promotion_ref = ?
         WHERE id = ?
         """,
         (promotion_ref, attempt.id),
-    )
-    conn.execute(
-        """
-        UPDATE intents
-        SET status = 'finished'
-        WHERE id = ?
-        """,
-        (attempt.intent_id,),
     )
     return True
 

@@ -11,6 +11,7 @@ from ait.config import (
 )
 from ait.db import NewAttempt, NewIntent, connect_db, get_intent, insert_attempt, insert_intent, run_migrations, utc_now
 from ait.db import (
+    insert_intent_edge,
     get_attempt,
     get_evidence_summary,
     list_attempt_commits,
@@ -330,6 +331,36 @@ def abandon_intent(repo_root: str | Path, *, intent_id: str) -> IntentShowResult
         if intent is None:
             raise ValueError(f"Unknown intent: {intent_id}")
         update_intent_status(conn, intent_id, "abandoned")
+    finally:
+        conn.close()
+    return show_intent(repo_root, intent_id=intent_id)
+
+
+def supersede_intent(
+    repo_root: str | Path,
+    *,
+    intent_id: str,
+    by_intent_id: str,
+) -> IntentShowResult:
+    init_result = init_repo(repo_root)
+    conn = connect_db(init_result.db_path)
+    try:
+        intent = get_intent(conn, intent_id)
+        replacement = get_intent(conn, by_intent_id)
+        if intent is None:
+            raise ValueError(f"Unknown intent: {intent_id}")
+        if replacement is None:
+            raise ValueError(f"Unknown replacement intent: {by_intent_id}")
+        if intent_id == by_intent_id:
+            raise ValueError("Intent cannot supersede itself")
+        insert_intent_edge(
+            conn,
+            parent_intent_id=intent_id,
+            child_intent_id=by_intent_id,
+            edge_type="superseded_by",
+            created_at=utc_now(),
+        )
+        update_intent_status(conn, intent_id, "superseded")
     finally:
         conn.close()
     return show_intent(repo_root, intent_id=intent_id)

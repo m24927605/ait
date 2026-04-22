@@ -15,6 +15,7 @@ from ait.app import (
     promote_attempt,
     show_attempt,
     show_intent,
+    supersede_intent,
     verify_attempt,
 )
 from ait.daemon import daemon_status, serve_daemon, start_daemon, stop_daemon
@@ -38,6 +39,9 @@ def build_parser() -> argparse.ArgumentParser:
     intent_show.add_argument("intent_id")
     intent_abandon = intent_subparsers.add_parser("abandon")
     intent_abandon.add_argument("intent_id")
+    intent_supersede = intent_subparsers.add_parser("supersede")
+    intent_supersede.add_argument("intent_id")
+    intent_supersede.add_argument("--by", required=True)
     intent_list = intent_subparsers.add_parser("list")
     intent_list.add_argument("--status")
     intent_list.add_argument("--kind")
@@ -127,6 +131,10 @@ def main() -> int:
         return 0
     if args.command == "intent" and args.intent_command == "abandon":
         result = abandon_intent(repo_root, intent_id=args.intent_id)
+        print(json.dumps(asdict(result), indent=2))
+        return 0
+    if args.command == "intent" and args.intent_command == "supersede":
+        result = supersede_intent(repo_root, intent_id=args.intent_id, by_intent_id=args.by)
         print(json.dumps(asdict(result), indent=2))
         return 0
     if args.command == "intent" and args.intent_command == "list":

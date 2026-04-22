@@ -17,6 +17,7 @@ from ait.app import (
     promote_attempt,
     show_attempt,
     show_intent,
+    supersede_intent,
     verify_attempt,
 )
 from ait.db import connect_db, update_attempt
@@ -141,6 +142,68 @@ class AppFlowTests(unittest.TestCase):
             self.assertEqual("abandoned", abandoned.intent["status"])
             self.assertEqual(("lib.py",), abandoned.files["changed"])
             self.assertEqual(1, len(abandoned.commit_oids))
+
+    def test_supersede_intent_marks_original_superseded_and_writes_edge(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            original = create_intent(repo_root, title="Original", description=None, kind="bugfix")
+            replacement = create_intent(repo_root, title="Replacement", description=None, kind="bugfix")
+
+            result = supersede_intent(
+                repo_root,
+                intent_id=original.intent_id,
+                by_intent_id=replacement.intent_id,
+            )
+
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            try:
+                edge = conn.execute(
+                    """
+                    SELECT parent_intent_id, child_intent_id, edge_type
+                    FROM intent_edges
+                    WHERE parent_intent_id = ? AND child_intent_id = ?
+                    """,
+                    (original.intent_id, replacement.intent_id),
+                ).fetchone()
+            finally:
+                conn.close()
+
+            self.assertEqual("superseded", result.intent["status"])
+            self.assertEqual("superseded_by", edge["edge_type"])
+
+    def test_abandoned_intent_rejects_promoted_verification(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            intent = create_intent(repo_root, title="Abandoned", description=None, kind="bugfix")
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+            worktree = Path(attempt.workspace_ref)
+            _git(worktree, "config", "user.email", "test@example.com")
+            _git(worktree, "config", "user.name", "Test User")
+            (worktree / "reject.py").write_text("value = 1\n", encoding="utf-8")
+            _git(worktree, "add", "reject.py")
+            _git(worktree, "commit", "-m", "reject")
+            abandon_intent(repo_root, intent_id=intent.intent_id)
+
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            try:
+                update_attempt(
+                    conn,
+                    attempt.attempt_id,
+                    reported_status="finished",
+                    ended_at="2026-04-23T00:10:00Z",
+                    result_exit_code=0,
+                    result_promotion_ref="refs/heads/fix/reject",
+                )
+            finally:
+                conn.close()
+
+            verified = verify_attempt(repo_root, attempt_id=attempt.attempt_id)
+
+            self.assertEqual("failed", verified.attempt["verified_status"])
 
 
 def _init_git_repo(repo_root: Path) -> None:

@@ -9,6 +9,7 @@ from ait.db import (
     connect_db,
     get_attempt,
     get_evidence_summary,
+    get_intent,
     list_attempt_commits,
     replace_attempt_commits,
     replace_evidence_files_kind,
@@ -48,6 +49,9 @@ def verify_attempt_with_connection(
     attempt = get_attempt(conn, attempt_id)
     if attempt is None:
         raise ValueError(f"Unknown attempt: {attempt_id}")
+    intent = get_intent(conn, attempt.intent_id)
+    if intent is None:
+        raise ValueError(f"Missing intent for attempt: {attempt_id}")
     evidence = get_evidence_summary(conn, attempt_id)
     if evidence is None:
         raise ValueError(f"Missing evidence summary: {attempt_id}")
@@ -65,7 +69,7 @@ def verify_attempt_with_connection(
         file_paths=changed_files,
     )
 
-    verified_status = _determine_verified_status(repo_root, attempt, evidence, commits)
+    verified_status = _determine_verified_status(repo_root, intent.status, attempt, evidence, commits)
     update_attempt(conn, attempt_id, verified_status=verified_status)
     _update_intent_status_from_attempts(conn, attempt.intent_id)
     return VerifyResult(
@@ -95,7 +99,7 @@ def _materialize_attempt_commits(attempt) -> tuple[AttemptCommitRecord, ...]:
     return tuple(commits)
 
 
-def _determine_verified_status(repo_root: Path, attempt, evidence, commits) -> str:
+def _determine_verified_status(repo_root: Path, intent_status: str, attempt, evidence, commits) -> str:
     if attempt.verified_status == "discarded":
         return "discarded"
     if attempt.reported_status != "finished":
@@ -113,6 +117,8 @@ def _determine_verified_status(repo_root: Path, attempt, evidence, commits) -> s
 
     commit_oids = tuple(commit.commit_oid for commit in commits)
     if attempt.result_promotion_ref:
+        if intent_status == "abandoned":
+            return "failed"
         if commit_oids and ref_contains_commits(repo_root, attempt.result_promotion_ref, commit_oids):
             return "promoted"
         return "failed"
