@@ -53,6 +53,8 @@ class AttemptResult:
 class IntentShowResult:
     intent: dict[str, object]
     attempts: list[dict[str, object]]
+    files: dict[str, tuple[str, ...]]
+    commit_oids: tuple[str, ...]
 
 
 @dataclass(slots=True)
@@ -176,11 +178,21 @@ def show_intent(repo_root: str | Path, *, intent_id: str) -> IntentShowResult:
         if intent is None:
             raise ValueError(f"Unknown intent: {intent_id}")
         attempts = list_intent_attempts(conn, intent_id)
+        files: dict[str, set[str]] = {}
+        commit_oids: list[str] = []
+        for attempt in attempts:
+            attempt_files = list_evidence_files(conn, attempt.id)
+            for kind, paths in attempt_files.items():
+                files.setdefault(kind, set()).update(paths)
+            for commit in list_attempt_commits(conn, attempt.id):
+                commit_oids.append(commit.commit_oid)
     finally:
         conn.close()
     return IntentShowResult(
         intent=intent.__dict__,
         attempts=[attempt.__dict__ for attempt in attempts],
+        files={kind: tuple(sorted(paths)) for kind, paths in files.items()},
+        commit_oids=tuple(sorted(set(commit_oids))),
     )
 
 
@@ -265,6 +277,19 @@ def verify_attempt(repo_root: str | Path, *, attempt_id: str) -> AttemptShowResu
     finally:
         conn.close()
     return show_attempt(repo_root, attempt_id=attempt_id)
+
+
+def abandon_intent(repo_root: str | Path, *, intent_id: str) -> IntentShowResult:
+    init_result = init_repo(repo_root)
+    conn = connect_db(init_result.db_path)
+    try:
+        intent = get_intent(conn, intent_id)
+        if intent is None:
+            raise ValueError(f"Unknown intent: {intent_id}")
+        update_intent_status(conn, intent_id, "abandoned")
+    finally:
+        conn.close()
+    return show_intent(repo_root, intent_id=intent_id)
 
 
 def _refresh_intent_status(conn, intent_id: str) -> None:

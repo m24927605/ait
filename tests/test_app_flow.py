@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ait.app import (
+    abandon_intent,
     create_attempt,
     create_intent,
     discard_attempt,
@@ -79,6 +80,38 @@ class AppFlowTests(unittest.TestCase):
             self.assertEqual("discarded", discarded.attempt["verified_status"])
             self.assertFalse(workspace.exists())
             self.assertEqual("discarded", shown.attempt["verified_status"])
+
+    def test_abandon_intent_updates_status_and_show_aggregates_attempt_data(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            intent = create_intent(repo_root, title="Aggregate", description=None, kind="bugfix")
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+            worktree = Path(attempt.workspace_ref)
+            _git(worktree, "config", "user.email", "test@example.com")
+            _git(worktree, "config", "user.name", "Test User")
+            (worktree / "lib.py").write_text("value = 1\n", encoding="utf-8")
+            _git(worktree, "add", "lib.py")
+            _git(worktree, "commit", "-m", "add lib")
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            try:
+                update_attempt(
+                    conn,
+                    attempt.attempt_id,
+                    reported_status="finished",
+                    ended_at="2026-04-23T00:10:00Z",
+                    result_exit_code=0,
+                )
+            finally:
+                conn.close()
+            verify_attempt(repo_root, attempt_id=attempt.attempt_id)
+
+            abandoned = abandon_intent(repo_root, intent_id=intent.intent_id)
+
+            self.assertEqual("abandoned", abandoned.intent["status"])
+            self.assertEqual(("lib.py",), abandoned.files["changed"])
+            self.assertEqual(1, len(abandoned.commit_oids))
 
 
 def _init_git_repo(repo_root: Path) -> None:

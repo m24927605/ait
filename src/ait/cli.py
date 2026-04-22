@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from ait.app import (
+    abandon_intent,
     create_attempt,
     create_intent,
     discard_attempt,
@@ -34,6 +35,8 @@ def build_parser() -> argparse.ArgumentParser:
     intent_new.add_argument("--kind")
     intent_show = intent_subparsers.add_parser("show")
     intent_show.add_argument("intent_id")
+    intent_abandon = intent_subparsers.add_parser("abandon")
+    intent_abandon.add_argument("intent_id")
     intent_list = intent_subparsers.add_parser("list")
     intent_list.add_argument("--status")
     intent_list.add_argument("--kind")
@@ -116,6 +119,10 @@ def main() -> int:
         return 0
     if args.command == "intent" and args.intent_command == "show":
         result = show_intent(repo_root, intent_id=args.intent_id)
+        print(json.dumps(asdict(result), indent=2))
+        return 0
+    if args.command == "intent" and args.intent_command == "abandon":
+        result = abandon_intent(repo_root, intent_id=args.intent_id)
         print(json.dumps(asdict(result), indent=2))
         return 0
     if args.command == "intent" and args.intent_command == "list":
