@@ -78,6 +78,7 @@ class AppFlowTests(unittest.TestCase):
             shown = show_attempt(repo_root, attempt_id=attempt.attempt_id)
 
             self.assertEqual("discarded", discarded.attempt["verified_status"])
+            self.assertEqual("finished", discarded.attempt["reported_status"])
             self.assertFalse(workspace.exists())
             self.assertEqual("discarded", shown.attempt["verified_status"])
 

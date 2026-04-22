@@ -228,6 +228,7 @@ def discard_attempt(repo_root: str | Path, *, attempt_id: str) -> AttemptShowRes
         update_attempt(
             conn,
             attempt_id,
+            reported_status="finished" if attempt.reported_status in {"created", "running"} else attempt.reported_status,
             verified_status="discarded",
             ended_at=utc_now(),
         )
