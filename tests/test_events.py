@@ -298,7 +298,7 @@ class EventProcessingTests(unittest.TestCase):
         self.assertEqual("failed", stale_attempt.verified_status)
         self.assertEqual("running", fresh_attempt.reported_status)
 
-    def test_discard_refreshes_intent_status_when_no_running_attempts_remain(self) -> None:
+    def test_discard_does_not_regress_running_intent_back_to_open(self) -> None:
         process_event(
             self.conn,
             {
@@ -328,7 +328,10 @@ class EventProcessingTests(unittest.TestCase):
             "SELECT status FROM intents WHERE id = ?",
             ("repo:01INTENT",),
         ).fetchone()
-        self.assertEqual("open", intent_row["status"])
+        # Forward-only transitions: once the intent has reached running, it
+        # must not fall back to open simply because every active attempt
+        # was discarded. The user must explicitly abandon or supersede.
+        self.assertEqual("running", intent_row["status"])
 
 
 if __name__ == "__main__":

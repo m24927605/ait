@@ -6,6 +6,7 @@ from typing import Any, Mapping
 import sqlite3
 
 from ait.db import AttemptRecord, get_attempt
+from ait.lifecycle import refresh_intent_status
 
 PROTOCOL_SCHEMA_VERSION = 1
 _EVENT_SEEN_KEY_PREFIX = "event_seen:"
@@ -139,17 +140,7 @@ def handle_attempt_started(
             attempt.id,
         ),
     )
-    conn.execute(
-        """
-        UPDATE intents
-        SET status = CASE
-            WHEN status = 'open' THEN 'running'
-            ELSE status
-        END
-        WHERE id = ?
-        """,
-        (attempt.intent_id,),
-    )
+    refresh_intent_status(conn, attempt.intent_id)
 
 
 def handle_attempt_heartbeat(
@@ -323,7 +314,7 @@ def handle_attempt_discarded(
         """,
         (sent_at, sent_at, attempt.id),
     )
-    _refresh_intent_status(conn, attempt.intent_id)
+    refresh_intent_status(conn, attempt.intent_id)
     return True
 
 
@@ -377,7 +368,7 @@ def _mark_stale_running_attempts(
                 "SELECT intent_id FROM attempts WHERE id = ?",
                 (attempt_id,),
             ).fetchone()["intent_id"]
-            _refresh_intent_status(conn, str(intent_id))
+            refresh_intent_status(conn, str(intent_id))
     return tuple(stale_ids)
 
 
@@ -460,25 +451,3 @@ def _parse_timestamp(value: str, *, to_datetime: bool = False) -> str | datetime
     return normalized
 
 
-def _refresh_intent_status(conn: sqlite3.Connection, intent_id: str) -> None:
-    row = conn.execute("SELECT status FROM intents WHERE id = ?", (intent_id,)).fetchone()
-    if row is None:
-        return
-    current = str(row["status"])
-    if current in {"abandoned", "superseded"}:
-        return
-    attempts = conn.execute(
-        """
-        SELECT reported_status, verified_status
-        FROM attempts
-        WHERE intent_id = ?
-        """,
-        (intent_id,),
-    ).fetchall()
-    if any(str(item["verified_status"]) == "promoted" for item in attempts):
-        status = "finished"
-    elif any(str(item["reported_status"]) == "running" for item in attempts):
-        status = "running"
-    else:
-        status = "open"
-    conn.execute("UPDATE intents SET status = ? WHERE id = ?", (status, intent_id))

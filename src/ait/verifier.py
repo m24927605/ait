@@ -14,8 +14,8 @@ from ait.db import (
     replace_attempt_commits,
     replace_evidence_files_kind,
     update_attempt,
-    update_intent_status,
 )
+from ait.lifecycle import refresh_intent_status
 from ait.repo import resolve_repo_root
 from ait.workspace import (
     commit_parent_oid,
@@ -71,7 +71,7 @@ def verify_attempt_with_connection(
 
     verified_status = _determine_verified_status(repo_root, intent.status, attempt, evidence, commits)
     update_attempt(conn, attempt_id, verified_status=verified_status)
-    _update_intent_status_from_attempts(conn, attempt.intent_id)
+    refresh_intent_status(conn, attempt.intent_id)
     return VerifyResult(
         attempt_id=attempt_id,
         verified_status=verified_status,
@@ -130,21 +130,3 @@ def _ref_exists(repo_root: Path, ref_path: str) -> bool:
     if path.is_absolute():
         return path.exists()
     return (repo_root / ref_path).exists()
-
-
-def _update_intent_status_from_attempts(conn: sqlite3.Connection, intent_id: str) -> None:
-    attempts = conn.execute(
-        """
-        SELECT reported_status, verified_status
-        FROM attempts
-        WHERE intent_id = ?
-        """,
-        (intent_id,),
-    ).fetchall()
-    if any(str(row["verified_status"]) == "promoted" for row in attempts):
-        update_intent_status(conn, intent_id, "finished")
-        return
-    if any(str(row["reported_status"]) == "running" for row in attempts):
-        update_intent_status(conn, intent_id, "running")
-        return
-    update_intent_status(conn, intent_id, "open")

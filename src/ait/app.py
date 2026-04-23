@@ -22,6 +22,7 @@ from ait.db import (
 )
 from ait.hooks import install_post_rewrite_hook
 from ait.ids import new_ulid
+from ait.lifecycle import refresh_intent_status
 from ait.repo import derive_repo_id, resolve_repo_root
 from ait.verifier import verify_attempt_with_connection
 from ait.workspace import (
@@ -238,7 +239,7 @@ def discard_attempt(repo_root: str | Path, *, attempt_id: str) -> AttemptShowRes
             verified_status="discarded",
             ended_at=utc_now(),
         )
-        _refresh_intent_status(conn, attempt.intent_id)
+        refresh_intent_status(conn, attempt.intent_id)
     finally:
         conn.close()
     remove_attempt_workspace(attempt.workspace_ref)
@@ -366,19 +367,3 @@ def supersede_intent(
     return show_intent(repo_root, intent_id=intent_id)
 
 
-def _refresh_intent_status(conn, intent_id: str) -> None:
-    rows = conn.execute(
-        """
-        SELECT reported_status, verified_status
-        FROM attempts
-        WHERE intent_id = ?
-        """,
-        (intent_id,),
-    ).fetchall()
-    if any(str(row["verified_status"]) == "promoted" for row in rows):
-        update_intent_status(conn, intent_id, "finished")
-        return
-    if any(str(row["reported_status"]) == "running" for row in rows):
-        update_intent_status(conn, intent_id, "running")
-        return
-    update_intent_status(conn, intent_id, "open")

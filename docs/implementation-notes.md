@@ -33,6 +33,27 @@ The following local defaults must be applied by `ait init`:
 
 ## Lifecycle Clarifications
 
+### Intent Status Is Forward-Only
+
+Intent status transitions are **forward-only**. Once an intent reaches
+`running`, it must never regress to `open`, even if every child attempt ends
+as `failed` or `discarded`. Terminal statuses (`finished`, `abandoned`,
+`superseded`) are never mutated by automatic refresh.
+
+The single source of truth is `ait.lifecycle.refresh_intent_status`. All
+callers (event handlers, verifier, CLI flows) must route through it rather
+than computing intent status inline.
+
+Allowed automatic transitions:
+
+- `open -> running`: any child attempt reaches `reported_status = running`
+- `open -> finished` or `running -> finished`: any child attempt reaches `verified_status = promoted`
+
+Disallowed transitions (must be rejected or no-op):
+
+- `running -> open`
+- any automatic transition out of `finished`, `abandoned`, or `superseded`
+
 ### Attempt Success vs Promotion
 
 `verified_status=succeeded` means:
