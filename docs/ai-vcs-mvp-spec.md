@@ -467,6 +467,7 @@ Required indexes:
 - `evidence_summaries(attempt_id)`
 - `attempt_commits(commit_oid)`
 - `evidence_files(file_path, kind, attempt_id)`
+- `intent_edges(child_intent_id, edge_type)`
 
 ### 3. Raw Blob Store
 

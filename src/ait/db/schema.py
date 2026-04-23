@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -127,6 +127,14 @@ MIGRATIONS: tuple[Migration, ...] = (
 
         CREATE INDEX idx_evidence_files_file_path_kind_attempt_id
             ON evidence_files(file_path, kind, attempt_id);
+        """,
+    ),
+    Migration(
+        version=2,
+        name="intent_edges_reverse_index",
+        sql="""
+        CREATE INDEX idx_intent_edges_child
+            ON intent_edges(child_intent_id, edge_type);
         """,
     ),
 )

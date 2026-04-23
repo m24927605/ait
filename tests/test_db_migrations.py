@@ -45,12 +45,30 @@ class MigrationTests(unittest.TestCase):
         self.addCleanup(conn.close)
 
         run_migrations(conn)
+        first_count = conn.execute(
+            "SELECT COUNT(*) AS count FROM schema_migrations"
+        ).fetchone()["count"]
+        run_migrations(conn)
+        second_count = conn.execute(
+            "SELECT COUNT(*) AS count FROM schema_migrations"
+        ).fetchone()["count"]
+
+        self.assertEqual(SCHEMA_VERSION, first_count)
+        self.assertEqual(first_count, second_count)
+
+    def test_intent_edges_has_child_reverse_index(self) -> None:
+        conn = connect_db(":memory:")
+        self.addCleanup(conn.close)
+
         run_migrations(conn)
 
-        count = conn.execute("SELECT COUNT(*) AS count FROM schema_migrations").fetchone()[
-            "count"
-        ]
-        self.assertEqual(1, count)
+        indexes = {
+            row["name"]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'intent_edges'"
+            ).fetchall()
+        }
+        self.assertIn("idx_intent_edges_child", indexes)
 
     def test_run_migrations_rejects_newer_schema_version(self) -> None:
         conn = sqlite3.connect(":memory:")
