@@ -173,6 +173,92 @@ class AppFlowTests(unittest.TestCase):
             self.assertEqual("superseded", result.intent["status"])
             self.assertEqual("superseded_by", edge["edge_type"])
 
+    def test_superseded_intent_rejects_new_attempt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            original = create_intent(repo_root, title="Original", description=None, kind="bugfix")
+            replacement = create_intent(repo_root, title="Replacement", description=None, kind="bugfix")
+            supersede_intent(
+                repo_root,
+                intent_id=original.intent_id,
+                by_intent_id=replacement.intent_id,
+            )
+
+            with self.assertRaises(ValueError) as raised:
+                create_attempt(repo_root, intent_id=original.intent_id)
+
+            self.assertIn("superseded", str(raised.exception))
+
+    def test_superseded_intent_rejects_commit_for_existing_attempt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            original = create_intent(repo_root, title="Original", description=None, kind="bugfix")
+            replacement = create_intent(repo_root, title="Replacement", description=None, kind="bugfix")
+            attempt = create_attempt(repo_root, intent_id=original.intent_id)
+            worktree = Path(attempt.workspace_ref)
+            _git(worktree, "config", "user.email", "test@example.com")
+            _git(worktree, "config", "user.name", "Test User")
+            (worktree / "edge.py").write_text("x = 1\n", encoding="utf-8")
+            _git(worktree, "add", "edge.py")
+            supersede_intent(
+                repo_root,
+                intent_id=original.intent_id,
+                by_intent_id=replacement.intent_id,
+            )
+
+            with self.assertRaises(ValueError) as raised:
+                create_commit_for_attempt(
+                    repo_root,
+                    attempt_id=attempt.attempt_id,
+                    message="edge",
+                )
+
+            self.assertIn("superseded", str(raised.exception))
+
+    def test_superseded_intent_rejects_promotion_for_existing_attempt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            original = create_intent(repo_root, title="Original", description=None, kind="bugfix")
+            replacement = create_intent(repo_root, title="Replacement", description=None, kind="bugfix")
+            attempt = create_attempt(repo_root, intent_id=original.intent_id)
+            worktree = Path(attempt.workspace_ref)
+            _git(worktree, "config", "user.email", "test@example.com")
+            _git(worktree, "config", "user.name", "Test User")
+            (worktree / "drop.py").write_text("x = 1\n", encoding="utf-8")
+            _git(worktree, "add", "drop.py")
+            _git(worktree, "commit", "-m", "drop")
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            try:
+                update_attempt(
+                    conn,
+                    attempt.attempt_id,
+                    reported_status="finished",
+                    ended_at="2026-04-23T00:10:00Z",
+                    result_exit_code=0,
+                )
+            finally:
+                conn.close()
+            supersede_intent(
+                repo_root,
+                intent_id=original.intent_id,
+                by_intent_id=replacement.intent_id,
+            )
+
+            with self.assertRaises(ValueError) as raised:
+                promote_attempt(
+                    repo_root,
+                    attempt_id=attempt.attempt_id,
+                    target_ref="fix/drop",
+                )
+
+            self.assertIn("superseded", str(raised.exception))
+
     def test_abandoned_intent_rejects_promoted_verification(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

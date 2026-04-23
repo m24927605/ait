@@ -86,6 +86,20 @@ Then:
 
 This avoids daemon-side process management scope creep in v1 while keeping lifecycle behavior deterministic.
 
+### Superseded Intents Reject New Work
+
+Once an intent reaches `superseded` status, the following operations must
+fail with a clear error naming the current status:
+
+- `ait attempt new <intent-id>` (`create_attempt`)
+- `ait attempt commit <attempt-id>` (`create_commit_for_attempt`)
+- `ait attempt promote <attempt-id>` (`promote_attempt`)
+
+`abandoned` applies the same rule. The guard is symmetric: both terminal
+statuses refuse further work. If follow-up work is needed under a
+superseded intent, the replacement intent referenced by the `superseded_by`
+edge should be used instead.
+
 ### Daemon Restart Recovery
 
 On daemon startup:

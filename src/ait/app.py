@@ -138,8 +138,8 @@ def create_attempt(repo_root: str | Path, *, intent_id: str) -> AttemptResult:
         intent = get_intent(conn, intent_id)
         if intent is None:
             raise ValueError(f"Unknown intent: {intent_id}")
-        if intent.status == "abandoned":
-            raise ValueError(f"Intent is abandoned: {intent_id}")
+        if intent.status in {"abandoned", "superseded"}:
+            raise ValueError(f"Intent is {intent.status}: {intent_id}")
 
         ordinal_row = conn.execute(
             "SELECT COALESCE(MAX(ordinal), 0) + 1 AS next_ordinal FROM attempts WHERE intent_id = ?",
@@ -261,8 +261,8 @@ def promote_attempt(
         intent = get_intent(conn, attempt.intent_id)
         if intent is None:
             raise ValueError(f"Missing intent for attempt: {attempt_id}")
-        if intent.status == "abandoned":
-            raise ValueError(f"Intent is abandoned: {intent.id}")
+        if intent.status in {"abandoned", "superseded"}:
+            raise ValueError(f"Intent is {intent.status}: {intent.id}")
         if attempt.reported_status != "finished":
             raise ValueError(f"Attempt is not finished: {attempt_id}")
         ref_name = target_ref if target_ref.startswith("refs/") else f"refs/heads/{target_ref}"
@@ -304,8 +304,8 @@ def create_commit_for_attempt(
         intent = get_intent(conn, attempt.intent_id)
         if intent is None:
             raise ValueError(f"Missing intent for attempt: {attempt_id}")
-        if intent.status == "abandoned":
-            raise ValueError(f"Intent is abandoned: {intent.id}")
+        if intent.status in {"abandoned", "superseded"}:
+            raise ValueError(f"Intent is {intent.status}: {intent.id}")
         create_attempt_commit(
             attempt.workspace_ref,
             message=message,
