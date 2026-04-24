@@ -83,6 +83,41 @@ class EventProcessingTests(unittest.TestCase):
         ).fetchone()
         self.assertEqual("running", intent_row["status"])
 
+    def test_tool_event_without_files_only_updates_counters(self) -> None:
+        # Regression for dogfood-session-2 Bug G: a tool_event that omits
+        # the optional `files` key previously crashed with
+        # "tool_event files must be a list" because the handler defaulted
+        # to an empty tuple and then rejected non-list types.
+        result = process_event(
+            self.conn,
+            {
+                "schema_version": 1,
+                "event_id": "repo:01EVENTBASH",
+                "event_type": "tool_event",
+                "sent_at": "2026-04-23T00:03:10Z",
+                "attempt_id": "repo:01ATTEMPT1",
+                "ownership_token": "token-1",
+                "payload": {
+                    "tool_name": "Bash",
+                    "category": "command",
+                    "duration_ms": 100,
+                    "success": True,
+                },
+            },
+        )
+
+        self.assertFalse(result.duplicate)
+        self.assertTrue(result.mutated)
+        evidence = get_evidence_summary(self.conn, "repo:01ATTEMPT1")
+        assert evidence is not None
+        self.assertEqual(1, evidence.observed_tool_calls)
+        self.assertEqual(1, evidence.observed_commands_run)
+        file_rows = self.conn.execute(
+            "SELECT COUNT(*) AS c FROM evidence_files WHERE attempt_id = ?",
+            ("repo:01ATTEMPT1",),
+        ).fetchone()
+        self.assertEqual(0, file_rows["c"])
+
     def test_tool_event_updates_counters_files_and_dedupes_event_id(self) -> None:
         first = process_event(
             self.conn,

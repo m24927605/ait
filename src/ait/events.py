@@ -202,7 +202,7 @@ def handle_tool_event(
         ),
     )
 
-    files = payload.get("files", ())
+    files = payload.get("files")
     if files is None:
         return
     if not isinstance(files, list):
