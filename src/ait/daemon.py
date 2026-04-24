@@ -120,10 +120,13 @@ def serve_daemon(repo_root: str | Path) -> None:
             name="ait-reaper",
         )
         reaper_thread.start()
-        while True:
-            client, _ = server.accept()
-            with client:
-                _handle_client(conn, db_lock, client, root)
+        run_accept_loop(
+            server=server,
+            conn=conn,
+            db_lock=db_lock,
+            repo_root=root,
+            stop_event=stop_event,
+        )
     finally:
         stop_event.set()
         if reaper_thread is not None:
@@ -169,6 +172,64 @@ def run_reaper_loop(
             pass
         if stop_event.wait(scan_interval_seconds):
             return
+
+
+def run_accept_loop(
+    *,
+    server: socket.socket,
+    conn: sqlite3.Connection,
+    db_lock: threading.Lock,
+    repo_root: Path | None,
+    stop_event: threading.Event | None = None,
+    poll_interval_seconds: float = 0.1,
+) -> None:
+    """Accept client connections and hand each off to its own worker thread.
+
+    One thread per client so multiple harnesses can stream events in
+    parallel without queueing behind each other. Writes against the
+    shared SQLite connection are serialised via ``db_lock``.
+
+    If ``stop_event`` is supplied the server socket is put into
+    ``poll_interval_seconds`` timeout mode so the loop can periodically
+    notice shutdown requests. Production ``serve_daemon`` uses this to
+    cleanly unwind when the process is asked to exit; tests use it to
+    shut down a test loop.
+    """
+    if stop_event is not None:
+        server.settimeout(poll_interval_seconds)
+    while True:
+        if stop_event is not None and stop_event.is_set():
+            return
+        try:
+            client, _ = server.accept()
+        except socket.timeout:
+            continue
+        except OSError:
+            return
+        threading.Thread(
+            target=_handle_client_safely,
+            args=(conn, db_lock, client, repo_root),
+            daemon=True,
+            name="ait-client",
+        ).start()
+
+
+def _handle_client_safely(
+    conn: sqlite3.Connection,
+    db_lock: threading.Lock,
+    client: socket.socket,
+    repo_root: Path | None,
+) -> None:
+    try:
+        _handle_client(conn, db_lock, client, repo_root)
+    except Exception:
+        # Per-client errors must not crash the whole daemon.
+        pass
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
 
 
 def _handle_client(

@@ -112,6 +112,23 @@ Additional edge types (for example `parent` for hierarchical task
 decomposition) may be introduced in later versions. Readers must tolerate
 unknown `edge_type` values gracefully — filter rather than crash.
 
+### Daemon Handles Concurrent Clients
+
+One thread per accepted connection. The accept loop spawns a daemon
+thread (``_handle_client_safely``) for each incoming client so multiple
+harnesses can stream `attempt_started` / `tool_event` / `attempt_finished`
+in parallel without blocking one another.
+
+All threads (clients + reaper) share one SQLite connection, with writes
+serialised via a ``threading.Lock``. ``connect_db`` accepts
+``check_same_thread=False`` so the shared connection is legal under
+Python's sqlite3 threading rules; the lock keeps actual ordering
+correct.
+
+Per-client errors are swallowed at the thread boundary — a buggy harness
+cannot crash the daemon, only its own session. Client sockets are
+closed by the worker thread's `finally` clause regardless of outcome.
+
 ### Daemon Restart Recovery
 
 On daemon startup the reaper observes a **startup grace period** before
