@@ -83,6 +83,59 @@ class EventProcessingTests(unittest.TestCase):
         ).fetchone()
         self.assertEqual("running", intent_row["status"])
 
+    def test_attempt_finished_with_verification_populates_observed_fields(self) -> None:
+        # Regression for Finding #5: tests_run/passed/failed/lint_passed/
+        # build_passed were schema bloat because no event populated them.
+        # attempt_finished.verification now does.
+        process_event(
+            self.conn,
+            {
+                "schema_version": 1,
+                "event_id": "repo:01EVENTFIN",
+                "event_type": "attempt_finished",
+                "sent_at": "2026-04-23T00:05:00Z",
+                "attempt_id": "repo:01ATTEMPT1",
+                "ownership_token": "token-1",
+                "payload": {
+                    "exit_code": 0,
+                    "verification": {
+                        "tests_run": 42,
+                        "tests_passed": 40,
+                        "tests_failed": 2,
+                        "lint_passed": True,
+                        "build_passed": False,
+                    },
+                },
+            },
+        )
+
+        evidence = get_evidence_summary(self.conn, "repo:01ATTEMPT1")
+        assert evidence is not None
+        self.assertEqual(42, evidence.observed_tests_run)
+        self.assertEqual(40, evidence.observed_tests_passed)
+        self.assertEqual(2, evidence.observed_tests_failed)
+        self.assertTrue(evidence.observed_lint_passed)
+        self.assertFalse(evidence.observed_build_passed)
+
+    def test_attempt_finished_without_verification_leaves_metrics_untouched(self) -> None:
+        process_event(
+            self.conn,
+            {
+                "schema_version": 1,
+                "event_id": "repo:01EVENTFIN2",
+                "event_type": "attempt_finished",
+                "sent_at": "2026-04-23T00:05:00Z",
+                "attempt_id": "repo:01ATTEMPT1",
+                "ownership_token": "token-1",
+                "payload": {"exit_code": 0},
+            },
+        )
+
+        evidence = get_evidence_summary(self.conn, "repo:01ATTEMPT1")
+        assert evidence is not None
+        self.assertEqual(0, evidence.observed_tests_run)
+        self.assertIsNone(evidence.observed_lint_passed)
+
     def test_tool_event_without_files_only_updates_counters(self) -> None:
         # Regression for dogfood-session-2 Bug G: a tool_event that omits
         # the optional `files` key previously crashed with

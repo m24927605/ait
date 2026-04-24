@@ -65,10 +65,20 @@ class ToolEventPayload:
 
 
 @dataclass(frozen=True, slots=True)
+class VerificationMetrics:
+    tests_run: int | None = None
+    tests_passed: int | None = None
+    tests_failed: int | None = None
+    lint_passed: bool | None = None
+    build_passed: bool | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class AttemptFinishedPayload:
     exit_code: int
     raw_trace_ref: str | None = None
     logs_ref: str | None = None
+    verification: VerificationMetrics | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -265,13 +275,38 @@ def _validate_attempt_finished_payload(
 ) -> AttemptFinishedPayload:
     _reject_unknown_keys(
         payload_raw,
-        {"exit_code", "raw_trace_ref", "logs_ref"},
+        {"exit_code", "raw_trace_ref", "logs_ref", "verification"},
         EVENT_ATTEMPT_FINISHED,
     )
+    verification_raw = payload_raw.get("verification")
+    if verification_raw is None:
+        verification: VerificationMetrics | None = None
+    else:
+        if not isinstance(verification_raw, dict):
+            raise ProtocolError("attempt_finished.verification must be an object")
+        _reject_unknown_keys(
+            verification_raw,
+            {
+                "tests_run",
+                "tests_passed",
+                "tests_failed",
+                "lint_passed",
+                "build_passed",
+            },
+            "attempt_finished.verification",
+        )
+        verification = VerificationMetrics(
+            tests_run=_optional_non_negative_int(verification_raw, "tests_run"),
+            tests_passed=_optional_non_negative_int(verification_raw, "tests_passed"),
+            tests_failed=_optional_non_negative_int(verification_raw, "tests_failed"),
+            lint_passed=_optional_bool(verification_raw, "lint_passed"),
+            build_passed=_optional_bool(verification_raw, "build_passed"),
+        )
     return AttemptFinishedPayload(
         exit_code=_require_int(payload_raw, "exit_code"),
         raw_trace_ref=_optional_non_empty_str(payload_raw, "raw_trace_ref"),
         logs_ref=_optional_non_empty_str(payload_raw, "logs_ref"),
+        verification=verification,
     )
 
 
@@ -344,6 +379,21 @@ def _payload_to_dict(payload: Payload) -> dict[str, Any]:
             data["raw_trace_ref"] = payload.raw_trace_ref
         if payload.logs_ref is not None:
             data["logs_ref"] = payload.logs_ref
+        if payload.verification is not None:
+            verification: dict[str, Any] = {}
+            v = payload.verification
+            if v.tests_run is not None:
+                verification["tests_run"] = v.tests_run
+            if v.tests_passed is not None:
+                verification["tests_passed"] = v.tests_passed
+            if v.tests_failed is not None:
+                verification["tests_failed"] = v.tests_failed
+            if v.lint_passed is not None:
+                verification["lint_passed"] = v.lint_passed
+            if v.build_passed is not None:
+                verification["build_passed"] = v.build_passed
+            if verification:
+                data["verification"] = verification
         return data
     if isinstance(payload, AttemptPromotedPayload):
         return {
@@ -392,6 +442,26 @@ def _require_int(raw: Mapping[str, Any], key: str) -> int:
     value = raw.get(key)
     if isinstance(value, bool) or not isinstance(value, int):
         raise ProtocolError(f"{key} must be an integer")
+    return value
+
+
+def _optional_non_negative_int(raw: Mapping[str, Any], key: str) -> int | None:
+    value = raw.get(key)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ProtocolError(f"{key} must be an integer when provided")
+    if value < 0:
+        raise ProtocolError(f"{key} must be >= 0 when provided")
+    return value
+
+
+def _optional_bool(raw: Mapping[str, Any], key: str) -> bool | None:
+    value = raw.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, bool):
+        raise ProtocolError(f"{key} must be a boolean when provided")
     return value
 
 

@@ -142,12 +142,30 @@ class AitHarness:
         exit_code: int,
         raw_trace_ref: str | None = None,
         logs_ref: str | None = None,
+        tests_run: int | None = None,
+        tests_passed: int | None = None,
+        tests_failed: int | None = None,
+        lint_passed: bool | None = None,
+        build_passed: bool | None = None,
     ) -> None:
         payload: dict[str, Any] = {"exit_code": int(exit_code)}
         if raw_trace_ref is not None:
             payload["raw_trace_ref"] = raw_trace_ref
         if logs_ref is not None:
             payload["logs_ref"] = logs_ref
+        verification: dict[str, Any] = {}
+        if tests_run is not None:
+            verification["tests_run"] = int(tests_run)
+        if tests_passed is not None:
+            verification["tests_passed"] = int(tests_passed)
+        if tests_failed is not None:
+            verification["tests_failed"] = int(tests_failed)
+        if lint_passed is not None:
+            verification["lint_passed"] = bool(lint_passed)
+        if build_passed is not None:
+            verification["build_passed"] = bool(build_passed)
+        if verification:
+            payload["verification"] = verification
         self._send(event_type="attempt_finished", payload=payload)
         self._finished = True
 

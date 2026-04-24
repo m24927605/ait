@@ -150,7 +150,14 @@ Payload:
 {
   "exit_code": 0,
   "raw_trace_ref": ".ait/objects/ab/trace...",
-  "logs_ref": ".ait/objects/cd/logs..."
+  "logs_ref": ".ait/objects/cd/logs...",
+  "verification": {
+    "tests_run": 42,
+    "tests_passed": 40,
+    "tests_failed": 2,
+    "lint_passed": true,
+    "build_passed": true
+  }
 }
 ```
 
@@ -159,6 +166,12 @@ Semantics:
 - sets `reported_status=finished`
 - stores refs needed for summarization and verification
 - does not by itself set `verified_status=succeeded`
+
+`verification` is optional. Each inner field is individually optional.
+When present, the daemon writes the supplied values into the
+`evidence_summaries.observed_*` columns of the same names. Omitted
+fields leave their existing stored values unchanged. Counts must be
+non-negative integers; `lint_passed` / `build_passed` must be booleans.
 
 ### `attempt_promoted`
 

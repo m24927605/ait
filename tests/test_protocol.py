@@ -19,6 +19,7 @@ from ait.protocol import (
     ProtocolError,
     ToolEventPayload,
     ToolFile,
+    VerificationMetrics,
     encode_ndjson_message,
     envelope_to_dict,
     parse_ndjson_message,
@@ -120,6 +121,74 @@ class ProtocolValidationTests(unittest.TestCase):
                 logs_ref=".ait/objects/cd/logs",
             ),
         )
+
+    def test_validate_attempt_finished_with_verification_metrics(self) -> None:
+        envelope = validate_envelope(
+            {
+                "schema_version": 1,
+                "event_id": "repo:evt-finver",
+                "event_type": EVENT_ATTEMPT_FINISHED,
+                "sent_at": "2026-04-23T12:34:56Z",
+                "attempt_id": "repo:attempt-1",
+                "ownership_token": "token-1",
+                "payload": {
+                    "exit_code": 0,
+                    "verification": {
+                        "tests_run": 10,
+                        "tests_passed": 10,
+                        "tests_failed": 0,
+                        "lint_passed": True,
+                        "build_passed": True,
+                    },
+                },
+            }
+        )
+
+        assert isinstance(envelope.payload, AttemptFinishedPayload)
+        self.assertEqual(
+            VerificationMetrics(
+                tests_run=10,
+                tests_passed=10,
+                tests_failed=0,
+                lint_passed=True,
+                build_passed=True,
+            ),
+            envelope.payload.verification,
+        )
+
+    def test_attempt_finished_verification_rejects_negative_counts(self) -> None:
+        with self.assertRaises(ProtocolError):
+            validate_envelope(
+                {
+                    "schema_version": 1,
+                    "event_id": "repo:evt-finverneg",
+                    "event_type": EVENT_ATTEMPT_FINISHED,
+                    "sent_at": "2026-04-23T12:34:56Z",
+                    "attempt_id": "repo:attempt-1",
+                    "ownership_token": "token-1",
+                    "payload": {
+                        "exit_code": 0,
+                        "verification": {"tests_run": -1},
+                    },
+                }
+            )
+
+    def test_attempt_finished_verification_rejects_unknown_key(self) -> None:
+        with self.assertRaises(ProtocolError):
+            validate_envelope(
+                {
+                    "schema_version": 1,
+                    "event_id": "repo:evt-finvertypo",
+                    "event_type": EVENT_ATTEMPT_FINISHED,
+                    "sent_at": "2026-04-23T12:34:56Z",
+                    "attempt_id": "repo:attempt-1",
+                    "ownership_token": "token-1",
+                    "payload": {
+                        "exit_code": 0,
+                        "verification": {"tests_runn": 1},
+                    },
+                }
+            )
 
     def test_validate_attempt_promoted_payload_requires_commit_set(self) -> None:
         envelope = validate_envelope(

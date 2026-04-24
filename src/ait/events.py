@@ -234,6 +234,9 @@ def handle_attempt_finished(
     logs_ref = _nullable_str(payload.get("logs_ref"), fallback=attempt.logs_ref)
     exit_code = payload.get("exit_code")
     exit_code_value = attempt.result_exit_code if exit_code is None else int(exit_code)
+    verification = payload.get("verification")
+    if verification is not None and not isinstance(verification, Mapping):
+        raise EventError("attempt_finished verification must be an object")
 
     conn.execute(
         """
@@ -272,6 +275,57 @@ def handle_attempt_finished(
         """,
         (raw_trace_ref, logs_ref, attempt.id),
     )
+    if verification is not None:
+        _apply_verification_metrics(conn, attempt_id=attempt.id, metrics=verification)
+
+
+def _apply_verification_metrics(
+    conn: sqlite3.Connection,
+    *,
+    attempt_id: str,
+    metrics: Mapping[str, Any],
+) -> None:
+    updates: list[str] = []
+    params: list[Any] = []
+    for field, validator in (
+        ("tests_run", _require_non_negative_int),
+        ("tests_passed", _require_non_negative_int),
+        ("tests_failed", _require_non_negative_int),
+        ("lint_passed", _require_bool),
+        ("build_passed", _require_bool),
+    ):
+        if field not in metrics:
+            continue
+        value = validator(metrics, field)
+        column = f"observed_{field}"
+        if isinstance(value, bool):
+            params.append(1 if value else 0)
+        else:
+            params.append(value)
+        updates.append(f"{column} = ?")
+    if not updates:
+        return
+    params.append(attempt_id)
+    conn.execute(
+        f"UPDATE evidence_summaries SET {', '.join(updates)} WHERE attempt_id = ?",
+        params,
+    )
+
+
+def _require_non_negative_int(mapping: Mapping[str, Any], key: str) -> int:
+    value = mapping.get(key)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise EventError(f"verification.{key} must be an integer")
+    if value < 0:
+        raise EventError(f"verification.{key} must be >= 0")
+    return value
+
+
+def _require_bool(mapping: Mapping[str, Any], key: str) -> bool:
+    value = mapping.get(key)
+    if not isinstance(value, bool):
+        raise EventError(f"verification.{key} must be a boolean")
+    return value
 
 
 def handle_attempt_promoted(
