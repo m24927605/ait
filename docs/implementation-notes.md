@@ -100,6 +100,18 @@ statuses refuse further work. If follow-up work is needed under a
 superseded intent, the replacement intent referenced by the `superseded_by`
 edge should be used instead.
 
+### Intent Edge Types
+
+`intent_edges.edge_type` values currently written by v1:
+
+- `superseded_by` — written when `ait intent supersede <old> --by <new>` is
+  invoked. The `parent_intent_id` column stores the superseded intent; the
+  `child_intent_id` column stores the replacement.
+
+Additional edge types (for example `parent` for hierarchical task
+decomposition) may be introduced in later versions. Readers must tolerate
+unknown `edge_type` values gracefully — filter rather than crash.
+
 ### Daemon Restart Recovery
 
 On daemon startup:
