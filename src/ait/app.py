@@ -22,6 +22,7 @@ from ait.db import (
 )
 from ait.hooks import install_post_rewrite_hook
 from ait.ids import new_ulid
+from ait.idresolver import resolve_attempt_id, resolve_intent_id
 from ait.lifecycle import refresh_intent_status
 from ait.repo import derive_repo_id, resolve_repo_root
 from ait.verifier import verify_attempt_with_connection
@@ -135,6 +136,7 @@ def create_attempt(repo_root: str | Path, *, intent_id: str) -> AttemptResult:
     init_result = init_repo(repo_root)
     conn = connect_db(init_result.db_path)
     try:
+        intent_id = resolve_intent_id(conn, intent_id)
         intent = get_intent(conn, intent_id)
         if intent is None:
             raise ValueError(f"Unknown intent: {intent_id}")
@@ -181,6 +183,7 @@ def show_intent(repo_root: str | Path, *, intent_id: str) -> IntentShowResult:
     init_result = init_repo(repo_root)
     conn = connect_db(init_result.db_path)
     try:
+        intent_id = resolve_intent_id(conn, intent_id)
         intent = get_intent(conn, intent_id)
         if intent is None:
             raise ValueError(f"Unknown intent: {intent_id}")
@@ -207,6 +210,7 @@ def show_attempt(repo_root: str | Path, *, attempt_id: str) -> AttemptShowResult
     init_result = init_repo(repo_root)
     conn = connect_db(init_result.db_path)
     try:
+        attempt_id = resolve_attempt_id(conn, attempt_id)
         attempt = get_attempt(conn, attempt_id)
         if attempt is None:
             raise ValueError(f"Unknown attempt: {attempt_id}")
@@ -227,6 +231,7 @@ def discard_attempt(repo_root: str | Path, *, attempt_id: str) -> AttemptShowRes
     init_result = init_repo(repo_root)
     conn = connect_db(init_result.db_path)
     try:
+        attempt_id = resolve_attempt_id(conn, attempt_id)
         attempt = get_attempt(conn, attempt_id)
         if attempt is None:
             raise ValueError(f"Unknown attempt: {attempt_id}")
@@ -255,6 +260,7 @@ def promote_attempt(
     init_result = init_repo(repo_root)
     conn = connect_db(init_result.db_path)
     try:
+        attempt_id = resolve_attempt_id(conn, attempt_id)
         attempt = get_attempt(conn, attempt_id)
         if attempt is None:
             raise ValueError(f"Unknown attempt: {attempt_id}")
@@ -278,6 +284,7 @@ def verify_attempt(repo_root: str | Path, *, attempt_id: str) -> AttemptShowResu
     init_result = init_repo(repo_root)
     conn = connect_db(init_result.db_path)
     try:
+        attempt_id = resolve_attempt_id(conn, attempt_id)
         attempt = get_attempt(conn, attempt_id)
         if attempt is None:
             raise ValueError(f"Unknown attempt: {attempt_id}")
@@ -298,6 +305,7 @@ def create_commit_for_attempt(
     init_result = init_repo(repo_root)
     conn = connect_db(init_result.db_path)
     try:
+        attempt_id = resolve_attempt_id(conn, attempt_id)
         attempt = get_attempt(conn, attempt_id)
         if attempt is None:
             raise ValueError(f"Unknown attempt: {attempt_id}")
@@ -328,6 +336,7 @@ def abandon_intent(repo_root: str | Path, *, intent_id: str) -> IntentShowResult
     init_result = init_repo(repo_root)
     conn = connect_db(init_result.db_path)
     try:
+        intent_id = resolve_intent_id(conn, intent_id)
         intent = get_intent(conn, intent_id)
         if intent is None:
             raise ValueError(f"Unknown intent: {intent_id}")
@@ -346,6 +355,8 @@ def supersede_intent(
     init_result = init_repo(repo_root)
     conn = connect_db(init_result.db_path)
     try:
+        intent_id = resolve_intent_id(conn, intent_id)
+        by_intent_id = resolve_intent_id(conn, by_intent_id)
         intent = get_intent(conn, intent_id)
         replacement = get_intent(conn, by_intent_id)
         if intent is None:

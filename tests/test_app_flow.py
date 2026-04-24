@@ -173,6 +173,32 @@ class AppFlowTests(unittest.TestCase):
             self.assertEqual("superseded", result.intent["status"])
             self.assertEqual("superseded_by", edge["edge_type"])
 
+    def test_short_id_suffix_resolves_in_app_calls(self) -> None:
+        # Regression for dogfood-session-1 Friction C: CLI callers must be
+        # able to pass a ULID suffix rather than the full 100-character id.
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            intent = create_intent(repo_root, title="Short", description=None, kind="chore")
+            short_suffix = intent.intent_id.rsplit(":", 1)[-1]
+
+            # show_intent accepts the suffix
+            shown = show_intent(repo_root, intent_id=short_suffix)
+            self.assertEqual(intent.intent_id, shown.intent["id"])
+
+            # create_attempt resolves the suffix through to the full intent
+            attempt = create_attempt(repo_root, intent_id=short_suffix)
+            attempt_suffix = attempt.attempt_id.rsplit(":", 1)[-1]
+
+            # show_attempt accepts the attempt suffix
+            attempt_view = show_attempt(repo_root, attempt_id=attempt_suffix)
+            self.assertEqual(attempt.attempt_id, attempt_view.attempt["id"])
+
+            # discard_attempt resolves the attempt suffix
+            discarded = discard_attempt(repo_root, attempt_id=attempt_suffix)
+            self.assertEqual("discarded", discarded.attempt["verified_status"])
+
     def test_promote_to_head_branch_fast_forwards_main_working_tree(self) -> None:
         # Regression for dogfood-session-1 Bug B: promoting to the
         # currently-checked-out branch must advance the main working tree,
