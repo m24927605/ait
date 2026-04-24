@@ -88,7 +88,6 @@ class AttemptRecord:
     ownership_token: str
     raw_trace_ref: str | None
     logs_ref: str | None
-    result_patch_refs: tuple[str, ...]
     result_promotion_ref: str | None
     result_exit_code: int | None
 
@@ -190,9 +189,9 @@ def insert_attempt(conn: sqlite3.Connection, new_attempt: NewAttempt) -> Attempt
                 agent_harness, agent_harness_version, workspace_kind, workspace_ref,
                 base_ref_oid, base_ref_name, started_at, ended_at, heartbeat_at,
                 reported_status, verified_status, ownership_token, raw_trace_ref,
-                logs_ref, result_patch_refs_json, result_promotion_ref, result_exit_code
+                logs_ref, result_promotion_ref, result_exit_code
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL, NULL, '[]', NULL, NULL)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL, NULL, NULL, NULL)
             """,
             (
                 new_attempt.id,
@@ -495,7 +494,6 @@ def _row_to_attempt(row: sqlite3.Row) -> AttemptRecord:
         ownership_token=str(row["ownership_token"]),
         raw_trace_ref=_str_or_none(row["raw_trace_ref"]),
         logs_ref=_str_or_none(row["logs_ref"]),
-        result_patch_refs=tuple(_json_load(row["result_patch_refs_json"])),
         result_promotion_ref=_str_or_none(row["result_promotion_ref"]),
         result_exit_code=_int_or_none(row["result_exit_code"]),
     )

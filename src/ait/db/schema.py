@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -135,6 +135,13 @@ MIGRATIONS: tuple[Migration, ...] = (
         sql="""
         CREATE INDEX idx_intent_edges_child
             ON intent_edges(child_intent_id, edge_type);
+        """,
+    ),
+    Migration(
+        version=3,
+        name="drop_result_patch_refs_json",
+        sql="""
+        ALTER TABLE attempts DROP COLUMN result_patch_refs_json;
         """,
     ),
 )

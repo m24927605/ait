@@ -56,6 +56,21 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(SCHEMA_VERSION, first_count)
         self.assertEqual(first_count, second_count)
 
+    def test_attempts_has_no_dead_result_patch_refs_column(self) -> None:
+        # Regression for Finding #9: result_patch_refs_json was schema
+        # bloat — no reader or writer ever touched it. Migration v3 drops
+        # the column.
+        conn = connect_db(":memory:")
+        self.addCleanup(conn.close)
+
+        run_migrations(conn)
+
+        columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(attempts)").fetchall()
+        }
+        self.assertNotIn("result_patch_refs_json", columns)
+
     def test_intent_edges_has_child_reverse_index(self) -> None:
         conn = connect_db(":memory:")
         self.addCleanup(conn.close)

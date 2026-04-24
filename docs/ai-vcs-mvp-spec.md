@@ -242,7 +242,6 @@ interface Attempt {
       deletions?: number;
       touched_files: string[];
     }>;
-    patch_refs?: string[];
     promotion_ref?: string;
     exit_code?: number;
   };
