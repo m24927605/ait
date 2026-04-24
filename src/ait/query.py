@@ -98,7 +98,7 @@ def parse_query(expression: str) -> Expression:
 
 def compile_query(
     subject: QuerySubject,
-    expression: str,
+    expression: str | None,
     *,
     limit: int = 100,
     offset: int = 0,
@@ -108,8 +108,14 @@ def compile_query(
     if offset < 0:
         raise QueryError("offset must be >= 0")
 
-    ast = parse_query(expression)
-    where = _lower_expression(subject, ast)
+    if expression is None or not expression.strip():
+        where_sql = "1=1"
+        where_params: tuple[object, ...] = ()
+    else:
+        ast = parse_query(expression)
+        where = _lower_expression(subject, ast)
+        where_sql = where.sql
+        where_params = where.params
 
     if subject == "attempt":
         sql = (
@@ -117,7 +123,7 @@ def compile_query(
             "FROM attempts AS a "
             "JOIN intents AS i ON i.id = a.intent_id "
             "LEFT JOIN evidence_summaries AS es ON es.attempt_id = a.id "
-            f"WHERE {where.sql} "
+            f"WHERE {where_sql} "
             "ORDER BY a.started_at DESC, a.id DESC "
             "LIMIT ? OFFSET ?"
         )
@@ -125,17 +131,17 @@ def compile_query(
         sql = (
             "SELECT DISTINCT i.* "
             "FROM intents AS i "
-            f"WHERE {where.sql} "
+            f"WHERE {where_sql} "
             "ORDER BY i.created_at DESC, i.id DESC "
             "LIMIT ? OFFSET ?"
         )
-    return QueryPlan(sql=sql, params=where.params + (limit, offset))
+    return QueryPlan(sql=sql, params=where_params + (limit, offset))
 
 
 def execute_query(
     conn: sqlite3.Connection,
     subject: QuerySubject,
-    expression: str,
+    expression: str | None,
     *,
     limit: int = 100,
     offset: int = 0,

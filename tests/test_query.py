@@ -78,6 +78,23 @@ class QueryTests(unittest.TestCase):
         with self.assertRaises(QueryError):
             compile_query("attempt", 'metadata.ticket="ABC-123"')
 
+    def test_empty_expression_lists_all_intents(self) -> None:
+        # Regression for dogfood-session-1 Bug E: `ait intent list` with no
+        # filter flags previously crashed because list_shortcut_expression
+        # returned an empty string that parse_query rejected.
+        rows_none = execute_query(self.conn, "intent", None)
+        rows_blank = execute_query(self.conn, "intent", "   ")
+
+        ids_none = {row["id"] for row in rows_none}
+        ids_blank = {row["id"] for row in rows_blank}
+        self.assertIn("repo:intent-1", ids_none)
+        self.assertEqual(ids_none, ids_blank)
+
+    def test_empty_expression_lists_all_attempts(self) -> None:
+        rows = execute_query(self.conn, "attempt", "")
+
+        self.assertIn("repo:attempt-1", {row["id"] for row in rows})
+
     def test_query_uses_case_sensitive_substring_operator(self) -> None:
         rows = execute_query(self.conn, "attempt", 'files_touched~"src/Auth/"')
 
