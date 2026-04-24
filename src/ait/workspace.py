@@ -197,8 +197,46 @@ def update_ref_to_workspace_head(repo_root: str | Path, ref_name: str, workspace
     root = Path(repo_root).resolve()
     worktree_path = Path(workspace_ref).resolve()
     head_oid = _git_stdout(worktree_path, "rev-parse", "--verify", "HEAD")
+
+    # When the target ref is the currently-checked-out branch of the main
+    # repository, a bare `git update-ref` would move the branch pointer
+    # forward without touching the working tree or index, leaving the user
+    # with an inverted "changes to be committed" view. Detect that case and
+    # use `git merge --ff-only` so index + working tree follow the ref.
+    head_branch = _git_stdout(root, "symbolic-ref", "--quiet", "HEAD", allow_failure=True)
+    if head_branch and head_branch == ref_name:
+        if _has_uncommitted_changes(root):
+            raise WorkspaceError(
+                f"refusing to promote to currently-checked-out branch {ref_name}: "
+                "main working tree has uncommitted changes"
+            )
+        completed = _git_run(
+            root,
+            "merge",
+            "--ff-only",
+            head_oid,
+            allow_failure=True,
+        )
+        if completed.returncode != 0:
+            stderr = completed.stderr.strip() or "fast-forward not possible"
+            raise WorkspaceError(
+                f"refusing to promote to currently-checked-out branch {ref_name}: {stderr}"
+            )
+        return head_oid
+
     _git_run(root, "update-ref", ref_name, head_oid)
     return head_oid
+
+
+def _has_uncommitted_changes(repo_root: Path) -> bool:
+    completed = _git_run(
+        repo_root,
+        "status",
+        "--porcelain",
+        "--untracked-files=no",
+        allow_failure=True,
+    )
+    return bool(completed.stdout.strip())
 
 
 def create_attempt_commit(

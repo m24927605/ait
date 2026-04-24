@@ -173,6 +173,75 @@ class AppFlowTests(unittest.TestCase):
             self.assertEqual("superseded", result.intent["status"])
             self.assertEqual("superseded_by", edge["edge_type"])
 
+    def test_promote_to_head_branch_fast_forwards_main_working_tree(self) -> None:
+        # Regression for dogfood-session-1 Bug B: promoting to the
+        # currently-checked-out branch must advance the main working tree,
+        # not leave it inverted.
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            head_branch = _git_stdout(repo_root, "symbolic-ref", "--short", "HEAD")
+
+            intent = create_intent(repo_root, title="FF", description=None, kind="chore")
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+            worktree = Path(attempt.workspace_ref)
+            _git(worktree, "config", "user.email", "test@example.com")
+            _git(worktree, "config", "user.name", "Test User")
+            (worktree / "ff.py").write_text("value = 1\n", encoding="utf-8")
+            _git(worktree, "add", "ff.py")
+            create_commit_for_attempt(
+                repo_root,
+                attempt_id=attempt.attempt_id,
+                message="ff",
+            )
+
+            promoted = promote_attempt(
+                repo_root,
+                attempt_id=attempt.attempt_id,
+                target_ref=head_branch,
+            )
+
+            # Main working tree must carry the new file — not be in an
+            # inverted "changes to be committed" state. Filter untracked
+            # because `.ait/`-adjacent artifacts (e.g. a fresh .gitignore)
+            # are created by init and are not relevant to the regression.
+            self.assertTrue((repo_root / "ff.py").exists())
+            porcelain = _git_stdout(
+                repo_root, "status", "--porcelain", "--untracked-files=no"
+            )
+            self.assertEqual("", porcelain)
+            self.assertEqual("promoted", promoted.attempt["verified_status"])
+
+    def test_promote_to_head_branch_refuses_when_main_working_tree_dirty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            head_branch = _git_stdout(repo_root, "symbolic-ref", "--short", "HEAD")
+
+            intent = create_intent(repo_root, title="Dirty", description=None, kind="chore")
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+            worktree = Path(attempt.workspace_ref)
+            _git(worktree, "config", "user.email", "test@example.com")
+            _git(worktree, "config", "user.name", "Test User")
+            (worktree / "dirty.py").write_text("x = 1\n", encoding="utf-8")
+            _git(worktree, "add", "dirty.py")
+            create_commit_for_attempt(
+                repo_root,
+                attempt_id=attempt.attempt_id,
+                message="dirty",
+            )
+            # Dirty the main working tree (modify an already-tracked file).
+            (repo_root / "README.md").write_text("changed\n", encoding="utf-8")
+
+            with self.assertRaises(RuntimeError) as raised:
+                promote_attempt(
+                    repo_root,
+                    attempt_id=attempt.attempt_id,
+                    target_ref=head_branch,
+                )
+
+            self.assertIn("uncommitted", str(raised.exception))
+
     def test_superseded_intent_rejects_new_attempt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
