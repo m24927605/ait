@@ -157,6 +157,43 @@ serialised via a `threading.Lock`. `connect_db` accepts
 
 ## CLI Clarifications
 
+### Short ID Resolution
+
+Every CLI command that takes an `<intent-id>` or `<attempt-id>` accepts
+either the full canonical form (`<root_oid>:<install_nonce>:<ulid>`) or
+any substring that uniquely identifies one stored id. Matching is
+`id LIKE '%<given>%'`.
+
+Typical usage: paste the last 8–12 characters of the ULID from an
+earlier command's output rather than the full 100-character id.
+
+Ambiguous fragments raise `IdResolutionError` with the full candidate
+list; pick a longer or more specific substring and retry. Exact-match
+lookups still win, so a full id is never accidentally treated as a
+substring.
+
+The daemon (`src/ait/events.py`) only accepts the full id — it runs in
+harness-driven flows where the canonical id comes from the
+`ait attempt new` JSON response, so fuzzy matching would just add
+ambiguity.
+
+### `ait attempt promote`
+
+When the target branch is the main repository's currently-checked-out
+branch, `ait attempt promote` uses `git merge --ff-only` so both the
+branch ref and the main working tree advance together. Two failure
+modes are surfaced explicitly:
+
+- main working tree has uncommitted tracked changes — refuse with a
+  clear error, because blindly fast-forwarding would either clobber
+  the edits or leave the tree in an inverted state.
+- the promotion would not be a fast-forward — refuse; the user must
+  rebase the attempt onto current main first.
+
+When the target branch is not the currently-checked-out branch,
+`git update-ref` moves the ref directly and the main working tree is
+untouched (as before).
+
 ### `ait intent list`
 
 `ait intent list` is a shortcut over `ait query --on intent`.
