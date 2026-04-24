@@ -176,6 +176,18 @@ Equivalent lowering rules:
 - `--kind X` => `kind="X"`
 - `--tag X` => `tags~"X"`
 
+### `ait attempt new`
+
+Accepts an optional `--agent-id <harness>:<name>` flag. If no flag is
+provided the new attempt records `agent_id="cli:human"` and
+`agent_harness="cli"`, signalling that a human at the CLI created the
+attempt. The first `attempt_started` event from the actual harness
+overwrites both fields with the real agent identity, so the placeholder
+is only visible until the harness connects.
+
+The `--agent-id` value must be exactly `<harness>:<name>` — one colon,
+non-empty on both sides. Malformed values are rejected.
+
 ### `ait attempt list`
 
 `ait attempt list` is a shortcut over `ait query --on attempt`.

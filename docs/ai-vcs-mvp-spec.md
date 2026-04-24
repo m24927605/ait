@@ -50,6 +50,7 @@ This MVP is designed under the following explicit assumptions:
 3. `harness-cooperative`: the harness is expected to emit lifecycle and tool events, though the system must still verify key transitions.
 4. `local-rewrite-tolerated`: local Git history may be rewritten by normal commands such as `rebase` or `commit --amend`, and v1 must reconcile local metadata after rewrites on the same machine.
 5. `discrete-tool-events`: high-frequency tool activity can be represented as events sent to a daemon or library API.
+6. `sqlite-3.35-or-newer`: migrations use features from SQLite 3.35+ (notably `ALTER TABLE ... DROP COLUMN` in v3). Python 3.14 ships a newer SQLite, so this is satisfied by the declared `requires-python`.
 
 These assumptions should be revisited in v2, especially for remote sync, shared repositories, and non-Git backends.
 
@@ -266,6 +267,11 @@ This object exists to avoid two failure modes:
 - mixing observed facts, agent claims, and derived inferences without trust boundaries
 
 In v1, only `observed` fields are populated. `claimed` and `derived` are reserved shapes for later use.
+
+The `observed` fields are populated from two event sources:
+
+- `tool_event` events accumulate `tool_calls`, `file_reads`, `file_writes`, `commands_run`, and `duration_ms`.
+- `attempt_finished.verification` (optional block) carries `tests_run`, `tests_passed`, `tests_failed`, `lint_passed`, `build_passed`. See `protocol-appendix.md` for the payload schema.
 
 Required responsibilities:
 
