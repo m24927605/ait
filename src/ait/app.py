@@ -132,7 +132,16 @@ def create_intent(
     return IntentResult(intent_id=record.id, repo_id=init_result.repo_id)
 
 
-def create_attempt(repo_root: str | Path, *, intent_id: str) -> AttemptResult:
+DEFAULT_CLI_AGENT_ID = "cli:human"
+
+
+def create_attempt(
+    repo_root: str | Path,
+    *,
+    intent_id: str,
+    agent_id: str | None = None,
+) -> AttemptResult:
+    resolved_agent_id = _validate_agent_id(agent_id)
     init_result = init_repo(repo_root)
     conn = connect_db(init_result.db_path)
     try:
@@ -155,18 +164,19 @@ def create_attempt(repo_root: str | Path, *, intent_id: str) -> AttemptResult:
             ordinal=ordinal,
         )
         ownership_token = secrets.token_urlsafe(24)
+        harness_prefix = resolved_agent_id.split(":", 1)[0]
         attempt = insert_attempt(
             conn,
             NewAttempt(
                 id=attempt_id,
                 intent_id=intent_id,
-                agent_id="codex:main",
+                agent_id=resolved_agent_id,
                 workspace_ref=workspace.workspace_ref,
                 base_ref_oid=workspace.base_ref_oid,
                 base_ref_name=workspace.base_ref_name,
                 started_at=utc_now(),
                 ownership_token=ownership_token,
-                agent_harness="codex",
+                agent_harness=harness_prefix,
             ),
         )
     finally:
@@ -177,6 +187,22 @@ def create_attempt(repo_root: str | Path, *, intent_id: str) -> AttemptResult:
         base_ref_oid=attempt.base_ref_oid,
         ownership_token=ownership_token,
     )
+
+
+def _validate_agent_id(agent_id: str | None) -> str:
+    if agent_id is None or not agent_id.strip():
+        return DEFAULT_CLI_AGENT_ID
+    trimmed = agent_id.strip()
+    if trimmed.count(":") != 1:
+        raise ValueError(
+            f"agent_id must be <harness>:<name>: got {agent_id!r}"
+        )
+    harness, name = trimmed.split(":", 1)
+    if not harness or not name:
+        raise ValueError(
+            f"agent_id must be <harness>:<name>: got {agent_id!r}"
+        )
+    return trimmed
 
 
 def show_intent(repo_root: str | Path, *, intent_id: str) -> IntentShowResult:

@@ -54,6 +54,7 @@ def build_parser() -> argparse.ArgumentParser:
     attempt_subparsers = attempt_parser.add_subparsers(dest="attempt_command")
     attempt_new = attempt_subparsers.add_parser("new")
     attempt_new.add_argument("intent_id")
+    attempt_new.add_argument("--agent-id")
     attempt_show = attempt_subparsers.add_parser("show")
     attempt_show.add_argument("attempt_id")
     attempt_commit = attempt_subparsers.add_parser("commit")
@@ -152,7 +153,11 @@ def main() -> int:
             output_format=args.format,
         )
     if args.command == "attempt" and args.attempt_command == "new":
-        result = create_attempt(repo_root, intent_id=args.intent_id)
+        result = create_attempt(
+            repo_root,
+            intent_id=args.intent_id,
+            agent_id=args.agent_id,
+        )
         print(
             json.dumps(
                 {

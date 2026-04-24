@@ -173,6 +173,48 @@ class AppFlowTests(unittest.TestCase):
             self.assertEqual("superseded", result.intent["status"])
             self.assertEqual("superseded_by", edge["edge_type"])
 
+    def test_create_attempt_default_agent_id_is_cli_human(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            intent = create_intent(repo_root, title="Default agent", description=None, kind="chore")
+
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+            shown = show_attempt(repo_root, attempt_id=attempt.attempt_id)
+
+            self.assertEqual("cli:human", shown.attempt["agent_id"])
+            self.assertEqual("cli", shown.attempt["agent_harness"])
+
+    def test_create_attempt_accepts_custom_agent_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            intent = create_intent(repo_root, title="Custom agent", description=None, kind="chore")
+
+            attempt = create_attempt(
+                repo_root,
+                intent_id=intent.intent_id,
+                agent_id="claude-code:worker-1",
+            )
+            shown = show_attempt(repo_root, attempt_id=attempt.attempt_id)
+
+            self.assertEqual("claude-code:worker-1", shown.attempt["agent_id"])
+            self.assertEqual("claude-code", shown.attempt["agent_harness"])
+
+    def test_create_attempt_rejects_malformed_agent_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            intent = create_intent(repo_root, title="Bad", description=None, kind="chore")
+
+            for bad in ("no-colon", ":empty-harness", "empty-name:", "two:colons:here"):
+                with self.assertRaises(ValueError):
+                    create_attempt(
+                        repo_root,
+                        intent_id=intent.intent_id,
+                        agent_id=bad,
+                    )
+
     def test_short_id_suffix_resolves_in_app_calls(self) -> None:
         # Regression for dogfood-session-1 Friction C: CLI callers must be
         # able to pass a ULID suffix rather than the full 100-character id.
