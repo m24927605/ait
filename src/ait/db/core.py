@@ -7,11 +7,15 @@ import sqlite3
 from ait.db.schema import MIGRATIONS, SCHEMA_VERSION
 
 
-def connect_db(db_path: str | Path) -> sqlite3.Connection:
+def connect_db(
+    db_path: str | Path,
+    *,
+    check_same_thread: bool = True,
+) -> sqlite3.Connection:
     if db_path != ":memory:":
         path = Path(db_path)
         path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, check_same_thread=check_same_thread)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn

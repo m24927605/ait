@@ -114,14 +114,29 @@ unknown `edge_type` values gracefully — filter rather than crash.
 
 ### Daemon Restart Recovery
 
-On daemon startup:
+On daemon startup the reaper observes a **startup grace period** before
+its first scan. This prevents the common failure mode where a restart
+window longer than `heartbeat_ttl` would otherwise kill every live
+harness on the way back up.
 
-1. load all attempts where `reported_status='running'`
-2. compare `heartbeat_at` against the configured TTL
-3. if stale, mark them `crashed` and `failed`
-4. if not stale, leave them `running` and wait for the next heartbeat or finished event
+Runtime behaviour:
 
-This recovery path is required in addition to the periodic reaper loop.
+1. `serve_daemon` spawns a background reaper thread.
+2. The thread sleeps for `startup_grace_seconds` (default 30s).
+3. Existing `reported_status='running'` attempts get that whole window
+   to send a fresh heartbeat; any that do survive the next cycle.
+4. After the grace period the reaper runs on a timer every
+   `scan_interval_seconds` (default 30s).
+5. Each scan marks attempts stale whose `heartbeat_at` is older than
+   `now - heartbeat_ttl_seconds`.
+
+The reaper is a daemon thread, so when the main process exits (SIGTERM
+from `ait daemon stop`) it terminates along with it. The socket file
+and pid file are cleaned up by the main `serve_daemon` finally block.
+
+Reaping and client event processing share one SQLite connection,
+serialised via a `threading.Lock`. `connect_db` accepts
+`check_same_thread=False` for this case.
 
 ## CLI Clarifications
 

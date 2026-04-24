@@ -6,19 +6,23 @@ import os
 from pathlib import Path
 import signal
 import socket
+import sqlite3
 import subprocess
 import sys
+import threading
 import time
 
 from ait.config import DEFAULT_DAEMON_SOCKET_PATH, ensure_local_config
 from ait.daemon_transport import NDJSONSocketStream, bind_unix_socket, remove_socket_file
 from ait.db import connect_db, run_migrations
-from ait.events import EventError, process_event, reap_stale_attempts, recover_running_attempts
+from ait.events import EventError, process_event, reap_stale_attempts
 from ait.protocol import ProtocolError, envelope_to_dict
 from ait.repo import resolve_repo_root
 from ait.verifier import verify_attempt_with_connection
 
 DEFAULT_REAPER_TTL_SECONDS = 300
+DEFAULT_REAPER_SCAN_INTERVAL_SECONDS = 30.0
+DEFAULT_REAPER_STARTUP_GRACE_SECONDS = 30.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,16 +99,35 @@ def serve_daemon(repo_root: str | Path) -> None:
     server = bind_unix_socket(socket_path)
     pid_file.write_text(f"{os.getpid()}\n", encoding="utf-8")
     db_path = root / ".ait" / "state.sqlite3"
-    conn = connect_db(db_path)
+    conn = connect_db(db_path, check_same_thread=False)
+    db_lock = threading.Lock()
+    stop_event = threading.Event()
+    reaper_thread: threading.Thread | None = None
     try:
-        run_migrations(conn)
-        recover_running_attempts(conn, now=_now(), heartbeat_ttl_seconds=_reaper_ttl(root))
+        with db_lock:
+            run_migrations(conn)
+        reaper_thread = threading.Thread(
+            target=run_reaper_loop,
+            kwargs={
+                "conn": conn,
+                "db_lock": db_lock,
+                "stop_event": stop_event,
+                "heartbeat_ttl_seconds": _reaper_ttl(root),
+                "scan_interval_seconds": DEFAULT_REAPER_SCAN_INTERVAL_SECONDS,
+                "startup_grace_seconds": DEFAULT_REAPER_STARTUP_GRACE_SECONDS,
+            },
+            daemon=True,
+            name="ait-reaper",
+        )
+        reaper_thread.start()
         while True:
             client, _ = server.accept()
             with client:
-                _handle_client(conn, client, root)
-            reap_stale_attempts(conn, now=_now(), heartbeat_ttl_seconds=_reaper_ttl(root))
+                _handle_client(conn, db_lock, client, root)
     finally:
+        stop_event.set()
+        if reaper_thread is not None:
+            reaper_thread.join(timeout=5.0)
         conn.close()
         server.close()
         if socket_path.exists():
@@ -113,7 +136,47 @@ def serve_daemon(repo_root: str | Path) -> None:
             pid_file.unlink()
 
 
-def _handle_client(conn, client: socket.socket, repo_root: Path | None = None) -> None:
+def run_reaper_loop(
+    *,
+    conn: sqlite3.Connection,
+    db_lock: threading.Lock,
+    stop_event: threading.Event,
+    heartbeat_ttl_seconds: int,
+    scan_interval_seconds: float,
+    startup_grace_seconds: float,
+) -> None:
+    """Run the reaper on a timer until stop_event is set.
+
+    Startup grace: give attempts in `reported_status='running'` one full
+    `startup_grace_seconds` window to send a fresh heartbeat before the
+    first reap cycle. This prevents daemon-restart from immediately
+    killing harnesses whose last heartbeat happened to predate the
+    restart by more than one TTL.
+    """
+    if stop_event.wait(startup_grace_seconds):
+        return
+    while True:
+        try:
+            with db_lock:
+                reap_stale_attempts(
+                    conn,
+                    now=_now(),
+                    heartbeat_ttl_seconds=heartbeat_ttl_seconds,
+                )
+        except Exception:
+            # Transient errors (e.g. sqlite OperationalError during
+            # contention) must not kill the reaper thread.
+            pass
+        if stop_event.wait(scan_interval_seconds):
+            return
+
+
+def _handle_client(
+    conn: sqlite3.Connection,
+    db_lock: threading.Lock,
+    client: socket.socket,
+    repo_root: Path | None = None,
+) -> None:
     stream = NDJSONSocketStream(client.makefile("rwb"))
     while True:
         try:
@@ -124,9 +187,13 @@ def _handle_client(conn, client: socket.socket, repo_root: Path | None = None) -
         if envelope is None:
             return
         try:
-            result = process_event(conn, envelope_to_dict(envelope))
-            if repo_root is not None and envelope.event_type in {"attempt_finished", "attempt_promoted"}:
-                verify_attempt_with_connection(conn, repo_root, envelope.attempt_id)
+            with db_lock:
+                result = process_event(conn, envelope_to_dict(envelope))
+                if repo_root is not None and envelope.event_type in {
+                    "attempt_finished",
+                    "attempt_promoted",
+                }:
+                    verify_attempt_with_connection(conn, repo_root, envelope.attempt_id)
             _write_response(client, {"ok": True, **result.__dict__})
         except EventError as exc:
             _write_response(client, {"ok": False, "error": str(exc)})
