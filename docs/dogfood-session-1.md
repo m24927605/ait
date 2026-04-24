@@ -100,6 +100,39 @@ Fix direction: allow a short-form suffix (last 8–12 characters of the ULID)
 as input to any command that takes an intent_id / attempt_id. The repo_id
 prefix is implied by the current repo. Disambiguate on collision.
 
+### Bug D (high): ait spawns a split-brain `.ait/` store when invoked from inside a worktree
+
+**Surfaced** while verifying the Bug A fix: after the hook installer
+was fixed, running `ait intent new ...` from inside the attempt
+worktree created an intent with a fresh `repo_id` (new `install_nonce`)
+rather than using the main repo's existing store.
+
+**Root cause:** `resolve_repo_root` (`src/ait/repo.py`) used
+`git rev-parse --show-toplevel`, which returns the worktree path, not
+the main repo. Every `ait` invocation from a worktree therefore spun
+up a parallel `.ait/` store inside the worktree, split-brain with the
+canonical one.
+
+**Resolution:** switched to `git rev-parse --path-format=absolute
+--git-common-dir` and took the parent of that directory. Works
+identically for a normal checkout (`--git-common-dir` returns `.git`)
+and a worktree (returns `<main>/.git/`). Landed in commit `709af54`.
+
+### Bug E (medium): `ait intent list` with no filter crashes on empty query
+
+**Surfaced** while verifying the Bug D fix: `ait intent list` (no
+`--status` / `--kind` / `--tag` flags) raised
+`QueryError("query expression must not be empty")`.
+
+**Root cause:** `list_shortcut_expression` in `src/ait/query.py`
+returns `""` when none of the filter flags are set, and
+`compile_query` fed that to the parser, which rejects empty input.
+
+**Resolution:** `compile_query` now treats `None` / empty / whitespace
+expressions as "no filter" and emits `SELECT ... WHERE 1=1 ...`. The
+DSL parser still rejects malformed non-empty expressions. Landed in
+commit `312bd5d`.
+
 ### Friction D (low): no `ait` binary on Homebrew Python
 
 `pip install -e .` on Homebrew's Python fails with PEP 668
