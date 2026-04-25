@@ -171,7 +171,7 @@ Ranked by what unblocks the next dogfood pass.
    `ait` command.
 2. **Add a thin `bin/ait` launcher** so the CLI is usable without venv
    gymnastics. Even without PEP 668 fix, a shell stub that does
-   `PYTHONPATH=<blip>/src exec python3 -m ait.cli "$@"` is enough.
+   `PYTHONPATH=<ait>/src exec python3 -m ait.cli "$@"` is enough.
 3. **Short-form ID resolution** for `intent_id` / `attempt_id` arguments in
    the CLI. Every other dogfood cycle will trip over this otherwise.
 4. **Dogfood cycle 2 — with the daemon and a real `tool_event` stream.**
