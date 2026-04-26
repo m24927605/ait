@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 - 2026-04-26
+
+### Added
+
+- Add an adapter registry for `ait run` with `shell`, `claude-code`,
+  `aider`, and `codex` presets.
+- Add `ait run --adapter ...` while preserving `--agent` as an override.
+
 ## 0.2.0 - 2026-04-26
 
 ### Added

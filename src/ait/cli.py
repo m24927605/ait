@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import sys
 
+from ait.adapters import ADAPTERS, AdapterError
 from ait.context import build_agent_context, render_agent_context_text
 from ait.app import (
     abandon_intent,
@@ -95,7 +96,8 @@ def build_parser() -> argparse.ArgumentParser:
     blame_parser.add_argument("target")
 
     run_parser = subparsers.add_parser("run")
-    run_parser.add_argument("--agent", required=True)
+    run_parser.add_argument("--adapter", choices=tuple(sorted(ADAPTERS)), default="shell")
+    run_parser.add_argument("--agent")
     run_parser.add_argument("--intent", required=True)
     run_parser.add_argument("--kind")
     run_parser.add_argument("--description")
@@ -265,16 +267,21 @@ def main() -> int:
         command = args.run_command
         if command and command[0] == "--":
             command = command[1:]
-        result = run_agent_command(
-            repo_root,
-            intent_title=args.intent,
-            agent_id=args.agent,
-            command=command,
-            kind=args.kind,
-            description=args.description,
-            commit_message=args.commit_message,
-            with_context=args.with_context,
-        )
+        try:
+            result = run_agent_command(
+                repo_root,
+                intent_title=args.intent,
+                agent_id=args.agent,
+                command=command,
+                adapter_name=args.adapter,
+                kind=args.kind,
+                description=args.description,
+                commit_message=args.commit_message,
+                with_context=args.with_context,
+            )
+        except AdapterError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
         print(json.dumps(asdict(result), indent=2))
         return result.exit_code
     if args.command == "context":

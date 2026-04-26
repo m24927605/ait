@@ -18,7 +18,6 @@ class RunnerTests(unittest.TestCase):
             result = run_agent_command(
                 repo_root,
                 intent_title="Run command",
-                agent_id="shell:test",
                 command=[
                     sys.executable,
                     "-c",
@@ -29,7 +28,7 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(0, result.exit_code)
             self.assertEqual("finished", result.attempt.attempt["reported_status"])
             self.assertEqual("succeeded", result.attempt.attempt["verified_status"])
-            self.assertEqual("shell:test", result.attempt.attempt["agent_id"])
+            self.assertEqual("shell:local", result.attempt.attempt["agent_id"])
             self.assertEqual(1, result.attempt.evidence_summary["observed_tool_calls"])
             self.assertEqual(1, result.attempt.evidence_summary["observed_commands_run"])
             self.assertTrue((Path(result.workspace_ref) / "agent.txt").exists())
@@ -77,6 +76,33 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(0, result.exit_code)
             self.assertTrue((Path(result.workspace_ref) / ".ait-context.md").exists())
             self.assertIn("Intent: Context file", copied.read_text(encoding="utf-8"))
+
+    def test_claude_code_adapter_defaults_to_context_and_env(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="Claude adapter",
+                adapter_name="claude-code",
+                command=[
+                    sys.executable,
+                    "-c",
+                    (
+                        "import os;"
+                        "from pathlib import Path;"
+                        "Path('adapter.txt').write_text("
+                        "os.environ['AIT_ADAPTER'] + '\\n' + "
+                        "Path(os.environ['AIT_CONTEXT_FILE']).read_text())"
+                    ),
+                ],
+            )
+
+            output = (Path(result.workspace_ref) / "adapter.txt").read_text(encoding="utf-8")
+            self.assertEqual(0, result.exit_code)
+            self.assertEqual("claude-code:manual", result.attempt.attempt["agent_id"])
+            self.assertTrue(output.startswith("claude-code\nIntent: Claude adapter"))
 
 
 def _init_git_repo(repo_root: Path) -> None:

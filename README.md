@@ -186,6 +186,19 @@ native file-read/write events through hooks, but `ait run` already gives
 session lifecycle, worktree isolation, exit-code verification, and
 command provenance for any shell-launchable agent.
 
+Use `--adapter` to select agent-specific defaults:
+
+```bash
+ait run --adapter shell --intent "Run local command" -- python script.py
+ait run --adapter claude-code --intent "Refactor query parser" -- claude
+ait run --adapter aider --intent "Fix auth expiry" -- aider src/auth.py
+ait run --adapter codex --intent "Implement parser" -- codex
+```
+
+Adapters define the default `agent_id`, whether context is enabled by
+default, and adapter-specific environment variables. `--agent` remains
+available as an override.
+
 Add `--with-context` to write a compact agent-readable context file into
 the attempt worktree and expose it as `AIT_CONTEXT_FILE`:
 

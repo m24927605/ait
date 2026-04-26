@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import time
 
+from ait.adapters import get_adapter
 from ait.app import AttemptShowResult, create_attempt, create_intent, show_attempt
 from ait.context import build_agent_context, render_agent_context_text
 from ait.daemon import start_daemon
@@ -26,8 +27,9 @@ def run_agent_command(
     repo_root: str | Path,
     *,
     intent_title: str,
-    agent_id: str,
     command: list[str],
+    agent_id: str | None = None,
+    adapter_name: str | None = None,
     kind: str | None = None,
     description: str | None = None,
     commit_message: str | None = None,
@@ -38,6 +40,9 @@ def run_agent_command(
     if not command:
         raise ValueError("command must not be empty")
 
+    adapter = get_adapter(adapter_name)
+    resolved_agent_id = agent_id or adapter.default_agent_id
+    resolved_with_context = with_context or adapter.default_with_context
     root = Path(repo_root).resolve()
     daemon = start_daemon(root)
     if not daemon.running:
@@ -47,11 +52,11 @@ def run_agent_command(
         root,
         title=intent_title,
         description=description,
-        kind=kind or "agent-run",
+        kind=kind or f"{adapter.name}-run",
     )
-    attempt = create_attempt(root, intent_id=intent.intent_id, agent_id=agent_id)
+    attempt = create_attempt(root, intent_id=intent.intent_id, agent_id=resolved_agent_id)
     workspace = Path(attempt.workspace_ref)
-    context_file = _write_context_file(root, workspace, intent.intent_id) if with_context else None
+    context_file = _write_context_file(root, workspace, intent.intent_id) if resolved_with_context else None
 
     started = time.monotonic()
     env = {
@@ -59,6 +64,7 @@ def run_agent_command(
         "AIT_INTENT_ID": intent.intent_id,
         "AIT_ATTEMPT_ID": attempt.attempt_id,
         "AIT_WORKSPACE_REF": attempt.workspace_ref,
+        **adapter.env,
     }
     if context_file is not None:
         env["AIT_CONTEXT_FILE"] = str(context_file)
@@ -68,8 +74,8 @@ def run_agent_command(
         ownership_token=attempt.ownership_token,
         socket_path=daemon.socket_path,
         agent={
-            "agent_id": agent_id,
-            "harness": agent_id.split(":", 1)[0],
+            "agent_id": resolved_agent_id,
+            "harness": resolved_agent_id.split(":", 1)[0],
             "harness_version": "ait-run",
         },
     ) as harness:
