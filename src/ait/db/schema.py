@@ -62,7 +62,6 @@ MIGRATIONS: tuple[Migration, ...] = (
             ownership_token TEXT NOT NULL,
             raw_trace_ref TEXT,
             logs_ref TEXT,
-            result_patch_refs_json TEXT NOT NULL DEFAULT '[]',
             result_promotion_ref TEXT,
             result_exit_code INTEGER,
             UNIQUE(intent_id, ordinal)
@@ -141,7 +140,7 @@ MIGRATIONS: tuple[Migration, ...] = (
         version=3,
         name="drop_result_patch_refs_json",
         sql="""
-        ALTER TABLE attempts DROP COLUMN result_patch_refs_json;
+        SELECT 1;
         """,
     ),
 )

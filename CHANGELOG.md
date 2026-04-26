@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.3 - 2026-04-26
+
+### Fixed
+
+- Make fresh SQLite schema creation avoid an unstable `ALTER TABLE DROP
+  COLUMN` path that failed on Linux CI. New databases now start from the
+  final attempts table shape directly.
+
 ## 0.1.2 - 2026-04-26
 
 ### Added
