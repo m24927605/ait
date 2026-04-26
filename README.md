@@ -12,9 +12,9 @@ The MVP tracks:
 
 ## Status
 
-This repository is at `0.1.0` release-candidate quality for local
-dogfood use. It is local-only: metadata lives in `.ait/` inside one Git
-repository and is intentionally not synchronized across machines.
+This repository is at `0.4.1` alpha quality for local dogfood use. It is
+local-only: metadata lives in `.ait/` inside one Git repository and is
+intentionally not synchronized across machines.
 
 ## Requirements
 
@@ -41,17 +41,17 @@ Verify:
 
 ## Install From GitHub
 
-After `v0.1.0` is published, install the tagged release with `pipx`:
+Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.1.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.4.1"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.1.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.4.1"
 .venv/bin/ait --help
 ```
 
@@ -274,17 +274,33 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.1.0
+git checkout v0.4.1
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q
 .venv/bin/ait --help
 ```
 
-The release candidate for `0.1.0` should have:
+The release candidate should have:
 
 - clean working tree
 - passing tests
 - dogfood notes updated
 - changelog updated
 - version in `pyproject.toml` matching the tag
+
+PyPI publishing uses Trusted Publishing from GitHub Actions. Configure
+the PyPI `ait-vcs` project with these publisher values before relying on
+automatic release uploads:
+
+- owner: `m24927605`
+- repository: `ait`
+- workflow: `publish.yml`
+- environment: `pypi`
+
+Manual upload remains available from the repository root:
+
+```bash
+.venv/bin/python -m build
+.venv/bin/python -m twine upload dist/*
+```

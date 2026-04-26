@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Configure the PyPI publish workflow to use the `pypi` GitHub
+  environment for Trusted Publishing, and document the matching PyPI
+  publisher settings.
+
 ## 0.4.1 - 2026-04-26
 
 ### Fixed
