@@ -34,6 +34,18 @@ class CliAdapterTests(unittest.TestCase):
         self.assertIn("Default context: True", text)
         self.assertIn("Native hooks: True", text)
 
+    def test_adapter_doctor_json_outputs_checks(self) -> None:
+        stdout = io.StringIO()
+
+        with patch("sys.argv", ["ait", "adapter", "doctor", "claude-code", "--format", "json"]):
+            with redirect_stdout(stdout):
+                exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(0, exit_code)
+        self.assertEqual("claude-code", payload["adapter"]["name"])
+        self.assertIn("git_repo", {item["name"] for item in payload["checks"]})
+
 
 if __name__ == "__main__":
     unittest.main()

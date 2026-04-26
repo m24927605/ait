@@ -206,6 +206,8 @@ ait adapter list
 ait adapter list --format json
 ait adapter show claude-code
 ait adapter show claude-code --format json
+ait adapter doctor claude-code
+ait adapter doctor claude-code --format json
 ```
 
 Add `--with-context` to write a compact agent-readable context file into

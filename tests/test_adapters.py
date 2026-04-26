@@ -3,8 +3,10 @@ from __future__ import annotations
 import unittest
 
 from dataclasses import asdict
+from pathlib import Path
+import tempfile
 
-from ait.adapters import AdapterError, get_adapter, list_adapters
+from ait.adapters import AdapterError, doctor_adapter, get_adapter, list_adapters
 
 
 class AdapterTests(unittest.TestCase):
@@ -34,6 +36,24 @@ class AdapterTests(unittest.TestCase):
             get_adapter("missing")
 
         self.assertIn("unknown adapter", str(raised.exception))
+
+    def test_doctor_claude_code_passes_in_repo_checkout(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+
+        result = doctor_adapter("claude-code", repo_root)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(
+            {"git_repo", "ait_importable", "claude_hook_example", "claude_settings_example"},
+            {check.name for check in result.checks},
+        )
+
+    def test_doctor_reports_non_git_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = doctor_adapter("shell", tmp)
+
+        self.assertFalse(result.ok)
+        self.assertIn("git_repo", {check.name for check in result.checks if not check.ok})
 
 
 if __name__ == "__main__":

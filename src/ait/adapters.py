@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from importlib.util import find_spec
+from pathlib import Path
+
+from ait.repo import resolve_repo_root
 
 
 class AdapterError(ValueError):
@@ -16,6 +20,23 @@ class AgentAdapter:
     native_hooks: bool = False
     description: str = ""
     setup_hint: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class AdapterDoctorCheck:
+    name: str
+    ok: bool
+    detail: str
+
+
+@dataclass(frozen=True, slots=True)
+class AdapterDoctorResult:
+    adapter: AgentAdapter
+    checks: tuple[AdapterDoctorCheck, ...]
+
+    @property
+    def ok(self) -> bool:
+        return all(check.ok for check in self.checks)
 
 
 ADAPTERS: dict[str, AgentAdapter] = {
@@ -71,3 +92,53 @@ def get_adapter(name: str | None) -> AgentAdapter:
 
 def list_adapters() -> tuple[AgentAdapter, ...]:
     return tuple(ADAPTERS[name] for name in sorted(ADAPTERS))
+
+
+def doctor_adapter(name: str, repo_root: str | Path) -> AdapterDoctorResult:
+    adapter = get_adapter(name)
+    root = Path(repo_root).resolve()
+    checks: list[AdapterDoctorCheck] = []
+
+    try:
+        resolved_root = resolve_repo_root(root)
+        checks.append(AdapterDoctorCheck("git_repo", True, str(resolved_root)))
+    except Exception as exc:
+        checks.append(AdapterDoctorCheck("git_repo", False, str(exc)))
+        resolved_root = root
+
+    ait_spec = find_spec("ait")
+    checks.append(
+        AdapterDoctorCheck(
+            "ait_importable",
+            ait_spec is not None,
+            "ait package importable" if ait_spec is not None else "ait package not importable",
+        )
+    )
+
+    if adapter.name == "claude-code":
+        hook_path = resolved_root / "examples" / "claude_code_hook.py"
+        settings_path = resolved_root / "examples" / "claude-code-settings.json"
+        checks.append(
+            AdapterDoctorCheck(
+                "claude_hook_example",
+                hook_path.exists(),
+                str(hook_path),
+            )
+        )
+        checks.append(
+            AdapterDoctorCheck(
+                "claude_settings_example",
+                settings_path.exists(),
+                str(settings_path),
+            )
+        )
+    else:
+        checks.append(
+            AdapterDoctorCheck(
+                "native_hooks",
+                not adapter.native_hooks,
+                "native hook doctor is only implemented for claude-code",
+            )
+        )
+
+    return AdapterDoctorResult(adapter=adapter, checks=tuple(checks))

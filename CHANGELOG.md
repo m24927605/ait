@@ -1,9 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 - 2026-04-26
 
 ### Added
 
+- Add `ait adapter doctor <name>` for non-mutating adapter readiness
+  checks.
 - Add `ait adapter list` and `ait adapter show <name>` for inspecting
   adapter defaults, environment variables, and native-hook capability.
 

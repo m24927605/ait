@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import sys
 
-from ait.adapters import ADAPTERS, AdapterError, get_adapter, list_adapters
+from ait.adapters import ADAPTERS, AdapterError, doctor_adapter, get_adapter, list_adapters
 from ait.context import build_agent_context, render_agent_context_text
 from ait.app import (
     abandon_intent,
@@ -116,6 +116,9 @@ def build_parser() -> argparse.ArgumentParser:
     adapter_show = adapter_subparsers.add_parser("show")
     adapter_show.add_argument("name", choices=tuple(sorted(ADAPTERS)))
     adapter_show.add_argument("--format", choices=("text", "json"), default="text")
+    adapter_doctor = adapter_subparsers.add_parser("doctor")
+    adapter_doctor.add_argument("name", choices=tuple(sorted(ADAPTERS)))
+    adapter_doctor.add_argument("--format", choices=("text", "json"), default="text")
 
     subparsers.add_parser("reconcile")
 
@@ -314,6 +317,13 @@ def main() -> int:
             else:
                 print(_format_adapter(adapter))
             return 0
+        if args.adapter_command == "doctor":
+            result = doctor_adapter(args.name, repo_root)
+            if args.format == "json":
+                print(json.dumps(asdict(result), indent=2))
+            else:
+                print(_format_adapter_doctor(result))
+            return 0 if result.ok else 2
     if args.command == "reconcile":
         result = reconcile_repo(repo_root)
         print(json.dumps(asdict(result), indent=2))
@@ -395,6 +405,18 @@ def _format_adapter(adapter) -> str:
         *env_lines,
         f"Setup: {adapter.setup_hint}",
     ]
+    return "\n".join(lines)
+
+
+def _format_adapter_doctor(result) -> str:
+    lines = [
+        f"Adapter: {result.adapter.name}",
+        f"OK: {result.ok}",
+        "Checks:",
+    ]
+    for check in result.checks:
+        status = "ok" if check.ok else "fail"
+        lines.append(f"- {check.name}: {status} ({check.detail})")
     return "\n".join(lines)
 
 
