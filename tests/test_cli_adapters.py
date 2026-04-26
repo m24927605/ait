@@ -10,6 +10,17 @@ from ait import cli
 
 
 class CliAdapterTests(unittest.TestCase):
+    def test_version_outputs_installed_distribution_version(self) -> None:
+        stdout = io.StringIO()
+
+        with patch("sys.argv", ["ait", "--version"]):
+            with redirect_stdout(stdout):
+                with self.assertRaises(SystemExit) as raised:
+                    cli.main()
+
+        self.assertEqual(0, raised.exception.code)
+        self.assertRegex(stdout.getvalue(), r"^ait \d+\.\d+\.\d+\n$")
+
     def test_adapter_list_json_outputs_registry(self) -> None:
         stdout = io.StringIO()
 

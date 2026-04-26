@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.3 - 2026-04-27
+
+### Added
+
+- Add `ait --version` for install and smoke-test verification.
+
 ## 0.4.2 - 2026-04-26
 
 ### Changed

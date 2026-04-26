@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import asdict
+from importlib import metadata
 import json
 from pathlib import Path
 import sys
+import tomllib
 
 from ait.adapters import ADAPTERS, AdapterError, doctor_adapter, get_adapter, list_adapters
 from ait.context import build_agent_context, render_agent_context_text
@@ -30,8 +32,27 @@ from ait.runner import run_agent_command
 from ait.workspace import WorkspaceError
 
 
+def package_version() -> str:
+    try:
+        return metadata.version("ait-vcs")
+    except metadata.PackageNotFoundError:
+        pyproject = next(
+            (
+                parent / "pyproject.toml"
+                for parent in Path(__file__).resolve().parents
+                if (parent / "pyproject.toml").is_file()
+            ),
+            None,
+        )
+        if pyproject is None:
+            return "0+unknown"
+        data = tomllib.loads(pyproject.read_text())
+        return str(data.get("project", {}).get("version", "0+unknown"))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ait")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {package_version()}")
     subparsers = parser.add_subparsers(dest="command")
 
     subparsers.add_parser("init")

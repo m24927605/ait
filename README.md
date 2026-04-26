@@ -36,6 +36,7 @@ Verify:
 
 ```bash
 .venv/bin/pytest -q
+.venv/bin/ait --version
 .venv/bin/ait --help
 ```
 
@@ -63,6 +64,7 @@ is already owned by another project. The installed command is still
 
 ```bash
 pip install ait-vcs
+ait --version
 ait --help
 ```
 
@@ -71,6 +73,7 @@ Or inside a virtual environment:
 ```bash
 python3.14 -m venv .venv
 .venv/bin/pip install ait-vcs
+.venv/bin/ait --version
 .venv/bin/ait --help
 ```
 
@@ -278,6 +281,7 @@ git checkout v0.4.1
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q
+.venv/bin/ait --version
 .venv/bin/ait --help
 ```
 
