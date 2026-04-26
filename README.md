@@ -39,6 +39,22 @@ Verify:
 .venv/bin/ait --help
 ```
 
+## Install From GitHub
+
+After `v0.1.0` is published, install the tagged release with `pipx`:
+
+```bash
+pipx install "git+https://github.com/m24927605/ait.git@v0.1.0"
+```
+
+Or install into a virtual environment:
+
+```bash
+python3.14 -m venv .venv
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.1.0"
+.venv/bin/ait --help
+```
+
 ## Quickstart
 
 Initialize ait metadata in a Git repository:
@@ -149,6 +165,19 @@ Before cutting a release:
 ```bash
 git status --short
 .venv/bin/pytest -q
+```
+
+Clean clone smoke test:
+
+```bash
+tmpdir="$(mktemp -d)"
+git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
+cd "$tmpdir/ait"
+git checkout v0.1.0
+python3.14 -m venv .venv
+.venv/bin/pip install -e . pytest
+.venv/bin/pytest -q
+.venv/bin/ait --help
 ```
 
 The release candidate for `0.1.0` should have:
