@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1 - 2026-04-26
+
+### Fixed
+
+- Package Claude Code hook script and settings sample as installable
+  resources so `ait adapter doctor claude-code` works from PyPI
+  installs.
+
 ## 0.4.0 - 2026-04-26
 
 ### Added

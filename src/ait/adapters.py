@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from importlib import resources
 from importlib.util import find_spec
 from pathlib import Path
 
@@ -58,8 +59,8 @@ ADAPTERS: dict[str, AgentAdapter] = {
         native_hooks=True,
         description="Claude Code CLI wrapper with context enabled by default.",
         setup_hint=(
-            "Use examples/claude_code_hook.py and examples/claude-code-settings.json "
-            "for native Claude Code hook event capture."
+            "Use packaged resources claude_code_hook.py and "
+            "claude-code-settings.json for native Claude Code hook event capture."
         ),
     ),
     "aider": AgentAdapter(
@@ -116,20 +117,20 @@ def doctor_adapter(name: str, repo_root: str | Path) -> AdapterDoctorResult:
     )
 
     if adapter.name == "claude-code":
-        hook_path = resolved_root / "examples" / "claude_code_hook.py"
-        settings_path = resolved_root / "examples" / "claude-code-settings.json"
+        hook = _resource_exists("claude_code_hook.py")
+        settings = _resource_exists("claude-code-settings.json")
         checks.append(
             AdapterDoctorCheck(
-                "claude_hook_example",
-                hook_path.exists(),
-                str(hook_path),
+                "claude_hook_resource",
+                hook,
+                "ait.resources.claude-code/claude_code_hook.py",
             )
         )
         checks.append(
             AdapterDoctorCheck(
-                "claude_settings_example",
-                settings_path.exists(),
-                str(settings_path),
+                "claude_settings_resource",
+                settings,
+                "ait.resources.claude-code/claude-code-settings.json",
             )
         )
     else:
@@ -142,3 +143,10 @@ def doctor_adapter(name: str, repo_root: str | Path) -> AdapterDoctorResult:
         )
 
     return AdapterDoctorResult(adapter=adapter, checks=tuple(checks))
+
+
+def _resource_exists(name: str) -> bool:
+    try:
+        return resources.files("ait").joinpath("resources", "claude-code", name).is_file()
+    except Exception:
+        return False

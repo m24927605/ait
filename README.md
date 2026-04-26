@@ -210,6 +210,10 @@ ait adapter doctor claude-code
 ait adapter doctor claude-code --format json
 ```
 
+The Claude Code doctor checks that the packaged hook script and settings
+sample are available after installation, so native hook setup can be
+generated without relying on a source checkout.
+
 Add `--with-context` to write a compact agent-readable context file into
 the attempt worktree and expose it as `AIT_CONTEXT_FILE`:
 

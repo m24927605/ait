@@ -45,6 +45,7 @@ class CliAdapterTests(unittest.TestCase):
         self.assertEqual(0, exit_code)
         self.assertEqual("claude-code", payload["adapter"]["name"])
         self.assertIn("git_repo", {item["name"] for item in payload["checks"]})
+        self.assertIn("claude_hook_resource", {item["name"] for item in payload["checks"]})
 
 
 if __name__ == "__main__":

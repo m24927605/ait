@@ -44,7 +44,7 @@ class AdapterTests(unittest.TestCase):
 
         self.assertTrue(result.ok)
         self.assertEqual(
-            {"git_repo", "ait_importable", "claude_hook_example", "claude_settings_example"},
+            {"git_repo", "ait_importable", "claude_hook_resource", "claude_settings_resource"},
             {check.name for check in result.checks},
         )
 
