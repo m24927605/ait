@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import sys
 
-from ait.adapters import ADAPTERS, AdapterError
+from ait.adapters import ADAPTERS, AdapterError, get_adapter, list_adapters
 from ait.context import build_agent_context, render_agent_context_text
 from ait.app import (
     abandon_intent,
@@ -108,6 +108,14 @@ def build_parser() -> argparse.ArgumentParser:
     context_parser = subparsers.add_parser("context")
     context_parser.add_argument("intent_id")
     context_parser.add_argument("--format", choices=("text", "json"), default="text")
+
+    adapter_parser = subparsers.add_parser("adapter")
+    adapter_subparsers = adapter_parser.add_subparsers(dest="adapter_command")
+    adapter_list = adapter_subparsers.add_parser("list")
+    adapter_list.add_argument("--format", choices=("table", "json"), default="table")
+    adapter_show = adapter_subparsers.add_parser("show")
+    adapter_show.add_argument("name", choices=tuple(sorted(ADAPTERS)))
+    adapter_show.add_argument("--format", choices=("text", "json"), default="text")
 
     subparsers.add_parser("reconcile")
 
@@ -291,6 +299,21 @@ def main() -> int:
         else:
             print(render_agent_context_text(context), end="")
         return 0
+    if args.command == "adapter":
+        if args.adapter_command == "list":
+            adapters = [asdict(adapter) for adapter in list_adapters()]
+            if args.format == "json":
+                print(json.dumps(adapters, indent=2))
+            else:
+                print(_format_rows(adapters, "table"))
+            return 0
+        if args.adapter_command == "show":
+            adapter = get_adapter(args.name)
+            if args.format == "json":
+                print(json.dumps(asdict(adapter), indent=2))
+            else:
+                print(_format_adapter(adapter))
+            return 0
     if args.command == "reconcile":
         result = reconcile_repo(repo_root)
         print(json.dumps(asdict(result), indent=2))
@@ -356,6 +379,23 @@ def _format_rows(rows: list[dict[str, object]], output_format: str) -> str:
         for row in rows
     ]
     return "\n".join([header, *body])
+
+
+def _format_adapter(adapter) -> str:
+    env_lines = [f"  {key}={value}" for key, value in sorted(adapter.env.items())]
+    if not env_lines:
+        env_lines = ["  none"]
+    lines = [
+        f"Adapter: {adapter.name}",
+        f"Description: {adapter.description}",
+        f"Default agent: {adapter.default_agent_id}",
+        f"Default context: {adapter.default_with_context}",
+        f"Native hooks: {adapter.native_hooks}",
+        "Environment:",
+        *env_lines,
+        f"Setup: {adapter.setup_hint}",
+    ]
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":

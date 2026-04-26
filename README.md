@@ -199,6 +199,15 @@ Adapters define the default `agent_id`, whether context is enabled by
 default, and adapter-specific environment variables. `--agent` remains
 available as an override.
 
+Inspect adapter capabilities:
+
+```bash
+ait adapter list
+ait adapter list --format json
+ait adapter show claude-code
+ait adapter show claude-code --format json
+```
+
 Add `--with-context` to write a compact agent-readable context file into
 the attempt worktree and expose it as `AIT_CONTEXT_FILE`:
 

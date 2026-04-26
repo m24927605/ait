@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Add `ait adapter list` and `ait adapter show <name>` for inspecting
+  adapter defaults, environment variables, and native-hook capability.
+
 ## 0.3.0 - 2026-04-26
 
 ### Added
