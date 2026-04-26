@@ -35,3 +35,17 @@ Before uploading:
 4. Check artifacts with `.venv/bin/python -m twine check dist/*`.
 5. Upload with `.venv/bin/python -m twine upload dist/*`.
 6. Smoke test with `pip install ait-vcs`.
+
+GitHub trusted publishing is also configured through
+`.github/workflows/publish.yml`. On PyPI, create a pending trusted
+publisher for:
+
+```text
+PyPI project: ait-vcs
+Owner: m24927605
+Repository: ait
+Workflow: publish.yml
+Environment: <blank>
+```
+
+Then publish a GitHub release or run the workflow manually.
