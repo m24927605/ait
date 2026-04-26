@@ -15,6 +15,7 @@ from ait.app import (
     create_intent,
     discard_attempt,
     promote_attempt,
+    rebase_attempt,
     show_attempt,
     show_intent,
     supersede_intent,
@@ -353,6 +354,79 @@ class AppFlowTests(unittest.TestCase):
             self.assertIn("error: refusing to promote", completed.stderr)
             self.assertIn("Commit or stash", completed.stderr)
             self.assertNotIn("Traceback", completed.stderr)
+
+    def test_rebase_attempt_onto_advanced_head_branch_before_promote(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            head_branch = _git_stdout(repo_root, "symbolic-ref", "--short", "HEAD")
+
+            intent = create_intent(repo_root, title="Drift", description=None, kind="chore")
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+            original_base_oid = attempt.base_ref_oid
+            worktree = Path(attempt.workspace_ref)
+            _git(worktree, "config", "user.email", "test@example.com")
+            _git(worktree, "config", "user.name", "Test User")
+            (worktree / "feature.py").write_text("value = 1\n", encoding="utf-8")
+            _git(worktree, "add", "feature.py")
+            create_commit_for_attempt(
+                repo_root,
+                attempt_id=attempt.attempt_id,
+                message="feature",
+            )
+
+            (repo_root / "main.py").write_text("main = True\n", encoding="utf-8")
+            _git(repo_root, "add", "main.py")
+            _git(repo_root, "commit", "-m", "advance main")
+            advanced_main_oid = _git_stdout(repo_root, "rev-parse", "--verify", "HEAD")
+
+            with self.assertRaises(RuntimeError) as raised:
+                promote_attempt(
+                    repo_root,
+                    attempt_id=attempt.attempt_id,
+                    target_ref=head_branch,
+                )
+            self.assertIn("Rebase the attempt worktree", str(raised.exception))
+
+            rebased = rebase_attempt(
+                repo_root,
+                attempt_id=attempt.attempt_id,
+                onto_ref=head_branch,
+            )
+            promoted = promote_attempt(
+                repo_root,
+                attempt_id=attempt.attempt_id,
+                target_ref=head_branch,
+            )
+
+            self.assertEqual(advanced_main_oid, rebased.attempt["base_ref_oid"])
+            self.assertNotEqual(original_base_oid, rebased.attempt["base_ref_oid"])
+            self.assertEqual(("feature.py",), rebased.files["changed"])
+            self.assertEqual(1, len(rebased.commits))
+            self.assertTrue((repo_root / "main.py").exists())
+            self.assertTrue((repo_root / "feature.py").exists())
+            self.assertEqual("promoted", promoted.attempt["verified_status"])
+
+    def test_rebase_attempt_refuses_dirty_attempt_worktree(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            head_branch = _git_stdout(repo_root, "symbolic-ref", "--short", "HEAD")
+
+            intent = create_intent(repo_root, title="Dirty rebase", description=None, kind="chore")
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+            worktree = Path(attempt.workspace_ref)
+            (worktree / "README.md").write_text("dirty\n", encoding="utf-8")
+
+            with self.assertRaises(RuntimeError) as raised:
+                rebase_attempt(
+                    repo_root,
+                    attempt_id=attempt.attempt_id,
+                    onto_ref=head_branch,
+                )
+
+            self.assertIn("uncommitted tracked changes", str(raised.exception))
+            self.assertIn("Commit or stash", str(raised.exception))
 
     def test_superseded_intent_rejects_new_attempt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -14,6 +14,7 @@ from ait.app import (
     discard_attempt,
     init_repo,
     promote_attempt,
+    rebase_attempt,
     show_attempt,
     show_intent,
     supersede_intent,
@@ -65,6 +66,9 @@ def build_parser() -> argparse.ArgumentParser:
     attempt_promote = attempt_subparsers.add_parser("promote")
     attempt_promote.add_argument("attempt_id")
     attempt_promote.add_argument("--to", required=True)
+    attempt_rebase = attempt_subparsers.add_parser("rebase")
+    attempt_rebase.add_argument("attempt_id")
+    attempt_rebase.add_argument("--onto", required=True)
     attempt_discard = attempt_subparsers.add_parser("discard")
     attempt_discard.add_argument("attempt_id")
     attempt_verify = attempt_subparsers.add_parser("verify")
@@ -187,6 +191,14 @@ def main() -> int:
     if args.command == "attempt" and args.attempt_command == "promote":
         try:
             result = promote_attempt(repo_root, attempt_id=args.attempt_id, target_ref=args.to)
+        except WorkspaceError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        print(json.dumps(asdict(result), indent=2))
+        return 0
+    if args.command == "attempt" and args.attempt_command == "rebase":
+        try:
+            result = rebase_attempt(repo_root, attempt_id=args.attempt_id, onto_ref=args.onto)
         except WorkspaceError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2

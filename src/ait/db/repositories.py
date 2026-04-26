@@ -383,6 +383,8 @@ def update_attempt(
     conn: sqlite3.Connection,
     attempt_id: str,
     *,
+    base_ref_oid: str | None = None,
+    base_ref_name: str | None = None,
     reported_status: str | None = None,
     verified_status: str | None = None,
     ended_at: str | None = None,
@@ -393,6 +395,10 @@ def update_attempt(
     result_exit_code: int | None = None,
 ) -> None:
     updates: list[tuple[str, object]] = []
+    if base_ref_oid is not None:
+        updates.append(("base_ref_oid", base_ref_oid))
+    if base_ref_name is not None:
+        updates.append(("base_ref_name", base_ref_name))
     if reported_status is not None:
         updates.append(("reported_status", reported_status))
     if verified_status is not None:

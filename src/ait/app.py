@@ -29,6 +29,7 @@ from ait.verifier import verify_attempt_with_connection
 from ait.workspace import (
     create_attempt_commit,
     create_attempt_workspace,
+    rebase_attempt_workspace,
     remove_attempt_workspace,
     update_ref_to_workspace_head,
 )
@@ -306,6 +307,46 @@ def promote_attempt(
     return show_attempt(repo_root, attempt_id=attempt_id)
 
 
+def rebase_attempt(
+    repo_root: str | Path,
+    *,
+    attempt_id: str,
+    onto_ref: str,
+) -> AttemptShowResult:
+    init_result = init_repo(repo_root)
+    conn = connect_db(init_result.db_path)
+    try:
+        attempt_id = resolve_attempt_id(conn, attempt_id)
+        attempt = get_attempt(conn, attempt_id)
+        if attempt is None:
+            raise ValueError(f"Unknown attempt: {attempt_id}")
+        intent = get_intent(conn, attempt.intent_id)
+        if intent is None:
+            raise ValueError(f"Missing intent for attempt: {attempt_id}")
+        if intent.status in {"abandoned", "superseded"}:
+            raise ValueError(f"Intent is {intent.status}: {intent.id}")
+        if attempt.verified_status in {"discarded", "promoted"}:
+            raise ValueError(f"Attempt is already {attempt.verified_status}: {attempt_id}")
+
+        result = rebase_attempt_workspace(
+            init_result.repo_root,
+            attempt.workspace_ref,
+            old_base_ref_oid=attempt.base_ref_oid,
+            onto_ref=onto_ref,
+        )
+        update_attempt(
+            conn,
+            attempt_id,
+            base_ref_oid=result.base_ref_oid,
+            base_ref_name=result.onto_ref,
+        )
+        if attempt.reported_status == "finished":
+            verify_attempt_with_connection(conn, init_result.repo_root, attempt_id)
+    finally:
+        conn.close()
+    return show_attempt(repo_root, attempt_id=attempt_id)
+
+
 def verify_attempt(repo_root: str | Path, *, attempt_id: str) -> AttemptShowResult:
     init_result = init_repo(repo_root)
     conn = connect_db(init_result.db_path)
@@ -402,5 +443,4 @@ def supersede_intent(
     finally:
         conn.close()
     return show_intent(repo_root, intent_id=intent_id)
-
 

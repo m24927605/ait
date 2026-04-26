@@ -30,6 +30,13 @@ class AttemptWorkspaceResult:
     base_ref_name: str | None
 
 
+@dataclass(slots=True, frozen=True)
+class RebaseWorkspaceResult:
+    onto_ref: str
+    base_ref_oid: str
+    head_oid: str
+
+
 def get_workspaces_root(repo_root: str | Path) -> Path:
     return Path(repo_root).resolve() / ".ait" / "workspaces"
 
@@ -231,6 +238,48 @@ def update_ref_to_workspace_head(repo_root: str | Path, ref_name: str, workspace
 
     _git_run(root, "update-ref", ref_name, head_oid)
     return head_oid
+
+
+def rebase_attempt_workspace(
+    repo_root: str | Path,
+    workspace_ref: str | Path,
+    *,
+    old_base_ref_oid: str,
+    onto_ref: str,
+) -> RebaseWorkspaceResult:
+    root = Path(repo_root).resolve()
+    worktree_path = Path(workspace_ref).resolve()
+    ref_name = onto_ref if onto_ref.startswith("refs/") else f"refs/heads/{onto_ref}"
+    base_ref_oid = _git_stdout(root, "rev-parse", "--verify", ref_name)
+
+    if _has_uncommitted_changes(worktree_path):
+        raise WorkspaceError(
+            "refusing to rebase attempt worktree: it has uncommitted tracked "
+            "changes. Commit or stash those changes inside the attempt "
+            "worktree first."
+        )
+
+    completed = _git_run(
+        worktree_path,
+        "rebase",
+        "--onto",
+        base_ref_oid,
+        old_base_ref_oid,
+        allow_failure=True,
+    )
+    if completed.returncode != 0:
+        stderr = completed.stderr.strip() or "rebase failed"
+        raise WorkspaceError(
+            f"refusing to rebase attempt worktree onto {ref_name}: {stderr}. "
+            "Resolve the rebase in the attempt worktree, or run git rebase "
+            "--abort there before retrying."
+        )
+    head_oid = _git_stdout(worktree_path, "rev-parse", "--verify", "HEAD")
+    return RebaseWorkspaceResult(
+        onto_ref=ref_name,
+        base_ref_oid=base_ref_oid,
+        head_oid=head_oid,
+    )
 
 
 def _has_uncommitted_changes(repo_root: Path) -> bool:

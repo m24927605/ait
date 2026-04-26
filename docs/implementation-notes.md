@@ -196,6 +196,20 @@ When the target branch is not the currently-checked-out branch,
 `git update-ref` moves the ref directly and the main working tree is
 untouched (as before).
 
+### `ait attempt rebase`
+
+`ait attempt rebase <attempt-id> --onto <branch>` rebases the attempt
+worktree's commits from the recorded `base_ref_oid` onto the target
+branch head, then updates the attempt's recorded base to that branch
+head. For finished attempts, verification runs again so
+`attempt_commits` and `files.changed` describe only the rebased attempt
+commits, not unrelated commits that landed on the target branch while
+the attempt was running.
+
+The command refuses if the attempt worktree has uncommitted tracked
+changes. If Git reports a rebase conflict, the worktree is left in Git's
+normal rebase state so the user can resolve it or abort it there.
+
 ### `ait intent list`
 
 `ait intent list` is a shortcut over `ait query --on intent`.
