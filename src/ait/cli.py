@@ -24,6 +24,7 @@ from ait.daemon import daemon_status, serve_daemon, start_daemon, stop_daemon
 from ait.db import connect_db
 from ait.query import blame_path, execute_query, list_shortcut_expression, parse_blame_target
 from ait.reconcile import reconcile_repo
+from ait.runner import run_agent_command
 from ait.workspace import WorkspaceError
 
 
@@ -91,6 +92,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     blame_parser = subparsers.add_parser("blame")
     blame_parser.add_argument("target")
+
+    run_parser = subparsers.add_parser("run")
+    run_parser.add_argument("--agent", required=True)
+    run_parser.add_argument("--intent", required=True)
+    run_parser.add_argument("--kind")
+    run_parser.add_argument("--description")
+    run_parser.add_argument("--commit-message")
+    run_parser.add_argument("run_command", nargs=argparse.REMAINDER)
 
     subparsers.add_parser("reconcile")
 
@@ -246,6 +255,21 @@ def main() -> int:
             conn.close()
         print(_format_rows([row.__dict__ for row in rows], "table"))
         return 0
+    if args.command == "run":
+        command = args.run_command
+        if command and command[0] == "--":
+            command = command[1:]
+        result = run_agent_command(
+            repo_root,
+            intent_title=args.intent,
+            agent_id=args.agent,
+            command=command,
+            kind=args.kind,
+            description=args.description,
+            commit_message=args.commit_message,
+        )
+        print(json.dumps(asdict(result), indent=2))
+        return result.exit_code
     if args.command == "reconcile":
         result = reconcile_repo(repo_root)
         print(json.dumps(asdict(result), indent=2))

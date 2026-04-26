@@ -153,6 +153,38 @@ ait attempt show <attempt-id>
 Expected counters include tool calls, reads, writes, commands, and file
 evidence under `files.read` and `files.touched`.
 
+## Universal Agent Runner
+
+`ait run` wraps any CLI-based agent or command in an ait intent and
+attempt. It creates an isolated attempt worktree, starts the daemon,
+runs the command in that worktree, records the command event, and marks
+the attempt finished with the command exit code.
+
+```bash
+ait run --agent shell:local --intent "Try a generated change" -- \
+  python -c "from pathlib import Path; Path('agent.txt').write_text('ok\n')"
+```
+
+The wrapped process receives:
+
+```text
+AIT_INTENT_ID
+AIT_ATTEMPT_ID
+AIT_WORKSPACE_REF
+```
+
+Examples:
+
+```bash
+ait run --agent aider:main --intent "Fix auth expiry" -- aider src/auth.py
+ait run --agent claude-code:manual --intent "Refactor query parser" -- claude
+```
+
+This is the shallow universal integration layer. Deeper adapters can add
+native file-read/write events through hooks, but `ait run` already gives
+session lifecycle, worktree isolation, exit-code verification, and
+command provenance for any shell-launchable agent.
+
 ## Claude Code Hook Example
 
 `examples/claude_code_hook.py` is a conservative Claude Code hook bridge.

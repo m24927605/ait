@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.2 - 2026-04-26
+
+### Added
+
+- Add `ait run`, a universal command wrapper that creates an intent and
+  attempt, runs a shell-launchable agent command inside the attempt
+  worktree, streams command provenance through the daemon, and finishes
+  the attempt with the command exit code.
+
 ## 0.1.1 - 2026-04-26
 
 ### Changed
