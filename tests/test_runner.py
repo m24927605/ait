@@ -51,6 +51,33 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual("failed", result.attempt.attempt["verified_status"])
             self.assertEqual(1, result.attempt.evidence_summary["observed_commands_run"])
 
+    def test_run_agent_command_can_write_context_file_for_wrapped_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="Context file",
+                agent_id="shell:test",
+                command=[
+                    sys.executable,
+                    "-c",
+                    (
+                        "import os;"
+                        "from pathlib import Path;"
+                        "p=Path(os.environ['AIT_CONTEXT_FILE']);"
+                        "Path('context-copy.txt').write_text(p.read_text())"
+                    ),
+                ],
+                with_context=True,
+            )
+
+            copied = Path(result.workspace_ref) / "context-copy.txt"
+            self.assertEqual(0, result.exit_code)
+            self.assertTrue((Path(result.workspace_ref) / ".ait-context.md").exists())
+            self.assertIn("Intent: Context file", copied.read_text(encoding="utf-8"))
+
 
 def _init_git_repo(repo_root: Path) -> None:
     _git(repo_root, "init")

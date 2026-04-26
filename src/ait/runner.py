@@ -7,6 +7,7 @@ import subprocess
 import time
 
 from ait.app import AttemptShowResult, create_attempt, create_intent, show_attempt
+from ait.context import build_agent_context, render_agent_context_text
 from ait.daemon import start_daemon
 from ait.harness import AitHarness
 from ait.workspace import create_attempt_commit
@@ -30,6 +31,7 @@ def run_agent_command(
     kind: str | None = None,
     description: str | None = None,
     commit_message: str | None = None,
+    with_context: bool = False,
 ) -> RunResult:
     if not intent_title.strip():
         raise ValueError("intent title must not be empty")
@@ -49,6 +51,7 @@ def run_agent_command(
     )
     attempt = create_attempt(root, intent_id=intent.intent_id, agent_id=agent_id)
     workspace = Path(attempt.workspace_ref)
+    context_file = _write_context_file(root, workspace, intent.intent_id) if with_context else None
 
     started = time.monotonic()
     env = {
@@ -57,6 +60,8 @@ def run_agent_command(
         "AIT_ATTEMPT_ID": attempt.attempt_id,
         "AIT_WORKSPACE_REF": attempt.workspace_ref,
     }
+    if context_file is not None:
+        env["AIT_CONTEXT_FILE"] = str(context_file)
     completed: subprocess.CompletedProcess[str] | None = None
     with AitHarness.open(
         attempt_id=attempt.attempt_id,
@@ -100,3 +105,10 @@ def run_agent_command(
         exit_code=completed.returncode if completed is not None else 1,
         attempt=shown,
     )
+
+
+def _write_context_file(repo_root: Path, workspace: Path, intent_id: str) -> Path:
+    context = build_agent_context(repo_root, intent_id=intent_id)
+    path = workspace / ".ait-context.md"
+    path.write_text(render_agent_context_text(context), encoding="utf-8")
+    return path

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0 - 2026-04-26
+
+### Added
+
+- Add `ait context <intent-id>` with text and JSON output for compact
+  agent handoff context.
+- Add `ait run --with-context`, which writes `.ait-context.md` into the
+  attempt worktree and exposes it as `AIT_CONTEXT_FILE`.
+
 ## 0.1.3 - 2026-04-26
 
 ### Fixed

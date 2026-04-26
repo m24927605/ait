@@ -124,6 +124,7 @@ Inspect state:
 ```bash
 ait attempt show <attempt-id>
 ait intent show <intent-id>
+ait context <intent-id>
 ait attempt list --verified-status succeeded
 ait query --on attempt 'observed.tool_calls>0'
 ait blame path/to/file.py
@@ -184,6 +185,27 @@ This is the shallow universal integration layer. Deeper adapters can add
 native file-read/write events through hooks, but `ait run` already gives
 session lifecycle, worktree isolation, exit-code verification, and
 command provenance for any shell-launchable agent.
+
+Add `--with-context` to write a compact agent-readable context file into
+the attempt worktree and expose it as `AIT_CONTEXT_FILE`:
+
+```bash
+ait run --with-context --agent shell:local --intent "Continue previous work" -- \
+  python -c "import os; print(open(os.environ['AIT_CONTEXT_FILE']).read())"
+```
+
+## Agent Context
+
+`ait context <intent-id>` summarizes the intent, prior attempts, files,
+commits, observed tool counters, and simple recommendations:
+
+```bash
+ait context <intent-id>
+ait context <intent-id> --format json
+```
+
+This gives the next agent a short handoff instead of requiring a full
+chat transcript or repeated repository exploration.
 
 ## Claude Code Hook Example
 

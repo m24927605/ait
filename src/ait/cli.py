@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import sys
 
+from ait.context import build_agent_context, render_agent_context_text
 from ait.app import (
     abandon_intent,
     create_commit_for_attempt,
@@ -99,7 +100,12 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--kind")
     run_parser.add_argument("--description")
     run_parser.add_argument("--commit-message")
+    run_parser.add_argument("--with-context", action="store_true")
     run_parser.add_argument("run_command", nargs=argparse.REMAINDER)
+
+    context_parser = subparsers.add_parser("context")
+    context_parser.add_argument("intent_id")
+    context_parser.add_argument("--format", choices=("text", "json"), default="text")
 
     subparsers.add_parser("reconcile")
 
@@ -267,9 +273,17 @@ def main() -> int:
             kind=args.kind,
             description=args.description,
             commit_message=args.commit_message,
+            with_context=args.with_context,
         )
         print(json.dumps(asdict(result), indent=2))
         return result.exit_code
+    if args.command == "context":
+        context = build_agent_context(repo_root, intent_id=args.intent_id)
+        if args.format == "json":
+            print(json.dumps(asdict(context), indent=2))
+        else:
+            print(render_agent_context_text(context), end="")
+        return 0
     if args.command == "reconcile":
         result = reconcile_repo(repo_root)
         print(json.dumps(asdict(result), indent=2))
