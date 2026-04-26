@@ -21,3 +21,17 @@ Current verification:
 ```text
 116 passed
 ```
+
+## PyPI Release
+
+The PyPI distribution is `ait-vcs`; the `ait` name is already owned by
+another project on PyPI. The CLI entry point remains `ait`.
+
+Before uploading:
+
+1. Confirm `pyproject.toml` version matches the PyPI release version.
+2. Run `.venv/bin/pytest -q`.
+3. Build with `.venv/bin/python -m build`.
+4. Check artifacts with `.venv/bin/python -m twine check dist/*`.
+5. Upload with `.venv/bin/python -m twine upload dist/*`.
+6. Smoke test with `pip install ait-vcs`.

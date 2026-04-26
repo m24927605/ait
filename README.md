@@ -55,6 +55,25 @@ python3.14 -m venv .venv
 .venv/bin/ait --help
 ```
 
+## Install From PyPI
+
+The PyPI distribution name is `ait-vcs` because the shorter `ait` name
+is already owned by another project. The installed command is still
+`ait`.
+
+```bash
+pip install ait-vcs
+ait --help
+```
+
+Or inside a virtual environment:
+
+```bash
+python3.14 -m venv .venv
+.venv/bin/pip install ait-vcs
+.venv/bin/ait --help
+```
+
 ## Quickstart
 
 Initialize ait metadata in a Git repository:

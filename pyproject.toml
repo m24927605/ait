@@ -3,10 +3,30 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ait"
-version = "0.1.0"
+name = "ait-vcs"
+version = "0.1.1"
 description = "AI-agent-native VCS MVP"
+readme = "README.md"
 requires-python = ">=3.14"
+license = "MIT"
+authors = [
+  {name = "sin-chengchen"}
+]
+keywords = ["ai", "agents", "git", "vcs", "provenance"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Version Control :: Git",
+]
+
+[project.urls]
+Homepage = "https://github.com/m24927605/ait"
+Repository = "https://github.com/m24927605/ait"
+Issues = "https://github.com/m24927605/ait/issues"
+Changelog = "https://github.com/m24927605/ait/blob/main/CHANGELOG.md"
 
 [project.scripts]
 ait = "ait.cli:main"

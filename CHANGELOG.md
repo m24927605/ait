@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1 - 2026-04-26
+
+### Changed
+
+- Rename the PyPI distribution to `ait-vcs` because `ait` is already
+  owned by another PyPI project. The installed command and import package
+  remain `ait`.
+- Add PyPI metadata, project URLs, README packaging, and classifiers.
+
 ## 0.1.0 - 2026-04-26
 
 Initial MVP release candidate.
