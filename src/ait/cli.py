@@ -4,6 +4,7 @@ import argparse
 from dataclasses import asdict
 import json
 from pathlib import Path
+import sys
 
 from ait.app import (
     abandon_intent,
@@ -22,6 +23,7 @@ from ait.daemon import daemon_status, serve_daemon, start_daemon, stop_daemon
 from ait.db import connect_db
 from ait.query import blame_path, execute_query, list_shortcut_expression, parse_blame_target
 from ait.reconcile import reconcile_repo
+from ait.workspace import WorkspaceError
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -183,7 +185,11 @@ def main() -> int:
         print(json.dumps(asdict(result), indent=2))
         return 0
     if args.command == "attempt" and args.attempt_command == "promote":
-        result = promote_attempt(repo_root, attempt_id=args.attempt_id, target_ref=args.to)
+        try:
+            result = promote_attempt(repo_root, attempt_id=args.attempt_id, target_ref=args.to)
+        except WorkspaceError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
         print(json.dumps(asdict(result), indent=2))
         return 0
     if args.command == "attempt" and args.attempt_command == "discard":

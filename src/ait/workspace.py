@@ -208,7 +208,9 @@ def update_ref_to_workspace_head(repo_root: str | Path, ref_name: str, workspace
         if _has_uncommitted_changes(root):
             raise WorkspaceError(
                 f"refusing to promote to currently-checked-out branch {ref_name}: "
-                "main working tree has uncommitted changes"
+                "main working tree has uncommitted tracked changes. "
+                "Commit or stash those changes first, or promote to a branch "
+                "that is not currently checked out."
             )
         completed = _git_run(
             root,
@@ -220,7 +222,10 @@ def update_ref_to_workspace_head(repo_root: str | Path, ref_name: str, workspace
         if completed.returncode != 0:
             stderr = completed.stderr.strip() or "fast-forward not possible"
             raise WorkspaceError(
-                f"refusing to promote to currently-checked-out branch {ref_name}: {stderr}"
+                f"refusing to promote to currently-checked-out branch {ref_name}: "
+                f"{stderr}. Rebase the attempt worktree onto the current branch "
+                "head first, or promote to a branch that is not currently "
+                "checked out."
             )
         return head_oid
 

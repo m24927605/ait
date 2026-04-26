@@ -185,10 +185,12 @@ branch ref and the main working tree advance together. Two failure
 modes are surfaced explicitly:
 
 - main working tree has uncommitted tracked changes — refuse with a
-  clear error, because blindly fast-forwarding would either clobber
-  the edits or leave the tree in an inverted state.
-- the promotion would not be a fast-forward — refuse; the user must
-  rebase the attempt onto current main first.
+  clear error that tells the user to commit/stash first or promote to a
+  branch that is not currently checked out. Blindly fast-forwarding
+  would either clobber the edits or leave the tree in an inverted state.
+- the promotion would not be a fast-forward — refuse with a clear error
+  that tells the user to rebase the attempt onto current main first or
+  promote to a branch that is not currently checked out.
 
 When the target branch is not the currently-checked-out branch,
 `git update-ref` moves the ref directly and the main working tree is

@@ -309,6 +309,50 @@ class AppFlowTests(unittest.TestCase):
                 )
 
             self.assertIn("uncommitted", str(raised.exception))
+            self.assertIn("Commit or stash", str(raised.exception))
+            self.assertIn("not currently checked out", str(raised.exception))
+
+    def test_cli_promote_dirty_head_branch_reports_clean_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            head_branch = _git_stdout(repo_root, "symbolic-ref", "--short", "HEAD")
+
+            intent = create_intent(repo_root, title="CLI dirty", description=None, kind="chore")
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+            worktree = Path(attempt.workspace_ref)
+            _git(worktree, "config", "user.email", "test@example.com")
+            _git(worktree, "config", "user.name", "Test User")
+            (worktree / "cli_dirty.py").write_text("x = 1\n", encoding="utf-8")
+            _git(worktree, "add", "cli_dirty.py")
+            create_commit_for_attempt(
+                repo_root,
+                attempt_id=attempt.attempt_id,
+                message="cli dirty",
+            )
+            (repo_root / "README.md").write_text("changed\n", encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "ait.cli",
+                    "attempt",
+                    "promote",
+                    attempt.attempt_id,
+                    "--to",
+                    head_branch,
+                ],
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(2, completed.returncode)
+            self.assertEqual("", completed.stdout)
+            self.assertIn("error: refusing to promote", completed.stderr)
+            self.assertIn("Commit or stash", completed.stderr)
+            self.assertNotIn("Traceback", completed.stderr)
 
     def test_superseded_intent_rejects_new_attempt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
