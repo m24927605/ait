@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.16.0 - 2026-04-28
+
+### Added
+
+- Add `ait status --all` to report automation readiness for Claude
+  Code, Codex, and Aider in one command.
+- Add JSON and text output for all-agent status checks.
+
+### Changed
+
+- Point status next steps and one-time hints at `ait enable --shell`
+  and `ait enable --adapter <name>` so users do not need to learn
+  per-adapter bootstrap commands first.
+
 ## 0.15.0 - 2026-04-28
 
 ### Added

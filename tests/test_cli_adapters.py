@@ -329,7 +329,7 @@ class CliAdapterTests(unittest.TestCase):
 
             self.assertEqual(2, exit_code)
             self.assertIn("Next steps:", text)
-            self.assertIn('eval "$(ait bootstrap claude-code --shell)"', text)
+            self.assertIn('eval "$(ait enable --shell)"', text)
 
     def test_doctor_fix_outputs_eval_safe_shell_snippet(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -384,7 +384,7 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertEqual("claude-code", payload["adapter"])
             self.assertFalse(payload["wrapper_installed"])
-            self.assertIn("ait bootstrap claude-code", payload["next_steps"])
+            self.assertIn("ait enable --adapter claude-code", payload["next_steps"])
             self.assertFalse((repo_root / ".ait").exists())
 
     def test_status_text_emits_one_time_automation_hint_to_stderr(self) -> None:
@@ -418,9 +418,66 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertEqual(0, second_exit_code)
             self.assertIn("Wrapper installed: False", stdout.getvalue())
-            self.assertIn('eval "$(ait doctor --fix)"', stderr.getvalue())
+            self.assertIn('eval "$(ait enable --shell)"', stderr.getvalue())
             self.assertEqual("", second_stderr.getvalue())
             self.assertTrue(hints["claude_code_automation_hint_v1"])
+
+    def test_status_all_json_reports_every_fixed_binary_adapter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_codex = bin_dir / "codex"
+            real_codex.write_text("#!/bin/sh\nprintf 'real codex\\n'\n", encoding="utf-8")
+            real_codex.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "status", "--all", "--format", "json"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            payload = json.loads(stdout.getvalue())
+            by_adapter = {item["adapter"]: item for item in payload}
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual({"aider", "claude-code", "codex"}, set(by_adapter))
+            self.assertTrue(by_adapter["codex"]["real_agent_binary"])
+            self.assertFalse(by_adapter["codex"]["wrapper_installed"])
+            self.assertIn("ait enable --adapter codex", by_adapter["codex"]["next_steps"])
+
+    def test_status_all_text_emits_enable_hint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_aider = bin_dir / "aider"
+            real_aider.write_text("#!/bin/sh\nprintf 'real aider\\n'\n", encoding="utf-8")
+            real_aider.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "status", "--all"]):
+                        with redirect_stdout(stdout), redirect_stderr(stderr):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            self.assertEqual(0, exit_code)
+            self.assertIn("AIT Agent Automation Status", stdout.getvalue())
+            self.assertIn("aider:", stdout.getvalue())
+            self.assertIn('eval "$(ait enable --shell)"', stderr.getvalue())
 
     def test_enable_json_installs_all_detected_agent_wrappers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

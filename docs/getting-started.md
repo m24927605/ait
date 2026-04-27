@@ -57,6 +57,7 @@ Check that the wrapper is active:
 
 ```bash
 ait status
+ait status --all
 ```
 
 The important fields are:

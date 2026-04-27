@@ -203,6 +203,7 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser = subparsers.add_parser("status")
     status_parser.add_argument("name", choices=tuple(sorted(ADAPTERS)), nargs="?", default="claude-code")
     status_parser.add_argument("--format", choices=("text", "json"), default="text")
+    status_parser.add_argument("--all", action="store_true", dest="all_adapters")
 
     enable_parser = subparsers.add_parser("enable")
     enable_parser.add_argument(
@@ -527,6 +528,19 @@ def main() -> int:
             print(_format_adapter_doctor(result))
         return 0 if result.ok else 2
     if args.command == "status":
+        if args.all_adapters:
+            results = tuple(
+                doctor_automation(name, repo_root)
+                for name in sorted(ADAPTERS)
+                if name != "shell"
+            )
+            payload = [_status_payload(result) for result in results]
+            if args.format == "json":
+                print(json.dumps(payload, indent=2))
+            else:
+                print(_format_status_all(payload))
+                _maybe_emit_status_all_hint(args, repo_root, results)
+            return 0
         result = doctor_automation(args.name, repo_root)
         payload = _status_payload(result)
         if args.format == "json":
@@ -721,15 +735,15 @@ def _doctor_next_steps(result) -> list[str]:
     if "automation" in checks and not checks["automation"]:
         return []
     if not checks.get("wrapper_file", True):
-        return [f"ait bootstrap {result.adapter.name}"]
+        return [f"ait enable --adapter {result.adapter.name}"]
     real_binary_ok = checks.get("real_claude_binary", checks.get("real_agent_binary", True))
     if not real_binary_ok:
         binary = result.adapter.command_name or result.adapter.name
         return [f"install {binary} or put the real {binary} binary on PATH"]
     if not checks.get("path_wrapper_active", True):
         if checks.get("envrc_path", False) and checks.get("direnv_binary", False):
-            return ["direnv allow", f'eval "$(ait bootstrap {result.adapter.name} --shell)"']
-        return [f'eval "$(ait bootstrap {result.adapter.name} --shell)"']
+            return ["direnv allow", 'eval "$(ait enable --shell)"']
+        return ['eval "$(ait enable --shell)"']
     return []
 
 
@@ -768,6 +782,22 @@ def _format_status(payload: dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+def _format_status_all(payload: list[dict[str, object]]) -> str:
+    lines = ["AIT Agent Automation Status"]
+    for item in payload:
+        lines.append(
+            "- "
+            f"{item['adapter']}: ok={item['ok']} "
+            f"wrapper={item['wrapper_installed']} "
+            f"path={item['path_wrapper_active']} "
+            f"real_binary={item['real_agent_binary']}"
+        )
+        next_steps = item.get("next_steps", [])
+        if next_steps:
+            lines.append(f"  next: {', '.join(str(step) for step in next_steps)}")
+    return "\n".join(lines)
+
+
 def _maybe_emit_automation_hint(args, repo_root: Path, result) -> None:
     if args.no_hints or result.ok:
         return
@@ -788,10 +818,36 @@ def _maybe_emit_automation_hint(args, repo_root: Path, result) -> None:
     install_step = next((step for step in next_steps if step.startswith("install ")), None)
     if install_step is not None:
         hint = f"ait hint: {install_step}."
-    elif result.adapter.name == "claude-code":
-        hint = 'ait hint: run eval "$(ait doctor --fix)" to enable Claude Code automation in this repo.'
     else:
-        hint = f'ait hint: run eval "$(ait doctor {result.adapter.name} --fix)" to enable automation in this repo.'
+        hint = 'ait hint: run eval "$(ait enable --shell)" to enable detected agent automation in this repo.'
+    print(hint, file=sys.stderr)
+    hints[hint_key] = True
+    _write_hints(hints_path, hints)
+
+
+def _maybe_emit_status_all_hint(args, repo_root: Path, results) -> None:
+    results = tuple(results)
+    if args.no_hints or all(result.ok for result in results):
+        return
+    try:
+        root = resolve_repo_root(repo_root)
+    except ValueError:
+        return
+    hints_path = root / ".ait" / "hints.json"
+    hints = _read_hints(hints_path)
+    hint_key = "all_agent_automation_hint_v1"
+    if hints.get(hint_key):
+        return
+    missing_real = [
+        result.adapter.command_name
+        for result in results
+        if result.adapter.command_name
+        and not _status_payload(result)["real_agent_binary"]
+    ]
+    if missing_real and len(missing_real) == len(results):
+        hint = "ait hint: install an agent CLI such as claude, codex, or aider first."
+    else:
+        hint = 'ait hint: run eval "$(ait enable --shell)" to enable detected agent automation in this repo.'
     print(hint, file=sys.stderr)
     hints[hint_key] = True
     _write_hints(hints_path, hints)
