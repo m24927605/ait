@@ -176,6 +176,33 @@ class CliAdapterTests(unittest.TestCase):
             self.assertTrue(payload["setup"]["direnv_path"].endswith(".envrc"))
             self.assertIn("PATH_add .ait/bin", (repo_root / ".envrc").read_text(encoding="utf-8"))
 
+    def test_bootstrap_defaults_to_claude_code(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "bootstrap"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            payload = json.loads(stdout.getvalue())
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual("claude-code", payload["adapter"]["name"])
+            self.assertTrue((repo_root / ".ait" / "bin" / "claude").exists())
+
     def test_doctor_claude_code_json_reports_automation_checks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp) / "repo"
@@ -303,6 +330,62 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(2, exit_code)
             self.assertIn("Next steps:", text)
             self.assertIn('eval "$(ait bootstrap claude-code --shell)"', text)
+
+    def test_doctor_fix_outputs_eval_safe_shell_snippet(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "doctor", "--fix"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            wrapper_dir = (repo_root / ".ait" / "bin").resolve()
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual(f'export PATH={wrapper_dir}:"$PATH"\n', stdout.getvalue())
+            self.assertTrue((wrapper_dir / "claude").exists())
+
+    def test_status_json_reports_next_steps_without_writing_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "status", "--format", "json"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            payload = json.loads(stdout.getvalue())
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual("claude-code", payload["adapter"])
+            self.assertFalse(payload["wrapper_installed"])
+            self.assertIn("ait bootstrap claude-code", payload["next_steps"])
+            self.assertFalse((repo_root / ".ait").exists())
 
 
 if __name__ == "__main__":

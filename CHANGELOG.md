@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.4 - 2026-04-27
+
+### Added
+
+- Add `ait status` for a compact, non-mutating automation readiness
+  summary with next steps.
+- Let `ait bootstrap` default to the Claude Code adapter.
+- Add `ait doctor --fix` as an eval-friendly one-command setup path.
+
 ## 0.6.3 - 2026-04-27
 
 ### Added

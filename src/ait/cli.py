@@ -142,7 +142,7 @@ def build_parser() -> argparse.ArgumentParser:
     context_parser.add_argument("--format", choices=("text", "json"), default="text")
 
     bootstrap_parser = subparsers.add_parser("bootstrap")
-    bootstrap_parser.add_argument("name", choices=tuple(sorted(ADAPTERS)))
+    bootstrap_parser.add_argument("name", choices=tuple(sorted(ADAPTERS)), nargs="?", default="claude-code")
     bootstrap_parser.add_argument("--format", choices=("text", "json"), default="json")
     bootstrap_parser.add_argument("--shell", action="store_true")
     bootstrap_parser.add_argument("--check", action="store_true")
@@ -150,6 +150,11 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser = subparsers.add_parser("doctor")
     doctor_parser.add_argument("name", choices=tuple(sorted(ADAPTERS)), nargs="?", default="claude-code")
     doctor_parser.add_argument("--format", choices=("text", "json"), default="text")
+    doctor_parser.add_argument("--fix", action="store_true")
+
+    status_parser = subparsers.add_parser("status")
+    status_parser.add_argument("name", choices=tuple(sorted(ADAPTERS)), nargs="?", default="claude-code")
+    status_parser.add_argument("--format", choices=("text", "json"), default="text")
 
     adapter_parser = subparsers.add_parser("adapter")
     adapter_subparsers = adapter_parser.add_subparsers(dest="adapter_command")
@@ -373,12 +378,27 @@ def main() -> int:
             print(_format_bootstrap(result))
         return 0 if result.ok else 2
     if args.command == "doctor":
+        if args.fix:
+            try:
+                print(bootstrap_shell_snippet(args.name, repo_root))
+            except AdapterError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 2
+            return 0
         result = doctor_automation(args.name, repo_root)
         if args.format == "json":
             print(json.dumps(asdict(result), indent=2))
         else:
             print(_format_adapter_doctor(result))
         return 0 if result.ok else 2
+    if args.command == "status":
+        result = doctor_automation(args.name, repo_root)
+        payload = _status_payload(result)
+        if args.format == "json":
+            print(json.dumps(payload, indent=2))
+        else:
+            print(_format_status(payload))
+        return 0
     if args.command == "adapter":
         if args.adapter_command == "list":
             adapters = [asdict(adapter) for adapter in list_adapters()]
@@ -534,6 +554,39 @@ def _doctor_next_steps(result) -> list[str]:
             return ["direnv allow", 'eval "$(ait bootstrap claude-code --shell)"']
         return ['eval "$(ait bootstrap claude-code --shell)"']
     return []
+
+
+def _status_payload(result) -> dict[str, object]:
+    checks = {check.name: check.ok for check in result.checks}
+    return {
+        "adapter": result.adapter.name,
+        "ok": result.ok,
+        "git_repo": checks.get("git_repo", False),
+        "wrapper_installed": checks.get("wrapper_file", False),
+        "path_wrapper_active": checks.get("path_wrapper_active", False),
+        "real_claude_binary": checks.get("real_claude_binary", False),
+        "direnv_available": checks.get("direnv_binary", False),
+        "direnv_loaded": checks.get("direnv_env_loaded", False),
+        "next_steps": _doctor_next_steps(result),
+    }
+
+
+def _format_status(payload: dict[str, object]) -> str:
+    lines = [
+        f"Adapter: {payload['adapter']}",
+        f"OK: {payload['ok']}",
+        f"Git repo: {payload['git_repo']}",
+        f"Wrapper installed: {payload['wrapper_installed']}",
+        f"PATH uses wrapper: {payload['path_wrapper_active']}",
+        f"Real Claude binary: {payload['real_claude_binary']}",
+        f"direnv available: {payload['direnv_available']}",
+        f"direnv loaded: {payload['direnv_loaded']}",
+    ]
+    next_steps = payload.get("next_steps", [])
+    if next_steps:
+        lines.append("Next steps:")
+        lines.extend(f"- {step}" for step in next_steps)
+    return "\n".join(lines)
 
 
 def _format_bootstrap(result) -> str:
