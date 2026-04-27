@@ -20,6 +20,13 @@ from ait.adapters import (
     list_adapters,
     setup_adapter,
 )
+from ait.brain import (
+    build_repo_brain,
+    query_repo_brain,
+    render_brain_query_results,
+    render_repo_brain_text,
+    write_repo_brain,
+)
 from ait.context import build_agent_context, render_agent_context_text
 from ait.app import (
     abandon_intent,
@@ -187,6 +194,17 @@ def build_parser() -> argparse.ArgumentParser:
     memory_search.add_argument("--limit", type=int, default=8)
     memory_search.add_argument("--ranker", choices=("vector", "lexical"), default="vector")
     memory_search.add_argument("--format", choices=("text", "json"), default="text")
+    memory_graph = memory_subparsers.add_parser("graph")
+    memory_graph_subparsers = memory_graph.add_subparsers(dest="memory_graph_command")
+    memory_graph_build = memory_graph_subparsers.add_parser("build")
+    memory_graph_build.add_argument("--format", choices=("text", "json"), default="text")
+    memory_graph_show = memory_graph_subparsers.add_parser("show")
+    memory_graph_show.add_argument("--format", choices=("text", "json"), default="text")
+    memory_graph_show.add_argument("--budget-chars", type=int)
+    memory_graph_query = memory_graph_subparsers.add_parser("query")
+    memory_graph_query.add_argument("query")
+    memory_graph_query.add_argument("--limit", type=int, default=8)
+    memory_graph_query.add_argument("--format", choices=("text", "json"), default="text")
     memory_policy = memory_subparsers.add_parser("policy")
     memory_policy_subparsers = memory_policy.add_subparsers(dest="memory_policy_command")
     memory_policy_init = memory_policy_subparsers.add_parser("init")
@@ -435,6 +453,35 @@ def main() -> int:
             print(render_agent_context_text(context), end="")
         return 0
     if args.command == "memory":
+        if args.memory_command == "graph":
+            if args.memory_graph_command == "build":
+                brain = write_repo_brain(repo_root)
+                if args.format == "json":
+                    print(json.dumps(brain.to_dict(), indent=2))
+                else:
+                    print(f"wrote {Path(brain.repo_root) / '.ait' / 'brain' / 'graph.json'}")
+                    print(f"wrote {Path(brain.repo_root) / '.ait' / 'brain' / 'REPORT.md'}")
+                return 0
+            if args.memory_graph_command == "show":
+                brain = build_repo_brain(repo_root)
+                if args.format == "json":
+                    print(json.dumps(brain.to_dict(), indent=2))
+                else:
+                    print(render_repo_brain_text(brain, budget_chars=args.budget_chars), end="")
+                return 0
+            if args.memory_graph_command == "query":
+                try:
+                    results = query_repo_brain(repo_root, args.query, limit=args.limit)
+                except ValueError as exc:
+                    print(f"error: {exc}", file=sys.stderr)
+                    return 2
+                if args.format == "json":
+                    print(json.dumps([result.to_dict() for result in results], indent=2))
+                else:
+                    print(render_brain_query_results(results), end="")
+                return 0
+            print("error: memory graph requires a subcommand: build, show, or query", file=sys.stderr)
+            return 2
         if args.memory_command == "note":
             if args.memory_note_command == "add":
                 note = add_memory_note(

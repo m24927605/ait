@@ -48,7 +48,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.18.0` alpha quality for local dogfood use. It is
+This repository is at `0.19.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -81,14 +81,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.18.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.19.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.18.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.19.0"
 .venv/bin/ait --help
 ```
 
@@ -171,6 +171,8 @@ ait memory
 ait memory --path src/
 ait memory --promoted-only
 ait memory search "auth adapter"
+ait memory graph show
+ait memory graph query "release process"
 ```
 
 ## Daemon And Harness
@@ -295,6 +297,11 @@ ait memory --budget-chars 4000
 ait memory search "auth adapter"
 ait memory search "auth adapter" --format json
 ait memory search "auth adapter" --ranker lexical
+ait memory graph build
+ait memory graph show
+ait memory graph show --format json
+ait memory graph query "release process"
+ait memory graph query "release process" --format json
 ait memory policy init
 ait memory policy show
 ait memory note add --topic architecture "Keep adapter layers thin."
@@ -327,8 +334,18 @@ and `secrets/` from memory summaries/search metadata, and excludes
 transcripts matching private-key markers from durable transcript
 contents before they can become searchable memory.
 
+`ait memory graph build` materializes a derived repo brain under
+`.ait/brain/graph.json` and `.ait/brain/REPORT.md`. The graph connects
+repo docs, curated notes, intents, attempts, agents, changed files, and
+attempt commits. It is a rebuildable local index, not the source of
+truth. Wrapped Claude Code, Codex, and Aider runs refresh the graph
+automatically before writing `AIT_CONTEXT_FILE`, so normal agent
+invocation can receive the repo brain without a manual workflow command.
+
 See `docs/long-term-memory-design.md` and
-`docs/long-term-memory-acceptance.md` for design and acceptance criteria.
+`docs/long-term-memory-acceptance.md` for long-term memory design and
+acceptance criteria. See `docs/repo-brain-design.md` and
+`docs/repo-brain-acceptance.md` for the graph-backed repo brain slice.
 
 ## Integration Guide
 
@@ -617,7 +634,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.18.0
+git checkout v0.19.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

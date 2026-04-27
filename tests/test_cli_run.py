@@ -6,7 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import chdir, redirect_stdout
+from contextlib import chdir, redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -133,6 +133,52 @@ class CliRunTests(unittest.TestCase):
         self.assertEqual("note", payload[0]["kind"])
         self.assertIn("Run tests before release.", payload[0]["text"])
         self.assertEqual("vector", payload[0]["metadata"]["ranker"])
+
+    def test_memory_graph_cli_builds_shows_and_queries_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            build_stdout = io.StringIO()
+            show_stdout = io.StringIO()
+            query_stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "memory", "graph", "build", "--format", "json"]):
+                    with redirect_stdout(build_stdout):
+                        build_exit = cli.main()
+                with patch("sys.argv", ["ait", "memory", "graph", "show", "--format", "json"]):
+                    with redirect_stdout(show_stdout):
+                        show_exit = cli.main()
+                with patch("sys.argv", ["ait", "memory", "graph", "query", "hello", "--format", "json"]):
+                    with redirect_stdout(query_stdout):
+                        query_exit = cli.main()
+
+            graph_exists = (repo_root / ".ait" / "brain" / "graph.json").exists()
+
+        build_payload = json.loads(build_stdout.getvalue())
+        show_payload = json.loads(show_stdout.getvalue())
+        query_payload = json.loads(query_stdout.getvalue())
+        self.assertEqual(0, build_exit)
+        self.assertEqual(0, show_exit)
+        self.assertEqual(0, query_exit)
+        self.assertTrue(graph_exists)
+        self.assertTrue(any(node["id"] == "repo:root" for node in build_payload["nodes"]))
+        self.assertTrue(any(node["id"] == "doc:README.md" for node in show_payload["nodes"]))
+        self.assertTrue(query_payload)
+
+    def test_memory_graph_query_rejects_negative_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            stderr = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "memory", "graph", "query", "hello", "--limit", "-1"]):
+                    with redirect_stderr(stderr):
+                        exit_code = cli.main()
+
+        self.assertEqual(2, exit_code)
+        self.assertIn("limit must be non-negative", stderr.getvalue())
 
     def test_memory_policy_cli_initializes_and_shows_policy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -58,6 +58,10 @@ memory slice.
     rendered memory, hot files, or memory search metadata.
 25. Policy-excluded transcript content is replaced before durable
     storage and cannot be found through `ait memory search`.
+26. `ait memory graph build/show/query` can build and inspect a
+    derived repo brain from local memory evidence.
+27. Wrapped agent context includes both `AIT Long-Term Repo Memory` and
+    `AIT Repo Brain`.
 
 ## Manual Smoke
 
@@ -66,7 +70,7 @@ Create a temporary Git repository:
 ```bash
 tmpdir="$(mktemp -d)"
 python3.14 -m venv "$tmpdir/venv"
-"$tmpdir/venv/bin/pip" install ait-vcs
+"$tmpdir/venv/bin/pip" install /path/to/ait/dist/ait_vcs-<version>-py3-none-any.whl
 mkdir "$tmpdir/repo"
 cd "$tmpdir/repo"
 git init
@@ -103,6 +107,9 @@ Verify memory:
 "$tmpdir/venv/bin/ait" memory --topic architecture
 "$tmpdir/venv/bin/ait" memory search "repo-local"
 "$tmpdir/venv/bin/ait" memory search "repo-local" --ranker lexical
+"$tmpdir/venv/bin/ait" memory graph build
+"$tmpdir/venv/bin/ait" memory graph show
+"$tmpdir/venv/bin/ait" memory graph query "repo-local"
 "$tmpdir/venv/bin/ait" memory policy init
 "$tmpdir/venv/bin/ait" memory policy show
 "$tmpdir/venv/bin/ait" attempt list
@@ -151,6 +158,8 @@ The automated test suite covers:
 - transcript and note redaction
 - memory policy initialization and rendering
 - memory policy path and transcript exclusion
+- repo brain graph construction, rendering, querying, and context
+  injection
 - text rendering
 - text compaction
 - `ait memory` CLI output

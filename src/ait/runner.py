@@ -9,6 +9,7 @@ import time
 
 from ait.adapters import get_adapter
 from ait.app import AttemptShowResult, create_attempt, create_intent, show_attempt, verify_attempt
+from ait.brain import render_repo_brain_text, write_repo_brain
 from ait.context import build_agent_context, render_agent_context_text
 from ait.daemon import start_daemon
 from ait.harness import AitHarness
@@ -149,11 +150,14 @@ def run_agent_command(
 def _write_context_file(repo_root: Path, workspace: Path, intent_id: str) -> Path:
     context = build_agent_context(repo_root, intent_id=intent_id)
     memory = build_repo_memory(repo_root)
+    brain = write_repo_brain(repo_root)
     path = workspace / ".ait-context.md"
     path.write_text(
         render_agent_context_text(context)
         + "\n"
-        + render_repo_memory_text(memory, budget_chars=12000),
+        + render_repo_memory_text(memory, budget_chars=12000)
+        + "\n"
+        + render_repo_brain_text(brain, budget_chars=8000),
         encoding="utf-8",
     )
     return path

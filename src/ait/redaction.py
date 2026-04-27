@@ -11,6 +11,10 @@ SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b"),
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     re.compile(
+        r"\b(TOKEN|SECRET|PASSWORD|KEY)=([^\s'\"]+)",
+        re.IGNORECASE,
+    ),
+    re.compile(
         r"\b([A-Za-z_][A-Za-z0-9_]*(?:TOKEN|SECRET|PASSWORD|KEY))=([^\s'\"]+)",
         re.IGNORECASE,
     ),

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.19.0 - 2026-04-28
+
+### Added
+
+- Add derived repo brain graph construction from docs, memory notes,
+  intents, attempts, agents, changed files, and attempt commits.
+- Add `ait memory graph build`, `ait memory graph show`, and
+  `ait memory graph query` with JSON and text output.
+- Automatically refresh `.ait/brain/graph.json` and
+  `.ait/brain/REPORT.md` before wrapped agent context injection.
+- Include an `AIT Repo Brain` section in wrapped agent context files.
+- Add design and acceptance documents for the repo brain control plane.
+
 ## 0.18.0 - 2026-04-28
 
 ### Added
