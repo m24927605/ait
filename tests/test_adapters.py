@@ -12,7 +12,9 @@ import tempfile
 
 from ait.adapters import (
     AdapterError,
+    bootstrap_adapter,
     doctor_adapter,
+    doctor_automation,
     get_adapter,
     list_adapters,
     setup_adapter,
@@ -64,6 +66,56 @@ class AdapterTests(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertIn("git_repo", {check.name for check in result.checks if not check.ok})
+
+    def test_doctor_automation_reports_wrapper_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = _init_git_repo(Path(tmp) / "repo")
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                setup_adapter("claude-code", repo_root, install_direnv=True)
+                os.environ["PATH"] = (
+                    str(repo_root / ".ait" / "bin") + os.pathsep + str(bin_dir) + os.pathsep + old_path
+                )
+                result = doctor_automation("claude-code", repo_root)
+            finally:
+                os.environ["PATH"] = old_path
+
+        self.assertTrue(result.ok)
+        checks = {check.name: check for check in result.checks}
+        self.assertTrue(checks["wrapper_file"].ok)
+        self.assertTrue(checks["path_wrapper_active"].ok)
+        self.assertTrue(checks["envrc_path"].ok)
+        self.assertEqual(str(real_claude.resolve()), checks["real_claude_binary"].detail)
+
+    def test_bootstrap_claude_code_installs_wrapper_and_envrc(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = _init_git_repo(Path(tmp) / "repo")
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                result = bootstrap_adapter("claude-code", repo_root)
+            finally:
+                os.environ["PATH"] = old_path
+
+            wrapper_path = repo_root / ".ait" / "bin" / "claude"
+            envrc_path = repo_root / ".envrc"
+
+            self.assertEqual("claude-code", result.adapter.name)
+            self.assertTrue(wrapper_path.exists())
+            self.assertIn("PATH_add .ait/bin", envrc_path.read_text(encoding="utf-8"))
+            self.assertIn(str(wrapper_path.resolve()), result.setup.wrote_files)
+            self.assertIn(str(envrc_path.resolve()), result.setup.wrote_files)
 
     def test_setup_claude_code_writes_hook_and_settings(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

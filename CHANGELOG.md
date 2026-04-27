@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.2 - 2026-04-27
+
+### Added
+
+- Add `ait bootstrap claude-code` as a single low-friction setup command
+  for Claude Code wrapper and direnv integration.
+- Add top-level `ait doctor` automation checks for wrapper, PATH,
+  direnv, `.envrc`, and the real Claude Code binary.
+
 ## 0.6.1 - 2026-04-27
 
 ### Added

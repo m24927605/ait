@@ -46,6 +46,27 @@ class AdapterDoctorResult:
 
 
 @dataclass(frozen=True, slots=True)
+class AutomationDoctorResult:
+    adapter: AgentAdapter
+    checks: tuple[AdapterDoctorCheck, ...]
+
+    @property
+    def ok(self) -> bool:
+        checks = {check.name: check.ok for check in self.checks}
+        required = (
+            "git_repo",
+            "ait_importable",
+            "claude_hook_resource",
+            "claude_settings_resource",
+            "wrapper_file",
+            "real_claude_binary",
+        )
+        if not all(checks.get(name, False) for name in required):
+            return False
+        return checks.get("path_wrapper_active", False) or checks.get("direnv_env_loaded", False)
+
+
+@dataclass(frozen=True, slots=True)
 class AdapterSetupResult:
     adapter: AgentAdapter
     hook_path: str
@@ -54,6 +75,19 @@ class AdapterSetupResult:
     direnv_path: str | None
     settings: dict[str, object]
     wrote_files: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class AdapterBootstrapResult:
+    adapter: AgentAdapter
+    setup: AdapterSetupResult
+    checks: tuple[AdapterDoctorCheck, ...]
+    next_steps: tuple[str, ...]
+
+    @property
+    def ok(self) -> bool:
+        required = {"git_repo", "wrapper_file", "real_claude_binary"}
+        return all(check.ok for check in self.checks if check.name in required)
 
 
 ADAPTERS: dict[str, AgentAdapter] = {
@@ -159,6 +193,80 @@ def doctor_adapter(name: str, repo_root: str | Path) -> AdapterDoctorResult:
         )
 
     return AdapterDoctorResult(adapter=adapter, checks=tuple(checks))
+
+
+def doctor_automation(name: str, repo_root: str | Path) -> AutomationDoctorResult:
+    adapter = get_adapter(name)
+    checks = list(doctor_adapter(name, repo_root).checks)
+
+    try:
+        root = resolve_repo_root(Path(repo_root).resolve())
+    except ValueError:
+        return AutomationDoctorResult(adapter=adapter, checks=tuple(checks))
+
+    if adapter.name != "claude-code":
+        checks.append(
+            AdapterDoctorCheck(
+                "automation",
+                False,
+                f"automation doctor is not implemented for {adapter.name}",
+            )
+        )
+        return AutomationDoctorResult(adapter=adapter, checks=tuple(checks))
+
+    wrapper_path = root / ".ait" / "bin" / "claude"
+    envrc_path = root / ".envrc"
+    active_claude = shutil.which("claude")
+    direnv = shutil.which("direnv")
+
+    checks.extend(
+        [
+            AdapterDoctorCheck(
+                "wrapper_file",
+                wrapper_path.is_file() and os.access(wrapper_path, os.X_OK),
+                str(wrapper_path),
+            ),
+            AdapterDoctorCheck(
+                "path_wrapper_active",
+                active_claude is not None and Path(active_claude).resolve() == wrapper_path.resolve(),
+                active_claude or "claude not found on PATH",
+            ),
+            AdapterDoctorCheck(
+                "direnv_binary",
+                direnv is not None,
+                direnv or "direnv not found; use export PATH=\"$PWD/.ait/bin:$PATH\"",
+            ),
+            AdapterDoctorCheck(
+                "envrc_path",
+                _envrc_has_wrapper_path(envrc_path),
+                str(envrc_path),
+            ),
+            AdapterDoctorCheck(
+                "direnv_env_loaded",
+                Path(os.environ.get("DIRENV_FILE", "")).resolve() == envrc_path.resolve(),
+                os.environ.get("DIRENV_FILE") or "current shell has not loaded this .envrc",
+            ),
+            _real_claude_check(wrapper_path),
+        ]
+    )
+    return AutomationDoctorResult(adapter=adapter, checks=tuple(checks))
+
+
+def bootstrap_adapter(name: str, repo_root: str | Path) -> AdapterBootstrapResult:
+    setup = setup_adapter(name, repo_root, install_wrapper=True, install_direnv=True)
+    doctor = doctor_automation(name, repo_root)
+    next_steps: list[str] = []
+    check_by_name = {check.name: check for check in doctor.checks}
+    if not check_by_name.get("direnv_binary", AdapterDoctorCheck("", False, "")).ok:
+        next_steps.append('export PATH="$PWD/.ait/bin:$PATH"')
+    elif not check_by_name.get("path_wrapper_active", AdapterDoctorCheck("", False, "")).ok:
+        next_steps.append("direnv allow")
+    return AdapterBootstrapResult(
+        adapter=setup.adapter,
+        setup=setup,
+        checks=doctor.checks,
+        next_steps=tuple(next_steps),
+    )
 
 
 def setup_adapter(
@@ -308,6 +416,20 @@ def _merge_envrc(path: Path) -> None:
     else:
         text = ""
     path.write_text(f"{text}{marker}\n{path_line}\n", encoding="utf-8")
+
+
+def _envrc_has_wrapper_path(path: Path) -> bool:
+    if not path.exists():
+        return False
+    return "PATH_add .ait/bin" in path.read_text(encoding="utf-8").splitlines()
+
+
+def _real_claude_check(wrapper_path: Path) -> AdapterDoctorCheck:
+    try:
+        real_claude = _find_real_claude(wrapper_path)
+    except AdapterError as exc:
+        return AdapterDoctorCheck("real_claude_binary", False, str(exc))
+    return AdapterDoctorCheck("real_claude_binary", True, real_claude)
 
 
 def _find_real_claude(wrapper_path: Path) -> str:

@@ -147,6 +147,74 @@ class CliAdapterTests(unittest.TestCase):
             self.assertIn(payload["direnv_path"], payload["wrote_files"])
             self.assertIn("PATH_add .ait/bin", envrc)
 
+    def test_bootstrap_claude_code_json_outputs_setup_and_next_steps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "bootstrap", "claude-code"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            payload = json.loads(stdout.getvalue())
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual("claude-code", payload["adapter"]["name"])
+            self.assertTrue(payload["setup"]["wrapper_path"].endswith(".ait/bin/claude"))
+            self.assertTrue(payload["setup"]["direnv_path"].endswith(".envrc"))
+            self.assertIn("PATH_add .ait/bin", (repo_root / ".envrc").read_text(encoding="utf-8"))
+
+    def test_doctor_claude_code_json_reports_automation_checks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "bootstrap", "claude-code"]):
+                        with redirect_stdout(io.StringIO()):
+                            cli.main()
+                    os.environ["PATH"] = (
+                        str(repo_root / ".ait" / "bin")
+                        + os.pathsep
+                        + str(bin_dir)
+                        + os.pathsep
+                        + old_path
+                    )
+                    with patch("sys.argv", ["ait", "doctor", "claude-code", "--format", "json"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            payload = json.loads(stdout.getvalue())
+            checks = {item["name"]: item for item in payload["checks"]}
+
+            self.assertEqual(0, exit_code)
+            self.assertTrue(checks["wrapper_file"]["ok"])
+            self.assertTrue(checks["path_wrapper_active"]["ok"])
+            self.assertTrue(checks["real_claude_binary"]["ok"])
+
 
 if __name__ == "__main__":
     unittest.main()

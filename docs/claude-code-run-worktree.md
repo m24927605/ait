@@ -6,7 +6,7 @@ reviewable isolation, an ait-linked commit, and an explicit promote step.
 
 Validated on 2026-04-27 with:
 
-- `ait-vcs` local build for `0.6.1`
+- `ait-vcs` local build for `0.6.2`
 - Claude Code `2.1.119`
 - Python 3.14
 
@@ -126,7 +126,7 @@ telemetry.
 For lower friction, install a wrapper once:
 
 ```bash
-"$tmpdir/venv/bin/ait" adapter setup claude-code --install-wrapper --install-direnv
+"$tmpdir/venv/bin/ait" bootstrap claude-code
 direnv allow
 ```
 
@@ -151,4 +151,10 @@ If you do not use `direnv`, add the wrapper directory manually:
 
 ```bash
 export PATH="$PWD/.ait/bin:$PATH"
+```
+
+Verify the automation path:
+
+```bash
+"$tmpdir/venv/bin/ait" doctor
 ```

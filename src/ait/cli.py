@@ -11,7 +11,9 @@ import tomllib
 from ait.adapters import (
     ADAPTERS,
     AdapterError,
+    bootstrap_adapter,
     doctor_adapter,
+    doctor_automation,
     get_adapter,
     list_adapters,
     setup_adapter,
@@ -137,6 +139,14 @@ def build_parser() -> argparse.ArgumentParser:
     context_parser = subparsers.add_parser("context")
     context_parser.add_argument("intent_id")
     context_parser.add_argument("--format", choices=("text", "json"), default="text")
+
+    bootstrap_parser = subparsers.add_parser("bootstrap")
+    bootstrap_parser.add_argument("name", choices=tuple(sorted(ADAPTERS)))
+    bootstrap_parser.add_argument("--format", choices=("text", "json"), default="json")
+
+    doctor_parser = subparsers.add_parser("doctor")
+    doctor_parser.add_argument("name", choices=tuple(sorted(ADAPTERS)), nargs="?", default="claude-code")
+    doctor_parser.add_argument("--format", choices=("text", "json"), default="text")
 
     adapter_parser = subparsers.add_parser("adapter")
     adapter_subparsers = adapter_parser.add_subparsers(dest="adapter_command")
@@ -338,6 +348,24 @@ def main() -> int:
         else:
             print(render_agent_context_text(context), end="")
         return 0
+    if args.command == "bootstrap":
+        try:
+            result = bootstrap_adapter(args.name, repo_root)
+        except AdapterError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        if args.format == "json":
+            print(json.dumps(asdict(result), indent=2))
+        else:
+            print(_format_bootstrap(result))
+        return 0 if result.ok else 2
+    if args.command == "doctor":
+        result = doctor_automation(args.name, repo_root)
+        if args.format == "json":
+            print(json.dumps(asdict(result), indent=2))
+        else:
+            print(_format_adapter_doctor(result))
+        return 0 if result.ok else 2
     if args.command == "adapter":
         if args.adapter_command == "list":
             adapters = [asdict(adapter) for adapter in list_adapters()]
@@ -471,6 +499,19 @@ def _format_adapter_doctor(result) -> str:
     for check in result.checks:
         status = "ok" if check.ok else "fail"
         lines.append(f"- {check.name}: {status} ({check.detail})")
+    return "\n".join(lines)
+
+
+def _format_bootstrap(result) -> str:
+    lines = [
+        f"Adapter: {result.adapter.name}",
+        f"OK: {result.ok}",
+        "Wrote:",
+    ]
+    lines.extend(f"- {path}" for path in result.setup.wrote_files)
+    if result.next_steps:
+        lines.append("Next steps:")
+        lines.extend(f"- {step}" for step in result.next_steps)
     return "\n".join(lines)
 
 
