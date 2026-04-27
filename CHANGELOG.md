@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.7 - 2026-04-27
+
+### Fixed
+
+- Do not fail `ait run --commit-message ...` when the wrapped agent exits
+  successfully but leaves no file changes to commit.
+
 ## 0.6.6 - 2026-04-27
 
 ### Changed

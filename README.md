@@ -46,7 +46,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.6.6` alpha quality for local dogfood use. It is
+This repository is at `0.6.7` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -79,14 +79,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.6.6"
+pipx install "git+https://github.com/m24927605/ait.git@v0.6.7"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.6.6"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.6.7"
 .venv/bin/ait --help
 ```
 
@@ -510,7 +510,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.6.6
+git checkout v0.6.7
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

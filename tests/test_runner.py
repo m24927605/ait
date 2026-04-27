@@ -148,6 +148,28 @@ class RunnerTests(unittest.TestCase):
             self.assertFalse((Path(result.workspace_ref) / ".ait-context.md").exists())
             self.assertFalse(_git_stdout(Path(result.workspace_ref), "status", "--short"))
 
+    def test_run_agent_command_commit_message_allows_no_change_session(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="No generated change",
+                adapter_name="claude-code",
+                command=[sys.executable, "-c", "print('no changes')"],
+                commit_message="commit generated change",
+                capture_command_output=True,
+            )
+
+            self.assertEqual(0, result.exit_code)
+            self.assertEqual("no changes\n", result.command_stdout)
+            self.assertEqual("succeeded", result.attempt.attempt["verified_status"])
+            self.assertEqual([], result.attempt.commits)
+            self.assertEqual({}, result.attempt.files)
+            self.assertFalse((Path(result.workspace_ref) / ".ait-context.md").exists())
+            self.assertFalse(_git_stdout(Path(result.workspace_ref), "status", "--short"))
+
 
 def _init_git_repo(repo_root: Path) -> None:
     _git(repo_root, "init")

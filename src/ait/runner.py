@@ -102,13 +102,15 @@ def run_agent_command(
     if commit_message and completed is not None and completed.returncode == 0:
         if context_file is not None:
             context_file.unlink(missing_ok=True)
-        _stage_all_changes(Path(attempt.workspace_ref))
-        create_attempt_commit(
-            attempt.workspace_ref,
-            message=commit_message,
-            intent_id=intent.intent_id,
-            attempt_id=attempt.attempt_id,
-        )
+        workspace_path = Path(attempt.workspace_ref)
+        _stage_all_changes(workspace_path)
+        if _has_staged_changes(workspace_path):
+            create_attempt_commit(
+                attempt.workspace_ref,
+                message=commit_message,
+                intent_id=intent.intent_id,
+                attempt_id=attempt.attempt_id,
+            )
         shown = verify_attempt(root, attempt_id=attempt.attempt_id)
     else:
         shown = show_attempt(root, attempt_id=attempt.attempt_id)
@@ -141,3 +143,18 @@ def _stage_all_changes(workspace: Path) -> None:
     )
     if completed.returncode != 0:
         raise WorkspaceError(completed.stderr.strip() or "git add -A failed")
+
+
+def _has_staged_changes(workspace: Path) -> bool:
+    completed = subprocess.run(
+        ["git", "diff", "--cached", "--quiet"],
+        cwd=workspace,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode == 0:
+        return False
+    if completed.returncode == 1:
+        return True
+    raise WorkspaceError(completed.stderr.strip() or "git diff --cached failed")
