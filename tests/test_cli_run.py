@@ -141,6 +141,7 @@ class CliRunTests(unittest.TestCase):
             build_stdout = io.StringIO()
             show_stdout = io.StringIO()
             query_stdout = io.StringIO()
+            brief_stdout = io.StringIO()
 
             with chdir(repo_root):
                 with patch("sys.argv", ["ait", "memory", "graph", "build", "--format", "json"]):
@@ -152,19 +153,26 @@ class CliRunTests(unittest.TestCase):
                 with patch("sys.argv", ["ait", "memory", "graph", "query", "hello", "--format", "json"]):
                     with redirect_stdout(query_stdout):
                         query_exit = cli.main()
+                with patch("sys.argv", ["ait", "memory", "graph", "brief", "hello", "--format", "json"]):
+                    with redirect_stdout(brief_stdout):
+                        brief_exit = cli.main()
 
             graph_exists = (repo_root / ".ait" / "brain" / "graph.json").exists()
 
         build_payload = json.loads(build_stdout.getvalue())
         show_payload = json.loads(show_stdout.getvalue())
         query_payload = json.loads(query_stdout.getvalue())
+        brief_payload = json.loads(brief_stdout.getvalue())
         self.assertEqual(0, build_exit)
         self.assertEqual(0, show_exit)
         self.assertEqual(0, query_exit)
+        self.assertEqual(0, brief_exit)
         self.assertTrue(graph_exists)
         self.assertTrue(any(node["id"] == "repo:root" for node in build_payload["nodes"]))
         self.assertTrue(any(node["id"] == "doc:README.md" for node in show_payload["nodes"]))
         self.assertTrue(query_payload)
+        self.assertEqual("hello", brief_payload["query"])
+        self.assertTrue(brief_payload["results"])
 
     def test_memory_graph_query_rejects_negative_limit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

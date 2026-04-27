@@ -117,7 +117,7 @@ connected context.
 ## Automatic Agent Integration
 
 Before a wrapped agent starts, AIT refreshes the repo brain and includes
-a compact `AIT Repo Brain` section in `.ait-context.md`.
+a compact `AIT Repo Brain Briefing` section in `.ait-context.md`.
 
 This means the intended user flow stays:
 

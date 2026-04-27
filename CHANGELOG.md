@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.20.0 - 2026-04-28
+
+### Added
+
+- Add `ait memory graph brief <query>` to render a compact repo brain
+  briefing selected from the graph.
+- Add JSON output for repo brain briefings.
+- Inject `AIT Repo Brain Briefing` into wrapped agent context instead
+  of the full graph report.
+- Add design documentation for repo brain briefing selection.
+
 ## 0.19.0 - 2026-04-28
 
 ### Added

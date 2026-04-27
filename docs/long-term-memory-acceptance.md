@@ -61,7 +61,7 @@ memory slice.
 26. `ait memory graph build/show/query` can build and inspect a
     derived repo brain from local memory evidence.
 27. Wrapped agent context includes both `AIT Long-Term Repo Memory` and
-    `AIT Repo Brain`.
+    `AIT Repo Brain Briefing`.
 
 ## Manual Smoke
 
@@ -110,6 +110,7 @@ Verify memory:
 "$tmpdir/venv/bin/ait" memory graph build
 "$tmpdir/venv/bin/ait" memory graph show
 "$tmpdir/venv/bin/ait" memory graph query "repo-local"
+"$tmpdir/venv/bin/ait" memory graph brief "repo-local"
 "$tmpdir/venv/bin/ait" memory policy init
 "$tmpdir/venv/bin/ait" memory policy show
 "$tmpdir/venv/bin/ait" attempt list

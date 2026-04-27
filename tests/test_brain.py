@@ -8,7 +8,14 @@ import unittest
 from pathlib import Path
 
 from ait.app import create_attempt, create_commit_for_attempt, create_intent
-from ait.brain import build_repo_brain, query_repo_brain, render_repo_brain_text, write_repo_brain
+from ait.brain import (
+    build_repo_brain,
+    build_repo_brain_briefing,
+    query_repo_brain,
+    render_repo_brain_briefing,
+    render_repo_brain_text,
+    write_repo_brain,
+)
 from ait.db import connect_db, run_migrations
 from ait.memory import add_memory_note
 from ait.memory_policy import init_memory_policy
@@ -190,6 +197,37 @@ class BrainTests(unittest.TestCase):
             self.assertIn("status=failed", text)
             self.assertIn("status=succeeded", text)
             self.assertIn("status=promoted", text)
+
+    def test_repo_brain_briefing_selects_relevant_nodes_and_neighbors(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            add_memory_note(repo_root, topic="release", body="Run twine check before PyPI publish.")
+            attempt_id = _commit_attempt(repo_root, "Release PyPI package", "pyproject.toml")
+
+            briefing = build_repo_brain_briefing(repo_root, "pypi package", limit=4)
+            text = render_repo_brain_briefing(briefing)
+
+            self.assertEqual("pypi package", briefing.query)
+            self.assertEqual(f"attempt:{attempt_id}", briefing.results[0].node.id)
+            self.assertIn("AIT Repo Brain Briefing", text)
+            self.assertIn("Likely Files:", text)
+            self.assertIn("file:pyproject.toml", text)
+            self.assertIn("Relevant Docs And Notes:", text)
+
+    def test_repo_brain_briefing_compacts_to_budget(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            _commit_attempt(repo_root, "Large briefing package release", "pyproject.toml")
+
+            text = render_repo_brain_briefing(
+                build_repo_brain_briefing(repo_root, "package release"),
+                budget_chars=180,
+            )
+
+            self.assertLessEqual(len(text), 180)
+            self.assertIn("briefing compacted", text)
 
 
 def _init_git_repo(repo_root: Path) -> None:

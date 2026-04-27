@@ -21,8 +21,10 @@ from ait.adapters import (
     setup_adapter,
 )
 from ait.brain import (
+    build_repo_brain_briefing,
     build_repo_brain,
     query_repo_brain,
+    render_repo_brain_briefing,
     render_brain_query_results,
     render_repo_brain_text,
     write_repo_brain,
@@ -205,6 +207,11 @@ def build_parser() -> argparse.ArgumentParser:
     memory_graph_query.add_argument("query")
     memory_graph_query.add_argument("--limit", type=int, default=8)
     memory_graph_query.add_argument("--format", choices=("text", "json"), default="text")
+    memory_graph_brief = memory_graph_subparsers.add_parser("brief")
+    memory_graph_brief.add_argument("query")
+    memory_graph_brief.add_argument("--limit", type=int, default=6)
+    memory_graph_brief.add_argument("--budget-chars", type=int, default=5000)
+    memory_graph_brief.add_argument("--format", choices=("text", "json"), default="text")
     memory_policy = memory_subparsers.add_parser("policy")
     memory_policy_subparsers = memory_policy.add_subparsers(dest="memory_policy_command")
     memory_policy_init = memory_policy_subparsers.add_parser("init")
@@ -480,7 +487,18 @@ def main() -> int:
                 else:
                     print(render_brain_query_results(results), end="")
                 return 0
-            print("error: memory graph requires a subcommand: build, show, or query", file=sys.stderr)
+            if args.memory_graph_command == "brief":
+                try:
+                    briefing = build_repo_brain_briefing(repo_root, args.query, limit=args.limit)
+                except ValueError as exc:
+                    print(f"error: {exc}", file=sys.stderr)
+                    return 2
+                if args.format == "json":
+                    print(json.dumps(briefing.to_dict(), indent=2))
+                else:
+                    print(render_repo_brain_briefing(briefing, budget_chars=args.budget_chars), end="")
+                return 0
+            print("error: memory graph requires a subcommand: build, show, query, or brief", file=sys.stderr)
             return 2
         if args.memory_command == "note":
             if args.memory_note_command == "add":

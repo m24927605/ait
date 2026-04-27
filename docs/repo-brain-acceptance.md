@@ -31,7 +31,7 @@ slice.
 15. `ait memory graph query <text> --format json` emits parseable JSON.
 16. Wrapped agent runs refresh `.ait/brain/graph.json` before launch when
     context injection is enabled.
-17. Wrapped agent context includes an `AIT Repo Brain` section.
+17. Wrapped agent context includes an `AIT Repo Brain Briefing` section.
 18. Claude Code, Codex, and Aider continue to receive
     `AIT_CONTEXT_FILE` through their wrappers.
 19. Existing `ait memory` and `ait memory search` behavior is unchanged.
@@ -63,6 +63,7 @@ git commit -m init
 test -f .ait/brain/graph.json
 test -f .ait/brain/REPORT.md
 "$tmpdir/venv/bin/ait" memory graph query "repo brain"
+"$tmpdir/venv/bin/ait" memory graph brief "repo brain"
 ```
 
 ## Automated Coverage

@@ -65,6 +65,20 @@ class BrainQueryResult:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class RepoBrainBriefing:
+    query: str
+    generated_at: str
+    results: tuple[BrainQueryResult, ...]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "query": self.query,
+            "generated_at": self.generated_at,
+            "results": [result.to_dict() for result in self.results],
+        }
+
+
 def build_repo_brain(repo_root: str | Path) -> RepoBrain:
     init_result = init_repo(repo_root)
     root = init_result.repo_root
@@ -161,6 +175,29 @@ def query_repo_brain(
     return query_repo_brain_graph(brain, query, limit=limit)
 
 
+def build_repo_brain_briefing(
+    repo_root: str | Path,
+    query: str,
+    *,
+    limit: int = 6,
+) -> RepoBrainBriefing:
+    brain = write_repo_brain(repo_root)
+    return build_repo_brain_briefing_from_graph(brain, query, limit=limit)
+
+
+def build_repo_brain_briefing_from_graph(
+    brain: RepoBrain,
+    query: str,
+    *,
+    limit: int = 6,
+) -> RepoBrainBriefing:
+    return RepoBrainBriefing(
+        query=query,
+        generated_at=brain.generated_at,
+        results=query_repo_brain_graph(brain, query, limit=limit),
+    )
+
+
 def query_repo_brain_graph(
     brain: RepoBrain,
     query: str,
@@ -244,6 +281,68 @@ def render_brain_query_results(results: tuple[BrainQueryResult, ...]) -> str:
             neighbor_text = ", ".join(f"{neighbor.kind}:{neighbor.title}" for neighbor in result.neighbors[:8])
             lines.append(f"  neighbors: {neighbor_text}")
     return "\n".join(lines) + "\n"
+
+
+def render_repo_brain_briefing(briefing: RepoBrainBriefing, *, budget_chars: int | None = 5000) -> str:
+    lines = [
+        "AIT Repo Brain Briefing",
+        f"Query: {briefing.query}",
+        f"Generated: {briefing.generated_at}",
+        "",
+        "Relevant Project Facts:",
+    ]
+    if not briefing.results:
+        lines.append("- none found; inspect the repository normally")
+    for result in briefing.results:
+        node = result.node
+        if node.kind in {"repo", "topic"}:
+            lines.append(f"- {node.kind}:{node.title} confidence={node.confidence}")
+            if node.text:
+                lines.append(f"  {_compact_line(node.text)}")
+
+    lines.append("")
+    lines.append("Relevant Attempts:")
+    attempt_lines = _briefing_node_lines(briefing, kinds={"attempt"})
+    lines.extend(attempt_lines or ["- none"])
+
+    lines.append("")
+    lines.append("Likely Files:")
+    file_lines = _briefing_node_lines(briefing, kinds={"file"})
+    lines.extend(file_lines or ["- none"])
+
+    lines.append("")
+    lines.append("Relevant Docs And Notes:")
+    doc_note_lines = _briefing_node_lines(briefing, kinds={"doc", "note"})
+    lines.extend(doc_note_lines or ["- none"])
+
+    lines.append("")
+    lines.append("Connected Evidence:")
+    evidence_lines = _briefing_node_lines(briefing, kinds={"intent", "agent", "commit", "trace"})
+    lines.extend(evidence_lines or ["- none"])
+
+    lines.append("")
+    lines.append("Use this as advisory memory; verify current files before editing.")
+    text = "\n".join(lines).rstrip() + "\n"
+    if budget_chars is None or budget_chars <= 0 or len(text) <= budget_chars:
+        return text
+    marker = "\n[ait repo brain briefing compacted to configured budget]\n"
+    keep = max(0, budget_chars - len(marker))
+    return text[:keep].rstrip() + marker
+
+
+def _briefing_node_lines(briefing: RepoBrainBriefing, *, kinds: set[str]) -> list[str]:
+    seen: set[str] = set()
+    lines: list[str] = []
+    for result in briefing.results:
+        candidates = (result.node, *result.neighbors)
+        for node in candidates:
+            if node.kind not in kinds or node.id in seen:
+                continue
+            seen.add(node.id)
+            lines.append(f"- {node.kind}:{node.title} confidence={node.confidence}")
+            if node.text:
+                lines.append(f"  {_compact_line(node.text)}")
+    return lines
 
 
 def _add_doc_nodes(
