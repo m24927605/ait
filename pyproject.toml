@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ait-vcs"
-version = "0.6.5"
-description = "AI-agent-native VCS MVP"
+version = "0.6.6"
+description = "Git worktree isolation and provenance for AI coding agents"
 readme = "README.md"
 requires-python = ">=3.14"
 license = "MIT"

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.6 - 2026-04-27
+
+### Changed
+
+- Rework the README opening for a 30-second external quickstart from
+  PyPI or GitHub.
+- Add `docs/getting-started.md` with install, activation,
+  verification, and rollback steps for Claude Code automation.
+- Improve package metadata description for PyPI readers.
+
 ## 0.6.5 - 2026-04-27
 
 ### Added

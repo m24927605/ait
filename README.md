@@ -1,18 +1,52 @@
 # ait
 
-`ait` is an AI-agent-native version control layer on top of Git.
+`ait` gives AI coding agents a safer Git workflow: isolated worktrees,
+agent-linked commits, and provenance for what changed. It is designed so
+you can keep invoking tools such as Claude Code while `ait` captures the
+work in an attempt branch that can be reviewed and promoted later.
 
-The MVP tracks:
+## 30 Second Quickstart
 
-- structured intents
-- isolated attempts in Git worktrees
-- daemon-ingested tool events from agent harnesses
+Install the PyPI package, enter a Git repository, let `ait` install the
+repo-local Claude wrapper, then keep using `claude`:
+
+```bash
+pipx install ait-vcs
+cd your-repo
+ait status
+eval "$(ait doctor --fix)"
+claude ...
+```
+
+After `doctor --fix`, `claude ...` resolves to `.ait/bin/claude` inside
+that repository. The wrapper runs Claude Code through `ait run`, so the
+agent edits an isolated attempt worktree and `ait` records the result as
+an attempt-linked commit.
+
+If you do not use `pipx`, install in a virtual environment:
+
+```bash
+python3.14 -m venv .venv
+.venv/bin/pip install ait-vcs
+.venv/bin/ait status
+eval "$(.venv/bin/ait doctor --fix)"
+```
+
+See [docs/getting-started.md](docs/getting-started.md) for activation,
+verification, and rollback.
+
+## What ait Tracks
+
+- structured user intents
+- isolated agent attempts in Git worktrees
+- agent command output and lifecycle status
+- optional daemon-ingested tool events from harnesses
 - queryable evidence, file access, and commit linkage
-- verification, promote, discard, and rebase flows
+- promote, discard, rebase, and verification flows
 
 ## Status
 
-This repository is at `0.6.5` alpha quality for local dogfood use. It is
+This repository is at `0.6.6` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -45,14 +79,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.6.5"
+pipx install "git+https://github.com/m24927605/ait.git@v0.6.6"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.6.5"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.6.6"
 .venv/bin/ait --help
 ```
 
@@ -77,7 +111,7 @@ python3.14 -m venv .venv
 .venv/bin/ait --help
 ```
 
-## Quickstart
+## Manual Intent/Attempt Flow
 
 Initialize ait metadata in a Git repository:
 
@@ -476,7 +510,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.6.5
+git checkout v0.6.6
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q
