@@ -109,9 +109,12 @@ Implemented increments:
   wrappers
 - captured Aider and Codex stdout/stderr transcripts as searchable
   repo-local evidence
+- redaction of common secrets before transcript evidence enters
+  long-term memory
 
 The next natural increments are:
 
+- configurable memory exclusion policies
 - external embedding-backed ranking over local evidence, if explicitly
   configured by the user
 - structured native tool-level hooks beyond Claude Code

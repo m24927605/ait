@@ -47,7 +47,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.12.0` alpha quality for local dogfood use. It is
+This repository is at `0.13.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -80,14 +80,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.12.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.13.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.12.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.13.0"
 .venv/bin/ait --help
 ```
 
@@ -314,6 +314,9 @@ using a remote service. The default ranker uses local TF-IDF vectors
 across curated notes, intent text, attempt metadata, changed files,
 attempt commits, and captured Aider/Codex transcripts. Use
 `--ranker lexical` for the older deterministic term matching fallback.
+Common secret patterns are redacted before transcript evidence enters
+`.ait/traces/`; rendered memory and search results mark redacted
+evidence in metadata.
 
 See `docs/long-term-memory-design.md` and
 `docs/long-term-memory-acceptance.md` for design and acceptance criteria.
@@ -447,8 +450,9 @@ After bootstrap, invoking `codex ...` or `aider ...` from that
 repository routes through `ait run --adapter codex` or
 `ait run --adapter aider`, so `AIT_CONTEXT_FILE` carries the same
 long-term memory handoff. Their stdout/stderr transcripts are captured
-under `.ait/traces/` and become searchable memory evidence. Native
-tool-level hooks for Codex and Aider are not implemented yet.
+under `.ait/traces/` and become searchable memory evidence. Common
+secrets are redacted before transcripts are written. Native tool-level
+hooks for Codex and Aider are not implemented yet.
 
 For a custom workflow, either wrap the command with `ait run` or call
 the Python harness API directly from your agent runner:
@@ -571,7 +575,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.12.0
+git checkout v0.13.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

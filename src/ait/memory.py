@@ -8,6 +8,7 @@ import sqlite3
 import uuid
 
 from ait.db import connect_db, run_migrations, utc_now
+from ait.redaction import has_redactions, redact_text
 from ait.repo import resolve_repo_root
 
 
@@ -124,9 +125,12 @@ def render_repo_memory_text(memory: RepoMemory, *, budget_chars: int | None = No
     if not memory.notes:
         lines.append("- none")
     for note in memory.notes:
+        body, redacted = redact_text(note.body)
         topic = note.topic if note.topic else "general"
         lines.append(f"- {note.id} topic={topic} source={note.source}")
-        lines.append(f"  {note.body}")
+        lines.append(f"  {body}")
+        if redacted:
+            lines.append("  redacted: true")
 
     lines.extend(
         [
@@ -462,16 +466,18 @@ def _search_documents(
     ).fetchall()
     for row in note_rows:
         topic = str(row["topic"]) if row["topic"] is not None else "general"
+        body, redacted = redact_text(str(row["body"]))
         documents.append(
             {
                 "kind": "note",
                 "id": str(row["id"]),
                 "title": topic,
-                "text": str(row["body"]),
+                "text": body,
                 "metadata": {
                     "topic": topic,
                     "source": str(row["source"]),
                     "updated_at": str(row["updated_at"]),
+                    "redacted": redacted,
                 },
             }
         )
@@ -498,6 +504,7 @@ def _search_documents(
         commits = _commit_oids(conn, attempt_id)
         raw_trace_ref = str(row["raw_trace_ref"] or "")
         trace_text = _read_trace_text(raw_trace_ref, repo_root=repo_root)
+        trace_redacted = has_redactions(trace_text)
         text_parts = [
             str(row["intent_title"]),
             str(row["intent_description"] or ""),
@@ -520,6 +527,7 @@ def _search_documents(
                     "result_exit_code": row["result_exit_code"],
                     "started_at": str(row["started_at"]),
                     "raw_trace_ref": raw_trace_ref,
+                    "redacted": trace_redacted,
                     "changed_files": list(changed_files),
                     "commit_oids": list(commits),
                 },

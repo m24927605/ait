@@ -186,6 +186,34 @@ class RunnerTests(unittest.TestCase):
                     self.assertEqual("attempt", search_results[0].kind)
                     self.assertEqual(result.attempt_id, search_results[0].id)
 
+    def test_codex_transcript_redacts_secrets_before_memory_search(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="Codex secret transcript",
+                adapter_name="codex",
+                command=[
+                    sys.executable,
+                    "-c",
+                    "print('api token sk-abcdefghijklmnopqrstuvwxyz123456')",
+                ],
+                capture_command_output=True,
+            )
+
+            raw_trace_ref = result.attempt.attempt["raw_trace_ref"]
+            trace_text = (repo_root / raw_trace_ref).read_text(encoding="utf-8")
+            search_results = search_repo_memory(repo_root, "redacted")
+
+            self.assertNotIn("sk-abcdefghijklmnopqrstuvwxyz123456", trace_text)
+            self.assertIn("[REDACTED]", trace_text)
+            self.assertIn("Redacted: true", trace_text)
+            self.assertEqual("attempt", search_results[0].kind)
+            self.assertTrue(search_results[0].metadata["redacted"])
+            self.assertNotIn("sk-abcdefghijklmnopqrstuvwxyz123456", search_results[0].text)
+
     def test_run_agent_command_commit_message_stages_commits_and_verifies(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

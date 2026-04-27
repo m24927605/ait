@@ -79,7 +79,7 @@ def run_migrations(conn: sqlite3.Connection) -> None:
             conn.executescript(migration.sql)
             conn.execute(
                 """
-                INSERT INTO schema_migrations(version, name, applied_at)
+                INSERT OR IGNORE INTO schema_migrations(version, name, applied_at)
                 VALUES (?, ?, ?)
                 """,
                 (migration.version, migration.name, utc_now()),

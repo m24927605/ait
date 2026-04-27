@@ -6,7 +6,7 @@ reviewable isolation, an ait-linked commit, and an explicit promote step.
 
 Validated on 2026-04-27 with:
 
-- `ait-vcs` local build for `0.12.0`
+- `ait-vcs` local build for `0.13.0`
 - Claude Code `2.1.119`
 - Python 3.14
 

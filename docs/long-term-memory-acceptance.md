@@ -48,6 +48,10 @@ memory slice.
     `.ait/traces/`.
 20. `ait memory search <query>` can find captured Aider and Codex
     transcript content.
+21. Captured transcripts redact common secret patterns before writing to
+    `.ait/traces/`.
+22. Rendered memory and search result metadata indicate when evidence
+    has been redacted.
 
 ## Manual Smoke
 
@@ -119,6 +123,8 @@ Expected result:
 - Codex and Aider wrappers route through `ait run` and expose context.
 - Codex and Aider transcript text is stored under `.ait/traces/` and
   searchable.
+- transcript secrets are replaced with `[REDACTED]` before persistence.
+- redacted search results include `redacted: true` metadata.
 - the root checkout is unchanged until promotion.
 
 ## Automated Coverage
@@ -132,6 +138,7 @@ The automated test suite covers:
 - vector and lexical memory search rankers
 - non-Claude adapter context defaults and wrapper automation
 - non-Claude transcript capture and search
+- transcript and note redaction
 - text rendering
 - text compaction
 - `ait memory` CLI output

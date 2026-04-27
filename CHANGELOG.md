@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.13.0 - 2026-04-27
+
+### Added
+
+- Redact common secrets before Aider and Codex transcripts are written
+  to `.ait/traces/`.
+- Redact curated memory notes in rendered memory and memory search
+  documents.
+- Mark memory search results with `redacted` metadata when evidence
+  contains redactions.
+
+### Fixed
+
+- Make schema migration recording tolerant of re-entrant migration calls.
+
 ## 0.12.0 - 2026-04-27
 
 ### Added

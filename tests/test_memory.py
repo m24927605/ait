@@ -143,6 +143,25 @@ class MemoryTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 search_repo_memory(repo_root, "anything", ranker="unknown")
 
+    def test_memory_notes_are_redacted_in_rendering_and_search(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            add_memory_note(
+                repo_root,
+                topic="security",
+                body="Do not leak GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz123456",
+            )
+
+            text = render_repo_memory_text(build_repo_memory(repo_root))
+            results = search_repo_memory(repo_root, "redacted")
+
+            self.assertNotIn("ghp_abcdefghijklmnopqrstuvwxyz123456", text)
+            self.assertIn("[REDACTED]", text)
+            self.assertIn("redacted: true", text)
+            self.assertEqual("note", results[0].kind)
+            self.assertTrue(results[0].metadata["redacted"])
+
 
 def _init_git_repo(repo_root: Path) -> None:
     _git(repo_root, "init")
