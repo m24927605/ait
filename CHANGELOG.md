@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.0 - 2026-04-27
+
+### Added
+
+- Add `ait memory search <query>` for repo-local evidence search across
+  curated memory notes, attempts, intent text, changed files, and
+  attempt commits.
+- Add JSON and text output for memory search results so agent workflows
+  can retrieve relevant memory without reading the full memory summary.
+
 ## 0.8.0 - 2026-04-27
 
 ### Added

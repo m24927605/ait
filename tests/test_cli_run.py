@@ -97,6 +97,33 @@ class CliRunTests(unittest.TestCase):
         self.assertIn("Use repo-local state only.", list_stdout.getvalue())
         self.assertTrue(json.loads(remove_stdout.getvalue())["removed"])
 
+    def test_memory_search_cli_outputs_parseable_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            add_stdout = io.StringIO()
+            search_stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    ["ait", "memory", "note", "add", "--topic", "workflow", "Run tests before release."],
+                ):
+                    with redirect_stdout(add_stdout):
+                        add_exit = cli.main()
+                with patch(
+                    "sys.argv",
+                    ["ait", "memory", "search", "tests release", "--format", "json"],
+                ):
+                    with redirect_stdout(search_stdout):
+                        search_exit = cli.main()
+
+        payload = json.loads(search_stdout.getvalue())
+        self.assertEqual(0, add_exit)
+        self.assertEqual(0, search_exit)
+        self.assertEqual("note", payload[0]["kind"])
+        self.assertIn("Run tests before release.", payload[0]["text"])
+
 
 def _init_git_repo(repo_root: Path) -> None:
     subprocess.run(["git", "init"], cwd=repo_root, check=True, capture_output=True)

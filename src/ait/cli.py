@@ -42,6 +42,8 @@ from ait.memory import (
     list_memory_notes,
     remove_memory_note,
     render_repo_memory_text,
+    render_memory_search_results,
+    search_repo_memory,
 )
 from ait.query import blame_path, execute_query, list_shortcut_expression, parse_blame_target
 from ait.reconcile import reconcile_repo
@@ -172,6 +174,10 @@ def build_parser() -> argparse.ArgumentParser:
     memory_note_remove = memory_note_subparsers.add_parser("remove")
     memory_note_remove.add_argument("note_id")
     memory_note_remove.add_argument("--format", choices=("text", "json"), default="json")
+    memory_search = memory_subparsers.add_parser("search")
+    memory_search.add_argument("query")
+    memory_search.add_argument("--limit", type=int, default=8)
+    memory_search.add_argument("--format", choices=("text", "json"), default="text")
 
     bootstrap_parser = subparsers.add_parser("bootstrap")
     bootstrap_parser.add_argument("name", choices=tuple(sorted(ADAPTERS)), nargs="?", default="claude-code")
@@ -420,6 +426,13 @@ def main() -> int:
                 else:
                     print(f"removed {args.note_id}" if removed else f"not found {args.note_id}")
                 return 0 if removed else 2
+        if args.memory_command == "search":
+            results = search_repo_memory(repo_root, args.query, limit=args.limit)
+            if args.format == "json":
+                print(json.dumps([asdict(result) for result in results], indent=2))
+            else:
+                print(render_memory_search_results(results), end="")
+            return 0
         memory = build_repo_memory(
             repo_root,
             limit=args.limit,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, asdict
 from pathlib import Path
+import re
 import sqlite3
 import uuid
 
@@ -30,6 +31,16 @@ class MemoryAttempt:
     started_at: str
     changed_files: tuple[str, ...]
     commit_oids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class MemorySearchResult:
+    kind: str
+    id: str
+    score: float
+    title: str
+    text: str
+    metadata: dict[str, object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,6 +232,58 @@ def remove_memory_note(repo_root: str | Path, *, note_id: str) -> bool:
         conn.close()
 
 
+def search_repo_memory(
+    repo_root: str | Path,
+    query: str,
+    *,
+    limit: int = 8,
+) -> tuple[MemorySearchResult, ...]:
+    root = resolve_repo_root(repo_root)
+    conn = connect_db(root / ".ait" / "state.sqlite3")
+    try:
+        run_migrations(conn)
+        return search_repo_memory_with_connection(conn, query=query, limit=limit)
+    finally:
+        conn.close()
+
+
+def search_repo_memory_with_connection(
+    conn: sqlite3.Connection,
+    *,
+    query: str,
+    limit: int = 8,
+) -> tuple[MemorySearchResult, ...]:
+    query_terms = _terms(query)
+    if not query_terms:
+        return ()
+    results = [
+        result
+        for result in (
+            _score_document(document, query_terms)
+            for document in _search_documents(conn)
+        )
+        if result is not None
+    ]
+    results.sort(key=lambda result: (-result.score, result.kind, result.id))
+    return tuple(results[:limit])
+
+
+def render_memory_search_results(results: tuple[MemorySearchResult, ...]) -> str:
+    if not results:
+        return "No memory search results.\n"
+    lines = ["AIT Memory Search Results"]
+    for result in results:
+        lines.append(
+            f"- {result.kind} {result.id} score={result.score:.2f} title={result.title!r}"
+        )
+        if result.text:
+            lines.append(f"  {result.text}")
+        if result.metadata:
+            fields = ", ".join(f"{key}={value}" for key, value in result.metadata.items())
+            lines.append(f"  metadata: {fields}")
+    return "\n".join(lines) + "\n"
+
+
 def _recent_attempts(
     conn: sqlite3.Connection,
     *,
@@ -365,6 +428,118 @@ def _memory_notes(
         )
         for row in rows
     )
+
+
+def _search_documents(conn: sqlite3.Connection) -> tuple[dict[str, object], ...]:
+    documents: list[dict[str, object]] = []
+    note_rows = conn.execute(
+        """
+        SELECT id, topic, body, source, updated_at
+        FROM memory_notes
+        WHERE active = 1
+        """
+    ).fetchall()
+    for row in note_rows:
+        topic = str(row["topic"]) if row["topic"] is not None else "general"
+        documents.append(
+            {
+                "kind": "note",
+                "id": str(row["id"]),
+                "title": topic,
+                "text": str(row["body"]),
+                "metadata": {
+                    "topic": topic,
+                    "source": str(row["source"]),
+                    "updated_at": str(row["updated_at"]),
+                },
+            }
+        )
+
+    attempt_rows = conn.execute(
+        """
+        SELECT
+          a.id AS attempt_id,
+          a.agent_id,
+          a.verified_status,
+          a.result_exit_code,
+          a.started_at,
+          i.title AS intent_title,
+          i.description AS intent_description,
+          i.kind AS intent_kind
+        FROM attempts AS a
+        JOIN intents AS i ON i.id = a.intent_id
+        """
+    ).fetchall()
+    for row in attempt_rows:
+        attempt_id = str(row["attempt_id"])
+        changed_files = _changed_files(conn, attempt_id)
+        commits = _commit_oids(conn, attempt_id)
+        text_parts = [
+            str(row["intent_title"]),
+            str(row["intent_description"] or ""),
+            str(row["intent_kind"] or ""),
+            str(row["agent_id"]),
+            str(row["verified_status"]),
+            " ".join(changed_files),
+            " ".join(commits),
+        ]
+        documents.append(
+            {
+                "kind": "attempt",
+                "id": attempt_id,
+                "title": str(row["intent_title"]),
+                "text": " ".join(part for part in text_parts if part),
+                "metadata": {
+                    "agent_id": str(row["agent_id"]),
+                    "verified_status": str(row["verified_status"]),
+                    "result_exit_code": row["result_exit_code"],
+                    "started_at": str(row["started_at"]),
+                    "changed_files": list(changed_files),
+                    "commit_oids": list(commits),
+                },
+            }
+        )
+    return tuple(documents)
+
+
+def _score_document(
+    document: dict[str, object],
+    query_terms: tuple[str, ...],
+) -> MemorySearchResult | None:
+    title = str(document["title"])
+    text = str(document["text"])
+    haystack_terms = _terms(title + " " + text)
+    if not haystack_terms:
+        return None
+    term_counts = {term: haystack_terms.count(term) for term in set(haystack_terms)}
+    score = 0.0
+    for term in query_terms:
+        count = term_counts.get(term, 0)
+        if count:
+            score += 2.0 + count
+        elif any(candidate.startswith(term) or term.startswith(candidate) for candidate in term_counts):
+            score += 0.75
+    if score <= 0:
+        return None
+    return MemorySearchResult(
+        kind=str(document["kind"]),
+        id=str(document["id"]),
+        score=score,
+        title=title,
+        text=_compact_line(text),
+        metadata=dict(document["metadata"]),
+    )
+
+
+def _terms(text: str) -> tuple[str, ...]:
+    return tuple(re.findall(r"[A-Za-z0-9_./:-]+", text.lower()))
+
+
+def _compact_line(text: str, *, limit: int = 180) -> str:
+    compacted = " ".join(text.split())
+    if len(compacted) <= limit:
+        return compacted
+    return compacted[: limit - 3].rstrip() + "..."
 
 
 def _recommendations(

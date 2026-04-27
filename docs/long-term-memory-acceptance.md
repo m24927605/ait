@@ -33,6 +33,9 @@ memory slice.
 11. `ait memory --topic <topic>` filters curated notes by topic.
 12. `ait memory --budget-chars <n>` compacts rendered memory to the
     configured character budget.
+13. `ait memory search <query>` returns relevant repo-local memory
+    evidence from curated notes and previous attempts.
+14. `ait memory search <query> --format json` emits parseable JSON.
 
 ## Manual Smoke
 
@@ -76,6 +79,7 @@ Verify memory:
 "$tmpdir/venv/bin/ait" memory --budget-chars 1000
 "$tmpdir/venv/bin/ait" memory note add --topic architecture "Keep memory repo-local."
 "$tmpdir/venv/bin/ait" memory --topic architecture
+"$tmpdir/venv/bin/ait" memory search "repo-local"
 "$tmpdir/venv/bin/ait" attempt list
 ```
 
@@ -86,6 +90,7 @@ Expected result:
 - the attempt has one commit when Claude changed files.
 - curated notes appear in the `Curated Notes` section.
 - budgeted output ends with a compaction marker if truncation is needed.
+- memory search returns the matching curated note or attempt evidence.
 - the root checkout is unchanged until promotion.
 
 ## Automated Coverage
@@ -95,6 +100,7 @@ The automated test suite covers:
 - memory summary construction
 - memory filters
 - curated memory note lifecycle
+- local memory search over notes and attempt evidence
 - text rendering
 - text compaction
 - `ait memory` CLI output

@@ -13,6 +13,7 @@ from ait.memory import (
     list_memory_notes,
     remove_memory_note,
     render_repo_memory_text,
+    search_repo_memory,
 )
 
 
@@ -97,6 +98,26 @@ class MemoryTests(unittest.TestCase):
 
             self.assertLessEqual(len(text), 160)
             self.assertIn("ait memory compacted", text)
+
+    def test_search_repo_memory_finds_notes_and_attempt_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            add_memory_note(
+                repo_root,
+                topic="architecture",
+                body="Adapters should keep repo-local context handoff stable.",
+            )
+            attempt_id = _commit_attempt(repo_root, "Refactor billing adapter", "src/billing.py")
+
+            note_results = search_repo_memory(repo_root, "context handoff")
+            attempt_results = search_repo_memory(repo_root, "billing adapter")
+
+            self.assertEqual("note", note_results[0].kind)
+            self.assertIn("repo-local context", note_results[0].text)
+            self.assertEqual("attempt", attempt_results[0].kind)
+            self.assertEqual(attempt_id, attempt_results[0].id)
+            self.assertEqual(["src/billing.py"], attempt_results[0].metadata["changed_files"])
 
 
 def _init_git_repo(repo_root: Path) -> None:
