@@ -614,3 +614,7 @@ Manual upload remains available from the repository root:
 .venv/bin/python -m build
 .venv/bin/python -m twine upload dist/*
 ```
+
+The publish workflow uses `skip-existing: true` so a manual fallback
+upload does not make a later release workflow fail only because the same
+distribution files already exist on PyPI.

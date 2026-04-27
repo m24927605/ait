@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.1 - 2026-04-28
+
+### Fixed
+
+- Make the GitHub Actions PyPI publish workflow tolerate already
+  uploaded distributions so manual fallback uploads do not leave release
+  automation in a failed state.
+
 ## 0.14.0 - 2026-04-27
 
 ### Added
