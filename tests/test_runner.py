@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import json
 from pathlib import Path
 
 from ait.memory import search_repo_memory
@@ -213,6 +214,44 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual("attempt", search_results[0].kind)
             self.assertTrue(search_results[0].metadata["redacted"])
             self.assertNotIn("sk-abcdefghijklmnopqrstuvwxyz123456", search_results[0].text)
+
+    def test_codex_transcript_policy_excludes_sensitive_transcripts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            (repo_root / ".ait").mkdir(exist_ok=True)
+            (repo_root / ".ait" / "memory-policy.json").write_text(
+                json.dumps(
+                    {
+                        "exclude_paths": [".env"],
+                        "exclude_transcript_patterns": ["BEGIN PRIVATE KEY"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="Codex private transcript",
+                adapter_name="codex",
+                command=[
+                    sys.executable,
+                    "-c",
+                    "print('BEGIN PRIVATE KEY SECRET_TRANSCRIPT_TOKEN')",
+                ],
+                capture_command_output=True,
+            )
+
+            raw_trace_ref = result.attempt.attempt["raw_trace_ref"]
+            trace_text = (repo_root / raw_trace_ref).read_text(encoding="utf-8")
+            search_results = search_repo_memory(repo_root, "SECRET_TRANSCRIPT_TOKEN")
+
+            self.assertEqual(0, result.exit_code)
+            self.assertIn("Excluded-By-Memory-Policy: true", trace_text)
+            self.assertIn("[EXCLUDED BY MEMORY POLICY]", trace_text)
+            self.assertNotIn("BEGIN PRIVATE KEY", trace_text)
+            self.assertNotIn("SECRET_TRANSCRIPT_TOKEN", trace_text)
+            self.assertEqual((), search_results)
 
     def test_run_agent_command_commit_message_stages_commits_and_verifies(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

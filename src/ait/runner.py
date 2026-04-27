@@ -13,6 +13,7 @@ from ait.context import build_agent_context, render_agent_context_text
 from ait.daemon import start_daemon
 from ait.harness import AitHarness
 from ait.memory import build_repo_memory, render_repo_memory_text
+from ait.memory_policy import EXCLUDED_MARKER, load_memory_policy, transcript_excluded
 from ait.redaction import redact_text
 from ait.workspace import WorkspaceError, create_attempt_commit
 
@@ -170,6 +171,23 @@ def _write_command_transcript(
     trace_dir = repo_root / ".ait" / "traces"
     trace_dir.mkdir(parents=True, exist_ok=True)
     path = trace_dir / f"{_safe_trace_name(attempt_id)}.txt"
+    raw_transcript = "\n".join([" ".join(command), stdout, stderr])
+    if transcript_excluded(raw_transcript, load_memory_policy(repo_root)):
+        path.write_text(
+            "\n".join(
+                [
+                    "AIT Agent Transcript",
+                    f"Attempt-Id: {attempt_id}",
+                    f"Exit-Code: {exit_code}",
+                    "Excluded-By-Memory-Policy: true",
+                    "",
+                    EXCLUDED_MARKER,
+                ]
+            ),
+            encoding="utf-8",
+        )
+        return str(path.relative_to(repo_root))
+
     stdout, stdout_redacted = redact_text(stdout)
     stderr, stderr_redacted = redact_text(stderr)
     command_text, command_redacted = redact_text(" ".join(command))

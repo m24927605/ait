@@ -8,6 +8,14 @@ import sqlite3
 import uuid
 
 from ait.db import connect_db, run_migrations, utc_now
+from ait.memory_policy import (
+    EXCLUDED_MARKER,
+    MemoryPolicy,
+    default_memory_policy,
+    load_memory_policy,
+    path_excluded,
+    transcript_excluded,
+)
 from ait.redaction import has_redactions, redact_text
 from ait.repo import resolve_repo_root
 
@@ -72,6 +80,7 @@ def build_repo_memory(
     promoted_only: bool = False,
 ) -> RepoMemory:
     root = resolve_repo_root(repo_root)
+    policy = load_memory_policy(root)
     conn = connect_db(root / ".ait" / "state.sqlite3")
     try:
         run_migrations(conn)
@@ -82,6 +91,7 @@ def build_repo_memory(
             path_filter=path_filter,
             topic=topic,
             promoted_only=promoted_only,
+            policy=policy,
         )
     finally:
         conn.close()
@@ -95,16 +105,19 @@ def build_repo_memory_with_connection(
     path_filter: str | None = None,
     topic: str | None = None,
     promoted_only: bool = False,
+    policy: MemoryPolicy | None = None,
 ) -> RepoMemory:
+    resolved_policy = policy or default_memory_policy()
     attempts = tuple(
         _recent_attempts(
             conn,
             limit=limit,
             path_filter=path_filter,
             promoted_only=promoted_only,
+            policy=resolved_policy,
         )
     )
-    hot_files = _hot_files(conn, limit=10, path_filter=path_filter)
+    hot_files = _hot_files(conn, limit=10, path_filter=path_filter, policy=resolved_policy)
     notes = _memory_notes(conn, limit=limit, topic=topic)
     return RepoMemory(
         repo_root=str(Path(repo_root).resolve()),
@@ -245,6 +258,7 @@ def search_repo_memory(
     ranker: str = "vector",
 ) -> tuple[MemorySearchResult, ...]:
     root = resolve_repo_root(repo_root)
+    policy = load_memory_policy(root)
     conn = connect_db(root / ".ait" / "state.sqlite3")
     try:
         run_migrations(conn)
@@ -254,6 +268,7 @@ def search_repo_memory(
             limit=limit,
             ranker=ranker,
             repo_root=root,
+            policy=policy,
         )
     finally:
         conn.close()
@@ -266,11 +281,16 @@ def search_repo_memory_with_connection(
     limit: int = 8,
     ranker: str = "vector",
     repo_root: str | Path | None = None,
+    policy: MemoryPolicy | None = None,
 ) -> tuple[MemorySearchResult, ...]:
     query_terms = _terms(query)
     if not query_terms:
         return ()
-    documents = _search_documents(conn, repo_root=Path(repo_root).resolve() if repo_root else Path.cwd())
+    documents = _search_documents(
+        conn,
+        repo_root=Path(repo_root).resolve() if repo_root else Path.cwd(),
+        policy=policy or default_memory_policy(),
+    )
     if ranker == "vector":
         results = _score_documents_vector(documents, query_terms)
     elif ranker == "lexical":
@@ -310,6 +330,7 @@ def _recent_attempts(
     limit: int,
     path_filter: str | None,
     promoted_only: bool,
+    policy: MemoryPolicy,
 ) -> list[MemoryAttempt]:
     where = []
     params: list[object] = []
@@ -357,14 +378,19 @@ def _recent_attempts(
             verified_status=str(row["verified_status"]),
             result_exit_code=row["result_exit_code"],
             started_at=str(row["started_at"]),
-            changed_files=_changed_files(conn, str(row["attempt_id"])),
+            changed_files=_changed_files(conn, str(row["attempt_id"]), policy=policy),
             commit_oids=_commit_oids(conn, str(row["attempt_id"])),
         )
         for row in rows
     ]
 
 
-def _changed_files(conn: sqlite3.Connection, attempt_id: str) -> tuple[str, ...]:
+def _changed_files(
+    conn: sqlite3.Connection,
+    attempt_id: str,
+    *,
+    policy: MemoryPolicy,
+) -> tuple[str, ...]:
     rows = conn.execute(
         """
         SELECT file_path
@@ -374,7 +400,7 @@ def _changed_files(conn: sqlite3.Connection, attempt_id: str) -> tuple[str, ...]
         """,
         (attempt_id,),
     ).fetchall()
-    return tuple(str(row["file_path"]) for row in rows)
+    return tuple(str(row["file_path"]) for row in rows if not path_excluded(str(row["file_path"]), policy))
 
 
 def _commit_oids(conn: sqlite3.Connection, attempt_id: str) -> tuple[str, ...]:
@@ -395,6 +421,7 @@ def _hot_files(
     *,
     limit: int,
     path_filter: str | None,
+    policy: MemoryPolicy,
 ) -> tuple[str, ...]:
     where = "kind IN ('changed', 'touched')"
     params: list[object] = []
@@ -413,7 +440,7 @@ def _hot_files(
         """,
         tuple(params),
     ).fetchall()
-    return tuple(str(row["file_path"]) for row in rows)
+    return tuple(str(row["file_path"]) for row in rows if not path_excluded(str(row["file_path"]), policy))
 
 
 def _memory_notes(
@@ -455,6 +482,7 @@ def _search_documents(
     conn: sqlite3.Connection,
     *,
     repo_root: Path,
+    policy: MemoryPolicy,
 ) -> tuple[dict[str, object], ...]:
     documents: list[dict[str, object]] = []
     note_rows = conn.execute(
@@ -500,10 +528,12 @@ def _search_documents(
     ).fetchall()
     for row in attempt_rows:
         attempt_id = str(row["attempt_id"])
-        changed_files = _changed_files(conn, attempt_id)
+        changed_files = _changed_files(conn, attempt_id, policy=policy)
         commits = _commit_oids(conn, attempt_id)
         raw_trace_ref = str(row["raw_trace_ref"] or "")
         trace_text = _read_trace_text(raw_trace_ref, repo_root=repo_root)
+        if _trace_excluded(trace_text, policy=policy):
+            trace_text = EXCLUDED_MARKER
         trace_redacted = has_redactions(trace_text)
         text_parts = [
             str(row["intent_title"]),
@@ -534,6 +564,14 @@ def _search_documents(
             }
         )
     return tuple(documents)
+
+
+def _trace_excluded(trace_text: str, *, policy: MemoryPolicy) -> bool:
+    return (
+        "Excluded-By-Memory-Policy: true" in trace_text
+        or EXCLUDED_MARKER in trace_text
+        or transcript_excluded(trace_text, policy)
+    )
 
 
 def _read_trace_text(raw_trace_ref: str, *, repo_root: Path, limit: int = 4000) -> str:

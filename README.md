@@ -47,7 +47,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.13.0` alpha quality for local dogfood use. It is
+This repository is at `0.14.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -80,14 +80,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.13.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.14.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.13.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.14.0"
 .venv/bin/ait --help
 ```
 
@@ -294,6 +294,8 @@ ait memory --budget-chars 4000
 ait memory search "auth adapter"
 ait memory search "auth adapter" --format json
 ait memory search "auth adapter" --ranker lexical
+ait memory policy init
+ait memory policy show
 ait memory note add --topic architecture "Keep adapter layers thin."
 ait memory note list
 ait memory note remove <note-id>
@@ -317,6 +319,12 @@ attempt commits, and captured Aider/Codex transcripts. Use
 Common secret patterns are redacted before transcript evidence enters
 `.ait/traces/`; rendered memory and search results mark redacted
 evidence in metadata.
+
+Use `ait memory policy init` to create `.ait/memory-policy.json`.
+The policy excludes sensitive changed paths such as `.env`, `*.pem`,
+and `secrets/` from memory summaries/search metadata, and excludes
+transcripts matching private-key markers from durable transcript
+contents before they can become searchable memory.
 
 See `docs/long-term-memory-design.md` and
 `docs/long-term-memory-acceptance.md` for design and acceptance criteria.
@@ -575,7 +583,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.13.0
+git checkout v0.14.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

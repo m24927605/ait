@@ -45,6 +45,7 @@ from ait.memory import (
     render_memory_search_results,
     search_repo_memory,
 )
+from ait.memory_policy import init_memory_policy, load_memory_policy
 from ait.query import blame_path, execute_query, list_shortcut_expression, parse_blame_target
 from ait.reconcile import reconcile_repo
 from ait.repo import resolve_repo_root
@@ -179,6 +180,13 @@ def build_parser() -> argparse.ArgumentParser:
     memory_search.add_argument("--limit", type=int, default=8)
     memory_search.add_argument("--ranker", choices=("vector", "lexical"), default="vector")
     memory_search.add_argument("--format", choices=("text", "json"), default="text")
+    memory_policy = memory_subparsers.add_parser("policy")
+    memory_policy_subparsers = memory_policy.add_subparsers(dest="memory_policy_command")
+    memory_policy_init = memory_policy_subparsers.add_parser("init")
+    memory_policy_init.add_argument("--force", action="store_true")
+    memory_policy_init.add_argument("--format", choices=("text", "json"), default="json")
+    memory_policy_show = memory_policy_subparsers.add_parser("show")
+    memory_policy_show.add_argument("--format", choices=("text", "json"), default="json")
 
     bootstrap_parser = subparsers.add_parser("bootstrap")
     bootstrap_parser.add_argument("name", choices=tuple(sorted(ADAPTERS)), nargs="?", default="claude-code")
@@ -439,6 +447,27 @@ def main() -> int:
             else:
                 print(render_memory_search_results(results), end="")
             return 0
+        if args.memory_command == "policy":
+            if args.memory_policy_command == "init":
+                result = init_memory_policy(repo_root, overwrite=args.force)
+                if args.format == "json":
+                    print(json.dumps(result.to_dict(), indent=2))
+                else:
+                    print(("created " if result.created else "exists ") + result.path)
+                return 0
+            if args.memory_policy_command == "show":
+                policy = load_memory_policy(repo_root)
+                if args.format == "json":
+                    print(json.dumps(policy.to_dict(), indent=2))
+                else:
+                    print("Memory policy")
+                    print("Excluded paths:")
+                    for path in policy.exclude_paths:
+                        print(f"- {path}")
+                    print("Excluded transcript patterns:")
+                    for pattern in policy.exclude_transcript_patterns:
+                        print(f"- {pattern}")
+                return 0
         memory = build_repo_memory(
             repo_root,
             limit=args.limit,

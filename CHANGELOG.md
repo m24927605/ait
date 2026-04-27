@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.14.0 - 2026-04-27
+
+### Added
+
+- Add repo-local `.ait/memory-policy.json` configuration.
+- Add `ait memory policy init` and `ait memory policy show`.
+- Exclude policy-matched changed paths from memory summaries, hot files,
+  and memory search metadata.
+- Exclude policy-matched Aider/Codex transcripts before durable storage
+  so sensitive transcript text cannot become searchable memory.
+
 ## 0.13.0 - 2026-04-27
 
 ### Added

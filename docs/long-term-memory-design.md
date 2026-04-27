@@ -62,6 +62,8 @@ ait memory --budget-chars 4000
 ait memory search "auth adapter"
 ait memory search "auth adapter" --format json
 ait memory search "auth adapter" --ranker lexical
+ait memory policy init
+ait memory policy show
 ait memory note add --topic architecture "Keep adapter layers thin."
 ait memory note list
 ait memory note remove <note-id>
@@ -111,10 +113,11 @@ Implemented increments:
   repo-local evidence
 - redaction of common secrets before transcript evidence enters
   long-term memory
+- configurable memory exclusion policies for sensitive paths and
+  transcript patterns
 
 The next natural increments are:
 
-- configurable memory exclusion policies
 - external embedding-backed ranking over local evidence, if explicitly
   configured by the user
 - structured native tool-level hooks beyond Claude Code

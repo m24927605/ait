@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 import tempfile
 import unittest
+import json
 from pathlib import Path
 
 from ait.app import create_commit_for_attempt, create_attempt, create_intent
@@ -15,6 +16,7 @@ from ait.memory import (
     render_repo_memory_text,
     search_repo_memory,
 )
+from ait.memory_policy import init_memory_policy
 
 
 class MemoryTests(unittest.TestCase):
@@ -162,6 +164,41 @@ class MemoryTests(unittest.TestCase):
             self.assertEqual("note", results[0].kind)
             self.assertTrue(results[0].metadata["redacted"])
 
+    def test_memory_policy_excludes_sensitive_changed_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            init_memory_policy(repo_root)
+            policy_path = repo_root / ".ait" / "memory-policy.json"
+            policy_path.write_text(
+                json.dumps(
+                    {
+                        "exclude_paths": [".env", "secrets/"],
+                        "exclude_transcript_patterns": ["BEGIN PRIVATE KEY"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            attempt_id = _commit_attempt_with_files(
+                repo_root,
+                "Mixed policy change",
+                {
+                    ".env": "SECRET_VALUE=hidden\n",
+                    "src/app.py": "visible change\n",
+                    "secrets/token.txt": "hidden\n",
+                },
+            )
+
+            memory = build_repo_memory(repo_root)
+            search_results = search_repo_memory(repo_root, "src/app.py")
+
+            self.assertEqual(attempt_id, memory.recent_attempts[0].attempt_id)
+            self.assertEqual(("src/app.py",), memory.recent_attempts[0].changed_files)
+            self.assertEqual(("src/app.py",), memory.hot_files)
+            self.assertNotIn(".env", render_repo_memory_text(memory))
+            self.assertEqual(["src/app.py"], search_results[0].metadata["changed_files"])
+
 
 def _init_git_repo(repo_root: Path) -> None:
     _git(repo_root, "init")
@@ -180,6 +217,19 @@ def _commit_attempt(repo_root: Path, title: str, file_path: str) -> str:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(f"{title}\n", encoding="utf-8")
     _git(worktree, "add", file_path)
+    create_commit_for_attempt(repo_root, attempt_id=attempt.attempt_id, message=title)
+    return attempt.attempt_id
+
+
+def _commit_attempt_with_files(repo_root: Path, title: str, files: dict[str, str]) -> str:
+    intent = create_intent(repo_root, title=title, description=None, kind="feature")
+    attempt = create_attempt(repo_root, intent_id=intent.intent_id, agent_id="claude-code:test")
+    worktree = Path(attempt.workspace_ref)
+    for file_path, contents in files.items():
+        target = worktree / file_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(contents, encoding="utf-8")
+        _git(worktree, "add", file_path)
     create_commit_for_attempt(repo_root, attempt_id=attempt.attempt_id, message=title)
     return attempt.attempt_id
 

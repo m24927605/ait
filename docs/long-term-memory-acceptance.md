@@ -52,6 +52,12 @@ memory slice.
     `.ait/traces/`.
 22. Rendered memory and search result metadata indicate when evidence
     has been redacted.
+23. `ait memory policy init` creates `.ait/memory-policy.json`, and
+    `ait memory policy show` renders the active repo-local policy.
+24. Policy-excluded changed paths such as `.env` do not appear in
+    rendered memory, hot files, or memory search metadata.
+25. Policy-excluded transcript content is replaced before durable
+    storage and cannot be found through `ait memory search`.
 
 ## Manual Smoke
 
@@ -97,6 +103,8 @@ Verify memory:
 "$tmpdir/venv/bin/ait" memory --topic architecture
 "$tmpdir/venv/bin/ait" memory search "repo-local"
 "$tmpdir/venv/bin/ait" memory search "repo-local" --ranker lexical
+"$tmpdir/venv/bin/ait" memory policy init
+"$tmpdir/venv/bin/ait" memory policy show
 "$tmpdir/venv/bin/ait" attempt list
 ```
 
@@ -125,6 +133,8 @@ Expected result:
   searchable.
 - transcript secrets are replaced with `[REDACTED]` before persistence.
 - redacted search results include `redacted: true` metadata.
+- `.ait/memory-policy.json` can exclude sensitive paths and transcript
+  patterns from long-term memory evidence.
 - the root checkout is unchanged until promotion.
 
 ## Automated Coverage
@@ -139,6 +149,8 @@ The automated test suite covers:
 - non-Claude adapter context defaults and wrapper automation
 - non-Claude transcript capture and search
 - transcript and note redaction
+- memory policy initialization and rendering
+- memory policy path and transcript exclusion
 - text rendering
 - text compaction
 - `ait memory` CLI output
