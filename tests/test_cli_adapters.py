@@ -108,6 +108,45 @@ class CliAdapterTests(unittest.TestCase):
         self.assertTrue(payload["wrapper_path"].endswith(".ait/bin/claude"))
         self.assertIn(payload["wrapper_path"], payload["wrote_files"])
 
+    def test_adapter_setup_install_direnv_outputs_envrc_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch(
+                        "sys.argv",
+                        [
+                            "ait",
+                            "adapter",
+                            "setup",
+                            "claude-code",
+                            "--install-wrapper",
+                            "--install-direnv",
+                        ],
+                    ):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            payload = json.loads(stdout.getvalue())
+            envrc = Path(payload["direnv_path"]).read_text(encoding="utf-8")
+
+            self.assertEqual(0, exit_code)
+            self.assertTrue(payload["direnv_path"].endswith(".envrc"))
+            self.assertIn(payload["direnv_path"], payload["wrote_files"])
+            self.assertIn("PATH_add .ait/bin", envrc)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -6,7 +6,7 @@ reviewable isolation, an ait-linked commit, and an explicit promote step.
 
 Validated on 2026-04-27 with:
 
-- `ait-vcs` local build for `0.6.0`
+- `ait-vcs` local build for `0.6.1`
 - Claude Code `2.1.119`
 - Python 3.14
 
@@ -126,8 +126,8 @@ telemetry.
 For lower friction, install a wrapper once:
 
 ```bash
-"$tmpdir/venv/bin/ait" adapter setup claude-code --install-wrapper
-export PATH="$PWD/.ait/bin:$PATH"
+"$tmpdir/venv/bin/ait" adapter setup claude-code --install-wrapper --install-direnv
+direnv allow
 ```
 
 After that, `claude ...` resolves to `.ait/bin/claude` inside the repo.
@@ -145,4 +145,10 @@ AIT_INTENT="Update README" \
 AIT_COMMIT_MESSAGE="update README with Claude" \
 claude -p --permission-mode bypassPermissions \
   'Append one line to README.md'
+```
+
+If you do not use `direnv`, add the wrapper directory manually:
+
+```bash
+export PATH="$PWD/.ait/bin:$PATH"
 ```

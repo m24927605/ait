@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.1 - 2026-04-27
+
+### Added
+
+- Add `ait adapter setup claude-code --install-direnv`, which installs
+  the repo-local Claude wrapper and appends `PATH_add .ait/bin` to
+  `.envrc` so `claude` can resolve through ait with less manual setup.
+
 ## 0.6.0 - 2026-04-27
 
 ### Added

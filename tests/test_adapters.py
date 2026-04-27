@@ -145,6 +145,53 @@ class AdapterTests(unittest.TestCase):
             self.assertIn("ait run --adapter claude-code --format json", wrapper)
             self.assertTrue(os.access(wrapper_path, os.X_OK))
 
+    def test_setup_claude_code_can_install_direnv_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = _init_git_repo(Path(tmp) / "repo")
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                result = setup_adapter("claude-code", repo_root, install_direnv=True)
+            finally:
+                os.environ["PATH"] = old_path
+
+            wrapper_path = repo_root / ".ait" / "bin" / "claude"
+            direnv_path = repo_root / ".envrc"
+
+            self.assertEqual(str(wrapper_path.resolve()), result.wrapper_path)
+            self.assertEqual(str(direnv_path.resolve()), result.direnv_path)
+            self.assertIn(str(direnv_path.resolve()), result.wrote_files)
+            self.assertTrue(os.access(wrapper_path, os.X_OK))
+            self.assertIn("PATH_add .ait/bin", direnv_path.read_text(encoding="utf-8"))
+
+    def test_setup_claude_code_merges_envrc_idempotently(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = _init_git_repo(Path(tmp) / "repo")
+            envrc_path = repo_root / ".envrc"
+            envrc_path.write_text("export FOO=bar\n", encoding="utf-8")
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                setup_adapter("claude-code", repo_root, install_direnv=True)
+                setup_adapter("claude-code", repo_root, install_direnv=True)
+            finally:
+                os.environ["PATH"] = old_path
+
+            envrc = envrc_path.read_text(encoding="utf-8")
+
+            self.assertIn("export FOO=bar", envrc)
+            self.assertEqual(1, envrc.count("PATH_add .ait/bin"))
+
     def test_setup_unknown_adapter_raises_clear_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = _init_git_repo(Path(tmp))

@@ -51,6 +51,7 @@ class AdapterSetupResult:
     hook_path: str
     settings_path: str | None
     wrapper_path: str | None
+    direnv_path: str | None
     settings: dict[str, object]
     wrote_files: tuple[str, ...]
 
@@ -167,6 +168,7 @@ def setup_adapter(
     target: str | Path | None = None,
     print_only: bool = False,
     install_wrapper: bool = False,
+    install_direnv: bool = False,
 ) -> AdapterSetupResult:
     adapter = get_adapter(name)
     if adapter.name != "claude-code":
@@ -178,12 +180,14 @@ def setup_adapter(
         raise AdapterError(str(exc)) from exc
     hook_path = root / ".ait" / "adapters" / "claude-code" / "claude_code_hook.py"
     wrapper_path = root / ".ait" / "bin" / "claude"
+    direnv_path = root / ".envrc"
     settings_path = (
         _resolve_target(root, target)
         if target is not None
         else root / ".claude" / "settings.json"
     )
     settings = _claude_code_settings()
+    install_wrapper = install_wrapper or install_direnv
 
     wrote_files: list[str] = []
     if not print_only:
@@ -203,11 +207,16 @@ def setup_adapter(
             wrapper_path.chmod(0o755)
             wrote_files.append(str(wrapper_path))
 
+        if install_direnv:
+            _merge_envrc(direnv_path)
+            wrote_files.append(str(direnv_path))
+
     return AdapterSetupResult(
         adapter=adapter,
         hook_path=str(hook_path),
         settings_path=str(settings_path) if not print_only else None,
         wrapper_path=str(wrapper_path) if install_wrapper and not print_only else None,
+        direnv_path=str(direnv_path) if install_direnv and not print_only else None,
         settings=settings,
         wrote_files=tuple(wrote_files),
     )
@@ -285,6 +294,20 @@ def _merge_settings(existing: dict[str, object], generated: dict[str, object]) -
             if entry not in existing_entries:
                 existing_entries.append(entry)
     return merged
+
+
+def _merge_envrc(path: Path) -> None:
+    marker = "# ait: add repo-local adapter wrappers"
+    path_line = "PATH_add .ait/bin"
+    if path.exists():
+        text = path.read_text(encoding="utf-8")
+        if path_line in text.splitlines():
+            return
+        if text and not text.endswith("\n"):
+            text += "\n"
+    else:
+        text = ""
+    path.write_text(f"{text}{marker}\n{path_line}\n", encoding="utf-8")
 
 
 def _find_real_claude(wrapper_path: Path) -> str:
