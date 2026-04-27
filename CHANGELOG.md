@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.1 - 2026-04-27
+
+### Added
+
+- Add an end-to-end Claude Code hook regression test that installs the
+  packaged hook, simulates Claude Code session/tool/finish payloads, and
+  verifies recorded ait evidence.
+
 ## 0.5.0 - 2026-04-27
 
 ### Added

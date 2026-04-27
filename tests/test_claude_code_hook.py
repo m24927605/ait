@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+from ait.adapters import setup_adapter
+from ait.app import show_attempt
 
 
 def _load_hook_module():
@@ -69,6 +76,108 @@ class ClaudeCodeHookTests(unittest.TestCase):
                 "export AIT_ATTEMPT_ID='repo:attempt with space'\n",
                 env_file.read_text(encoding="utf-8"),
             )
+
+    def test_installed_hook_records_session_tool_and_finish_events(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            setup_adapter("claude-code", repo_root)
+            hook_path = repo_root / ".ait" / "adapters" / "claude-code" / "claude_code_hook.py"
+            env_file = repo_root / "claude.env"
+            env = {
+                **os.environ,
+                "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
+                "CLAUDE_PROJECT_DIR": str(repo_root),
+                "CLAUDE_ENV_FILE": str(env_file),
+            }
+
+            start = _run_hook(
+                hook_path,
+                {
+                    "hook_event_name": "SessionStart",
+                    "session_id": "session-e2e",
+                    "cwd": str(repo_root),
+                    "source": "startup",
+                    "model": "test-model",
+                    "agent_type": "default",
+                },
+                env,
+            )
+            _run_hook(
+                hook_path,
+                {
+                    "hook_event_name": "PostToolUse",
+                    "session_id": "session-e2e",
+                    "cwd": str(repo_root),
+                    "tool_name": "Edit",
+                    "duration_ms": 7,
+                    "tool_input": {"file_path": "README.md"},
+                },
+                env,
+            )
+            _run_hook(
+                hook_path,
+                {
+                    "hook_event_name": "SessionEnd",
+                    "session_id": "session-e2e",
+                    "cwd": str(repo_root),
+                    "exit_code": 0,
+                    "transcript_path": ".claude/transcript.jsonl",
+                },
+                env,
+            )
+
+            state = json.loads(
+                (repo_root / ".ait" / "claude-code-hooks" / "session-e2e.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            attempt = show_attempt(repo_root, attempt_id=state["attempt_id"])
+            env_text = env_file.read_text(encoding="utf-8")
+
+        payload = json.loads(start.stdout)
+        self.assertIn("hookSpecificOutput", payload)
+        self.assertIn("AIT_ATTEMPT_ID=", env_text)
+        self.assertEqual("finished", attempt.attempt["reported_status"])
+        self.assertEqual(0, attempt.attempt["result_exit_code"])
+        self.assertEqual(1, attempt.evidence_summary["observed_tool_calls"])
+        self.assertEqual(1, attempt.evidence_summary["observed_file_writes"])
+        self.assertEqual(("README.md",), attempt.files["touched"])
+
+
+def _run_hook(
+    hook_path: Path,
+    payload: dict[str, object],
+    env: dict[str, str],
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(hook_path)],
+        input=json.dumps(payload),
+        cwd=hook_path.parents[3],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+
+def _init_git_repo(repo_root: Path) -> None:
+    subprocess.run(["git", "init"], cwd=repo_root, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+    )
+    (repo_root / "README.md").write_text("hello\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo_root, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo_root, check=True, capture_output=True)
 
 
 if __name__ == "__main__":
