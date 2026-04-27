@@ -269,6 +269,14 @@ def bootstrap_adapter(name: str, repo_root: str | Path) -> AdapterBootstrapResul
     )
 
 
+def bootstrap_shell_snippet(name: str, repo_root: str | Path) -> str:
+    result = bootstrap_adapter(name, repo_root)
+    if result.setup.wrapper_path is None:
+        raise AdapterError("bootstrap did not install a wrapper")
+    wrapper_dir = Path(result.setup.wrapper_path).parent
+    return f"export PATH={shlex.quote(str(wrapper_dir))}:\"$PATH\""
+
+
 def setup_adapter(
     name: str,
     repo_root: str | Path,

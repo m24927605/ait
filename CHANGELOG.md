@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.3 - 2026-04-27
+
+### Added
+
+- Add `ait bootstrap claude-code --shell` for eval-friendly setup that
+  installs the wrapper and prints an export for the current shell.
+- Add `ait bootstrap claude-code --check` for non-mutating automation
+  readiness checks.
+- Make top-level `ait doctor` text output include the shortest next
+  command when the wrapper path is not active.
+
 ## 0.6.2 - 2026-04-27
 
 ### Added

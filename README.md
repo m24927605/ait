@@ -12,7 +12,7 @@ The MVP tracks:
 
 ## Status
 
-This repository is at `0.6.2` alpha quality for local dogfood use. It is
+This repository is at `0.6.3` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -45,14 +45,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.6.2"
+pipx install "git+https://github.com/m24927605/ait.git@v0.6.3"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.6.2"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.6.3"
 .venv/bin/ait --help
 ```
 
@@ -271,8 +271,7 @@ ait run --adapter claude-code --intent "Refactor query parser" -- claude
 For lower user friction, install the repo-local Claude wrapper once:
 
 ```bash
-ait bootstrap claude-code
-direnv allow
+eval "$(ait bootstrap claude-code --shell)"
 ```
 
 After that, invoking `claude ...` from the repository will hit
@@ -288,16 +287,18 @@ claude -p --permission-mode bypassPermissions \
   'Append one line to README.md'
 ```
 
-If you do not use `direnv`, add the wrapper directory manually:
+To set up direnv instead of changing the current shell directly:
 
 ```bash
-export PATH="$PWD/.ait/bin:$PATH"
+ait bootstrap claude-code
+direnv allow
 ```
 
 Check whether the automation path is ready:
 
 ```bash
 ait doctor
+ait bootstrap claude-code --check
 ```
 
 To make Claude edit an isolated attempt worktree and commit the result:
@@ -415,6 +416,8 @@ ait adapter setup claude-code --target .claude/settings.json
 ait adapter setup claude-code --install-wrapper
 ait adapter setup claude-code --install-wrapper --install-direnv
 ait bootstrap claude-code
+ait bootstrap claude-code --shell
+ait bootstrap claude-code --check
 ait doctor
 ```
 
@@ -461,7 +464,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.6.2
+git checkout v0.6.3
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

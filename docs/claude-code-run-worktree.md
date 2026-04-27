@@ -6,7 +6,7 @@ reviewable isolation, an ait-linked commit, and an explicit promote step.
 
 Validated on 2026-04-27 with:
 
-- `ait-vcs` local build for `0.6.2`
+- `ait-vcs` local build for `0.6.3`
 - Claude Code `2.1.119`
 - Python 3.14
 
@@ -126,8 +126,7 @@ telemetry.
 For lower friction, install a wrapper once:
 
 ```bash
-"$tmpdir/venv/bin/ait" bootstrap claude-code
-direnv allow
+eval "$("$tmpdir/venv/bin/ait" bootstrap claude-code --shell)"
 ```
 
 After that, `claude ...` resolves to `.ait/bin/claude` inside the repo.
@@ -147,10 +146,11 @@ claude -p --permission-mode bypassPermissions \
   'Append one line to README.md'
 ```
 
-If you do not use `direnv`, add the wrapper directory manually:
+To set up direnv instead of changing the current shell directly:
 
 ```bash
-export PATH="$PWD/.ait/bin:$PATH"
+"$tmpdir/venv/bin/ait" bootstrap claude-code
+direnv allow
 ```
 
 Verify the automation path:

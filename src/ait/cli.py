@@ -12,6 +12,7 @@ from ait.adapters import (
     ADAPTERS,
     AdapterError,
     bootstrap_adapter,
+    bootstrap_shell_snippet,
     doctor_adapter,
     doctor_automation,
     get_adapter,
@@ -143,6 +144,8 @@ def build_parser() -> argparse.ArgumentParser:
     bootstrap_parser = subparsers.add_parser("bootstrap")
     bootstrap_parser.add_argument("name", choices=tuple(sorted(ADAPTERS)))
     bootstrap_parser.add_argument("--format", choices=("text", "json"), default="json")
+    bootstrap_parser.add_argument("--shell", action="store_true")
+    bootstrap_parser.add_argument("--check", action="store_true")
 
     doctor_parser = subparsers.add_parser("doctor")
     doctor_parser.add_argument("name", choices=tuple(sorted(ADAPTERS)), nargs="?", default="claude-code")
@@ -350,6 +353,16 @@ def main() -> int:
         return 0
     if args.command == "bootstrap":
         try:
+            if args.shell:
+                print(bootstrap_shell_snippet(args.name, repo_root))
+                return 0
+            if args.check:
+                result = doctor_automation(args.name, repo_root)
+                if args.format == "json":
+                    print(json.dumps(asdict(result), indent=2))
+                else:
+                    print(_format_adapter_doctor(result))
+                return 0 if result.ok else 2
             result = bootstrap_adapter(args.name, repo_root)
         except AdapterError as exc:
             print(f"error: {exc}", file=sys.stderr)
@@ -499,7 +512,28 @@ def _format_adapter_doctor(result) -> str:
     for check in result.checks:
         status = "ok" if check.ok else "fail"
         lines.append(f"- {check.name}: {status} ({check.detail})")
+    next_steps = _doctor_next_steps(result)
+    if next_steps:
+        lines.append("Next steps:")
+        lines.extend(f"- {step}" for step in next_steps)
     return "\n".join(lines)
+
+
+def _doctor_next_steps(result) -> list[str]:
+    checks = {check.name: check.ok for check in result.checks}
+    if result.ok:
+        return []
+    if "automation" in checks and not checks["automation"]:
+        return []
+    if not checks.get("wrapper_file", True):
+        return ["ait bootstrap claude-code"]
+    if not checks.get("real_claude_binary", True):
+        return ["install Claude Code or put the real claude binary on PATH"]
+    if not checks.get("path_wrapper_active", True):
+        if checks.get("envrc_path", False) and checks.get("direnv_binary", False):
+            return ["direnv allow", 'eval "$(ait bootstrap claude-code --shell)"']
+        return ['eval "$(ait bootstrap claude-code --shell)"']
+    return []
 
 
 def _format_bootstrap(result) -> str:

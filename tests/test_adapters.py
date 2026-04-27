@@ -13,6 +13,7 @@ import tempfile
 from ait.adapters import (
     AdapterError,
     bootstrap_adapter,
+    bootstrap_shell_snippet,
     doctor_adapter,
     doctor_automation,
     get_adapter,
@@ -116,6 +117,26 @@ class AdapterTests(unittest.TestCase):
             self.assertIn("PATH_add .ait/bin", envrc_path.read_text(encoding="utf-8"))
             self.assertIn(str(wrapper_path.resolve()), result.setup.wrote_files)
             self.assertIn(str(envrc_path.resolve()), result.setup.wrote_files)
+
+    def test_bootstrap_shell_snippet_installs_and_exports_wrapper_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = _init_git_repo(Path(tmp) / "repo")
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                snippet = bootstrap_shell_snippet("claude-code", repo_root)
+            finally:
+                os.environ["PATH"] = old_path
+
+            wrapper_path = repo_root / ".ait" / "bin" / "claude"
+
+            self.assertTrue(wrapper_path.exists())
+            self.assertEqual(f'export PATH={wrapper_path.parent.resolve()}:"$PATH"', snippet)
 
     def test_setup_claude_code_writes_hook_and_settings(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
