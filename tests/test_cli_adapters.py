@@ -422,6 +422,62 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual("", second_stderr.getvalue())
             self.assertTrue(hints["claude_code_automation_hint_v1"])
 
+    def test_enable_json_installs_all_detected_agent_wrappers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_codex = bin_dir / "codex"
+            real_codex.write_text("#!/bin/sh\nprintf 'real codex\\n'\n", encoding="utf-8")
+            real_codex.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "enable", "--adapter", "codex", "--format", "json"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            payload = json.loads(stdout.getvalue())
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual(["codex"], [item["adapter"]["name"] for item in payload["installed"]])
+            self.assertTrue(payload["shell_snippet"].startswith("export PATH="))
+            self.assertTrue((repo_root / ".ait" / "bin" / "codex").exists())
+            self.assertFalse((repo_root / ".ait" / "bin" / "aider").exists())
+
+    def test_enable_shell_outputs_eval_safe_snippet(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_aider = bin_dir / "aider"
+            real_aider.write_text("#!/bin/sh\nprintf 'real aider\\n'\n", encoding="utf-8")
+            real_aider.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "enable", "--adapter", "aider", "--shell"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            wrapper_dir = (repo_root / ".ait" / "bin").resolve()
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual(f'export PATH={wrapper_dir}:"$PATH"\n', stdout.getvalue())
+            self.assertTrue((wrapper_dir / "aider").exists())
+
     def test_no_hints_suppresses_status_hint_and_hint_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp) / "repo"

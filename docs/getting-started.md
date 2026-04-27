@@ -28,24 +28,27 @@ Run this from inside a Git repository:
 
 ```bash
 ait status
-eval "$(ait doctor --fix)"
+eval "$(ait enable --shell)"
 ```
 
-`ait doctor --fix` installs a repo-local Claude wrapper at:
+`ait enable --shell` installs repo-local wrappers for supported agent
+CLIs found on `PATH`, such as:
 
 ```text
 .ait/bin/claude
+.ait/bin/codex
+.ait/bin/aider
 ```
 
 It prints a shell export that puts `.ait/bin` first on `PATH` for the
-current terminal session. After that, `claude ...` in this repository
-runs through `ait`.
+current terminal session. After that, detected agent commands in this
+repository run through `ait`.
 
 For virtualenv installs, use the local executable:
 
 ```bash
 .venv/bin/ait status
-eval "$(.venv/bin/ait doctor --fix)"
+eval "$(.venv/bin/ait enable --shell)"
 ```
 
 ## Verify

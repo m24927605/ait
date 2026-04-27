@@ -15,6 +15,7 @@ from ait.adapters import (
     bootstrap_shell_snippet,
     doctor_adapter,
     doctor_automation,
+    enable_available_adapters,
     get_adapter,
     list_adapters,
     setup_adapter,
@@ -202,6 +203,16 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser = subparsers.add_parser("status")
     status_parser.add_argument("name", choices=tuple(sorted(ADAPTERS)), nargs="?", default="claude-code")
     status_parser.add_argument("--format", choices=("text", "json"), default="text")
+
+    enable_parser = subparsers.add_parser("enable")
+    enable_parser.add_argument(
+        "--adapter",
+        choices=tuple(name for name in sorted(ADAPTERS) if name != "shell"),
+        action="append",
+        dest="enable_adapters",
+    )
+    enable_parser.add_argument("--format", choices=("text", "json"), default="text")
+    enable_parser.add_argument("--shell", action="store_true")
 
     adapter_parser = subparsers.add_parser("adapter")
     adapter_subparsers = adapter_parser.add_subparsers(dest="adapter_command")
@@ -524,6 +535,26 @@ def main() -> int:
             print(_format_status(payload))
             _maybe_emit_automation_hint(args, repo_root, result)
         return 0
+    if args.command == "enable":
+        try:
+            result = enable_available_adapters(
+                repo_root,
+                names=tuple(args.enable_adapters) if args.enable_adapters else None,
+            )
+        except AdapterError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        if args.shell:
+            if result.shell_snippet:
+                print(result.shell_snippet)
+                return 0
+            print("error: no supported agent binaries found on PATH", file=sys.stderr)
+            return 2
+        if args.format == "json":
+            print(json.dumps(asdict(result), indent=2))
+        else:
+            print(_format_auto_enable(result))
+        return 0 if result.ok else 2
     if args.command == "adapter":
         if args.adapter_command == "list":
             adapters = [asdict(adapter) for adapter in list_adapters()]
@@ -661,6 +692,25 @@ def _format_adapter_doctor(result) -> str:
     if next_steps:
         lines.append("Next steps:")
         lines.extend(f"- {step}" for step in next_steps)
+    return "\n".join(lines)
+
+
+def _format_auto_enable(result) -> str:
+    lines = ["AIT Agent Automation"]
+    if result.installed:
+        lines.append("Enabled:")
+        for item in result.installed:
+            wrapper_path = item.setup.wrapper_path or ""
+            lines.append(f"- {item.adapter.name}: {wrapper_path}")
+    else:
+        lines.append("Enabled: none")
+    if result.skipped:
+        lines.append("Skipped:")
+        for item in result.skipped:
+            lines.append(f"- {item.name}: {item.detail}")
+    if result.shell_snippet:
+        lines.append("Current shell:")
+        lines.append(f'- eval "$(ait enable --shell)"')
     return "\n".join(lines)
 
 

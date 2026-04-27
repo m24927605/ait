@@ -89,6 +89,17 @@ class AdapterBootstrapResult:
         return all(check.ok for check in self.checks if check.name in required)
 
 
+@dataclass(frozen=True, slots=True)
+class AdapterAutoEnableResult:
+    installed: tuple[AdapterBootstrapResult, ...]
+    skipped: tuple[AdapterDoctorCheck, ...]
+    shell_snippet: str
+
+    @property
+    def ok(self) -> bool:
+        return bool(self.installed) and all(result.ok for result in self.installed)
+
+
 ADAPTERS: dict[str, AgentAdapter] = {
     "shell": AgentAdapter(
         name="shell",
@@ -283,6 +294,47 @@ def bootstrap_shell_snippet(name: str, repo_root: str | Path) -> str:
         raise AdapterError("bootstrap did not install a wrapper")
     wrapper_dir = Path(result.setup.wrapper_path).parent
     return f"export PATH={shlex.quote(str(wrapper_dir))}:\"$PATH\""
+
+
+def enable_available_adapters(
+    repo_root: str | Path,
+    *,
+    names: tuple[str, ...] | None = None,
+) -> AdapterAutoEnableResult:
+    try:
+        root = resolve_repo_root(Path(repo_root).resolve())
+    except ValueError as exc:
+        raise AdapterError(str(exc)) from exc
+    selected = names or tuple(name for name in sorted(ADAPTERS) if name != "shell")
+    installed: list[AdapterBootstrapResult] = []
+    skipped: list[AdapterDoctorCheck] = []
+    for name in selected:
+        adapter = get_adapter(name)
+        if adapter.name == "shell":
+            skipped.append(AdapterDoctorCheck(adapter.name, False, "shell adapter has no fixed binary wrapper"))
+            continue
+        wrapper_path = root / ".ait" / "bin" / adapter.command_name
+        real_check = (
+            _real_claude_check(wrapper_path)
+            if adapter.name == "claude-code"
+            else _real_agent_binary_check(adapter, wrapper_path)
+        )
+        if not real_check.ok:
+            skipped.append(AdapterDoctorCheck(adapter.name, False, real_check.detail))
+            continue
+        installed.append(bootstrap_adapter(adapter.name, root))
+
+    shell_snippet = ""
+    if installed:
+        wrapper_path = installed[0].setup.wrapper_path
+        if wrapper_path is not None:
+            wrapper_dir = Path(wrapper_path).parent.resolve()
+            shell_snippet = f"export PATH={shlex.quote(str(wrapper_dir))}:\"$PATH\""
+    return AdapterAutoEnableResult(
+        installed=tuple(installed),
+        skipped=tuple(skipped),
+        shell_snippet=shell_snippet,
+    )
 
 
 def setup_adapter(

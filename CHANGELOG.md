@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.15.0 - 2026-04-28
+
+### Added
+
+- Add `ait enable` to auto-detect installed Claude Code, Codex, and
+  Aider binaries and install repo-local wrappers for every detected
+  agent.
+- Add `ait enable --shell` as a single eval-friendly setup path for all
+  detected agent workflows.
+- Add JSON and text output for auto-enable results, including installed
+  and skipped adapters.
+
 ## 0.14.1 - 2026-04-28
 
 ### Fixed

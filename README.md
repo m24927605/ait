@@ -7,21 +7,22 @@ work in an attempt branch that can be reviewed and promoted later.
 
 ## 30 Second Quickstart
 
-Install the PyPI package, enter a Git repository, let `ait` install the
-repo-local Claude wrapper, then keep using `claude`:
+Install the PyPI package, enter a Git repository, let `ait` install
+repo-local wrappers for the agent CLIs it can find, then keep using
+`claude`, `codex`, or `aider`:
 
 ```bash
 pipx install ait-vcs
 cd your-repo
 ait status
-eval "$(ait doctor --fix)"
+eval "$(ait enable --shell)"
 claude ...
 ```
 
-After `doctor --fix`, `claude ...` resolves to `.ait/bin/claude` inside
-that repository. The wrapper runs Claude Code through `ait run`, so the
-agent edits an isolated attempt worktree and `ait` records the result as
-an attempt-linked commit.
+After `enable --shell`, detected agent commands resolve to `.ait/bin/*`
+inside that repository. The wrappers run agents through `ait run`, so
+the agent edits an isolated attempt worktree and `ait` records the
+result as an attempt-linked commit.
 
 If you do not use `pipx`, install in a virtual environment:
 
@@ -29,7 +30,7 @@ If you do not use `pipx`, install in a virtual environment:
 python3.14 -m venv .venv
 .venv/bin/pip install ait-vcs
 .venv/bin/ait status
-eval "$(.venv/bin/ait doctor --fix)"
+eval "$(.venv/bin/ait enable --shell)"
 ```
 
 See [docs/getting-started.md](docs/getting-started.md) for activation,
@@ -47,7 +48,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.14.0` alpha quality for local dogfood use. It is
+This repository is at `0.15.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -80,14 +81,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.14.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.15.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.14.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.15.0"
 .venv/bin/ait --help
 ```
 
@@ -366,6 +367,12 @@ For lower user friction, install the repo-local Claude wrapper once:
 eval "$(ait doctor --fix)"
 ```
 
+To enable every supported agent binary found on `PATH` in one pass:
+
+```bash
+eval "$(ait enable --shell)"
+```
+
 After that, invoking `claude ...` from the repository will hit
 `.ait/bin/claude`, which runs Claude Code through `ait run --adapter
 claude-code` in an isolated attempt worktree. The wrapper passes through
@@ -531,6 +538,8 @@ ait adapter setup claude-code --print
 ait adapter setup claude-code --target .claude/settings.json
 ait adapter setup claude-code --install-wrapper
 ait adapter setup claude-code --install-wrapper --install-direnv
+ait enable
+ait enable --shell
 ait bootstrap
 ait bootstrap claude-code
 ait bootstrap claude-code --shell
@@ -583,7 +592,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.14.0
+git checkout v0.15.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

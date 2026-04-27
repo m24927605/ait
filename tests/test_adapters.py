@@ -16,6 +16,7 @@ from ait.adapters import (
     bootstrap_shell_snippet,
     doctor_adapter,
     doctor_automation,
+    enable_available_adapters,
     get_adapter,
     list_adapters,
     setup_adapter,
@@ -196,6 +197,32 @@ class AdapterTests(unittest.TestCase):
 
             self.assertTrue(wrapper_path.exists())
             self.assertEqual(f'export PATH={wrapper_path.parent.resolve()}:"$PATH"', snippet)
+
+    def test_enable_available_adapters_installs_detected_agents_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = _init_git_repo(Path(tmp) / "repo")
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_codex = bin_dir / "codex"
+            real_codex.write_text("#!/bin/sh\nprintf 'real codex\\n'\n", encoding="utf-8")
+            real_codex.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                result = enable_available_adapters(repo_root, names=("codex",))
+            finally:
+                os.environ["PATH"] = old_path
+
+            self.assertTrue(result.ok)
+            self.assertEqual(("codex",), tuple(item.adapter.name for item in result.installed))
+            self.assertTrue((repo_root / ".ait" / "bin" / "codex").exists())
+            self.assertFalse((repo_root / ".ait" / "bin" / "aider").exists())
+            self.assertIn("PATH_add .ait/bin", (repo_root / ".envrc").read_text(encoding="utf-8"))
+            self.assertEqual(
+                f'export PATH={(repo_root / ".ait" / "bin").resolve()}:"$PATH"',
+                result.shell_snippet,
+            )
+            self.assertEqual((), result.skipped)
 
     def test_setup_claude_code_writes_hook_and_settings(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
