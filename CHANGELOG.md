@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.4 - 2026-04-27
+
+### Changed
+
+- Add a workflow integration guide for shell commands, Claude Code,
+  Codex, Aider, and custom harness integrations.
+
 ## 0.4.3 - 2026-04-27
 
 ### Added

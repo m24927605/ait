@@ -12,7 +12,7 @@ The MVP tracks:
 
 ## Status
 
-This repository is at `0.4.1` alpha quality for local dogfood use. It is
+This repository is at `0.4.4` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -45,14 +45,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.4.1"
+pipx install "git+https://github.com/m24927605/ait.git@v0.4.4"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.4.1"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.4.4"
 .venv/bin/ait --help
 ```
 
@@ -225,6 +225,93 @@ ait run --with-context --agent shell:local --intent "Continue previous work" -- 
   python -c "import os; print(open(os.environ['AIT_CONTEXT_FILE']).read())"
 ```
 
+## Integration Guide
+
+Most AI agent workflows should start with `ait run`. It works with any
+CLI that can be launched from a shell, and it gives the agent an
+isolated Git worktree plus these environment variables:
+
+```text
+AIT_INTENT_ID
+AIT_ATTEMPT_ID
+AIT_WORKSPACE_REF
+```
+
+When context is enabled, `ait run` also writes `.ait-context.md` into the
+attempt worktree and exposes its path as `AIT_CONTEXT_FILE`.
+
+Use the generic shell adapter for scripts, one-off commands, and custom
+automation:
+
+```bash
+ait run --adapter shell --intent "Regenerate fixtures" -- \
+  python scripts/regenerate_fixtures.py
+```
+
+Use the Claude Code adapter when launching Claude from a repository. It
+enables context by default, so Claude can read `AIT_CONTEXT_FILE` before
+editing:
+
+```bash
+ait run --adapter claude-code --intent "Refactor query parser" -- claude
+```
+
+For deeper Claude Code event capture, install the native hook example
+after checking readiness:
+
+```bash
+ait adapter doctor claude-code
+```
+
+The hook bridge records Claude Code tool events such as file reads,
+edits, and shell commands. It is optional: `ait run --adapter
+claude-code` is the simpler first integration, while hooks add richer
+provenance for teams that want tool-level evidence.
+
+Use the Codex and Aider adapters the same way:
+
+```bash
+ait run --adapter codex --intent "Implement parser edge cases" -- codex
+ait run --adapter aider --intent "Fix auth expiry" -- aider src/auth.py
+```
+
+These adapters currently provide worktree isolation, context handoff,
+command provenance, and exit-code verification. Native tool-level hooks
+for Codex and Aider are not implemented yet.
+
+For a custom workflow, either wrap the command with `ait run` or call
+the Python harness API directly from your agent runner:
+
+```python
+from ait.harness import AitHarness
+
+with AitHarness.open(
+    attempt_id=attempt_id,
+    ownership_token=ownership_token,
+    socket_path=".ait/daemon.sock",
+    agent={
+        "agent_id": "my-agent:worker",
+        "harness": "my-agent",
+        "harness_version": "0.1",
+    },
+) as harness:
+    harness.record_tool(
+        tool_name="Edit",
+        category="write",
+        duration_ms=120,
+        success=True,
+        files=[{"path": "src/app.py", "access": "write"}],
+    )
+    harness.finish(exit_code=0)
+```
+
+Choose the integration depth by how much evidence you need:
+
+- `ait run`: lifecycle, isolated worktree, command event, exit code
+- `ait run --with-context`: adds compact handoff context
+- native hooks: adds per-tool read/write/command evidence
+- harness API: full custom event capture from an agent runner
+
 ## Agent Context
 
 `ait context <intent-id>` summarizes the intent, prior attempts, files,
@@ -277,7 +364,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.4.1
+git checkout v0.4.4
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q
