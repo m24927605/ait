@@ -6,7 +6,7 @@ reviewable isolation, an ait-linked commit, and an explicit promote step.
 
 Validated on 2026-04-27 with:
 
-- `ait-vcs` local build for `0.5.4`
+- `ait-vcs` local build for `0.6.0`
 - Claude Code `2.1.119`
 - Python 3.14
 
@@ -120,3 +120,29 @@ such as individual file reads, writes, and shell commands.
 Use `ait run` first when isolation and promote/review flow are the
 priority. Add native hooks when you also need fine-grained tool
 telemetry.
+
+## Repo-Local Wrapper
+
+For lower friction, install a wrapper once:
+
+```bash
+"$tmpdir/venv/bin/ait" adapter setup claude-code --install-wrapper
+export PATH="$PWD/.ait/bin:$PATH"
+```
+
+After that, `claude ...` resolves to `.ait/bin/claude` inside the repo.
+The wrapper delegates to the real Claude Code binary through:
+
+```bash
+ait run --adapter claude-code --format json --commit-message ...
+```
+
+Set `AIT_INTENT` and `AIT_COMMIT_MESSAGE` to control the generated ait
+intent and commit message without changing the Claude command:
+
+```bash
+AIT_INTENT="Update README" \
+AIT_COMMIT_MESSAGE="update README with Claude" \
+claude -p --permission-mode bypassPermissions \
+  'Append one line to README.md'
+```

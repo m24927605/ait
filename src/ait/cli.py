@@ -152,6 +152,7 @@ def build_parser() -> argparse.ArgumentParser:
     adapter_setup.add_argument("name", choices=tuple(sorted(ADAPTERS)))
     adapter_setup.add_argument("--target", default=".claude/settings.json")
     adapter_setup.add_argument("--print", action="store_true", dest="print_only")
+    adapter_setup.add_argument("--install-wrapper", action="store_true")
 
     subparsers.add_parser("reconcile")
 
@@ -365,6 +366,7 @@ def main() -> int:
                     repo_root,
                     target=args.target,
                     print_only=args.print_only,
+                    install_wrapper=args.install_wrapper,
                 )
             except AdapterError as exc:
                 print(f"error: {exc}", file=sys.stderr)

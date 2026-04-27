@@ -4,8 +4,10 @@ from dataclasses import dataclass, field
 import json
 from importlib import resources
 from importlib.util import find_spec
+import os
 from pathlib import Path
 import shlex
+import shutil
 import sys
 
 from ait.repo import resolve_repo_root
@@ -48,6 +50,7 @@ class AdapterSetupResult:
     adapter: AgentAdapter
     hook_path: str
     settings_path: str | None
+    wrapper_path: str | None
     settings: dict[str, object]
     wrote_files: tuple[str, ...]
 
@@ -163,6 +166,7 @@ def setup_adapter(
     *,
     target: str | Path | None = None,
     print_only: bool = False,
+    install_wrapper: bool = False,
 ) -> AdapterSetupResult:
     adapter = get_adapter(name)
     if adapter.name != "claude-code":
@@ -173,6 +177,7 @@ def setup_adapter(
     except ValueError as exc:
         raise AdapterError(str(exc)) from exc
     hook_path = root / ".ait" / "adapters" / "claude-code" / "claude_code_hook.py"
+    wrapper_path = root / ".ait" / "bin" / "claude"
     settings_path = (
         _resolve_target(root, target)
         if target is not None
@@ -191,10 +196,18 @@ def setup_adapter(
         settings_path.write_text(json.dumps(merged, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         wrote_files.append(str(settings_path))
 
+        if install_wrapper:
+            real_claude = _find_real_claude(wrapper_path)
+            wrapper_path.parent.mkdir(parents=True, exist_ok=True)
+            wrapper_path.write_text(_claude_wrapper_script(real_claude), encoding="utf-8")
+            wrapper_path.chmod(0o755)
+            wrote_files.append(str(wrapper_path))
+
     return AdapterSetupResult(
         adapter=adapter,
         hook_path=str(hook_path),
         settings_path=str(settings_path) if not print_only else None,
+        wrapper_path=str(wrapper_path) if install_wrapper and not print_only else None,
         settings=settings,
         wrote_files=tuple(wrote_files),
     )
@@ -272,3 +285,33 @@ def _merge_settings(existing: dict[str, object], generated: dict[str, object]) -
             if entry not in existing_entries:
                 existing_entries.append(entry)
     return merged
+
+
+def _find_real_claude(wrapper_path: Path) -> str:
+    wrapper = wrapper_path.resolve()
+    for directory in os.environ.get("PATH", "").split(os.pathsep):
+        if not directory:
+            continue
+        candidate = (Path(directory) / "claude").resolve()
+        if candidate == wrapper:
+            continue
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    found = shutil.which("claude")
+    if found is None:
+        raise AdapterError("could not find claude on PATH")
+    return found
+
+
+def _claude_wrapper_script(real_claude: str) -> str:
+    ait_executable = Path(sys.executable).with_name("ait")
+    ait_command = str(ait_executable) if ait_executable.exists() else "ait"
+    return (
+        "#!/bin/sh\n"
+        "set -eu\n"
+        ': "${AIT_INTENT:=Claude Code session}"\n'
+        ': "${AIT_COMMIT_MESSAGE:=claude code changes}"\n'
+        f"exec {shlex.quote(ait_command)} run --adapter claude-code --format json "
+        '--intent "$AIT_INTENT" --commit-message "$AIT_COMMIT_MESSAGE" -- '
+        f"{shlex.quote(real_claude)} \"$@\"\n"
+    )

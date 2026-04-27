@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import chdir, redirect_stdout
+from pathlib import Path
 from unittest.mock import patch
 
 from ait import cli
@@ -76,6 +79,41 @@ class CliAdapterTests(unittest.TestCase):
 
         self.assertEqual(2, exit_code)
 
+    def test_adapter_setup_install_wrapper_outputs_wrapper_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch(
+                        "sys.argv",
+                        ["ait", "adapter", "setup", "claude-code", "--install-wrapper"],
+                    ):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(0, exit_code)
+        self.assertTrue(payload["wrapper_path"].endswith(".ait/bin/claude"))
+        self.assertIn(payload["wrapper_path"], payload["wrote_files"])
+
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _git_init(repo_root: Path) -> None:
+    import subprocess
+
+    subprocess.run(["git", "init"], cwd=repo_root, check=True, capture_output=True)

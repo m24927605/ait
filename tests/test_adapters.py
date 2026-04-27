@@ -4,6 +4,7 @@ import unittest
 
 from dataclasses import asdict
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -120,6 +121,30 @@ class AdapterTests(unittest.TestCase):
             self.assertEqual((), result.wrote_files)
             self.assertIsNone(result.settings_path)
 
+    def test_setup_claude_code_can_install_wrapper(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = _init_git_repo(Path(tmp) / "repo")
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                result = setup_adapter("claude-code", repo_root, install_wrapper=True)
+            finally:
+                os.environ["PATH"] = old_path
+
+            wrapper_path = repo_root / ".ait" / "bin" / "claude"
+            wrapper = wrapper_path.read_text(encoding="utf-8")
+
+            self.assertEqual(str(wrapper_path.resolve()), result.wrapper_path)
+            self.assertIn(str(wrapper_path.resolve()), result.wrote_files)
+            self.assertIn(str(real_claude), wrapper)
+            self.assertIn("ait run --adapter claude-code --format json", wrapper)
+            self.assertTrue(os.access(wrapper_path, os.X_OK))
+
     def test_setup_unknown_adapter_raises_clear_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = _init_git_repo(Path(tmp))
@@ -131,6 +156,7 @@ class AdapterTests(unittest.TestCase):
 
 
 def _init_git_repo(repo_root: Path) -> Path:
+    repo_root.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init"], cwd=repo_root, check=True, capture_output=True)
     return repo_root
 

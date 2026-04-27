@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0 - 2026-04-27
+
+### Added
+
+- Add `ait adapter setup claude-code --install-wrapper`, which installs
+  a repo-local `.ait/bin/claude` wrapper so users can keep invoking
+  `claude` while ait automatically runs Claude Code through an isolated
+  attempt worktree.
+
 ## 0.5.4 - 2026-04-27
 
 ### Added
