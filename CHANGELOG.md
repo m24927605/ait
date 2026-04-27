@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0 - 2026-04-27
+
+### Added
+
+- Add `ait memory` for local long-term repo memory summaries derived
+  from intents, attempts, changed files, and attempt commits.
+- Inject long-term repo memory into Claude Code context files generated
+  by `ait run --adapter claude-code`.
+- Add Staff-level long-term memory design and acceptance documents.
+
 ## 0.6.7 - 2026-04-27
 
 ### Fixed

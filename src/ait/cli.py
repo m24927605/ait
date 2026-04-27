@@ -36,6 +36,7 @@ from ait.app import (
 )
 from ait.daemon import daemon_status, serve_daemon, start_daemon, stop_daemon
 from ait.db import connect_db
+from ait.memory import build_repo_memory, render_repo_memory_text
 from ait.query import blame_path, execute_query, list_shortcut_expression, parse_blame_target
 from ait.reconcile import reconcile_repo
 from ait.repo import resolve_repo_root
@@ -142,6 +143,10 @@ def build_parser() -> argparse.ArgumentParser:
     context_parser = subparsers.add_parser("context")
     context_parser.add_argument("intent_id")
     context_parser.add_argument("--format", choices=("text", "json"), default="text")
+
+    memory_parser = subparsers.add_parser("memory")
+    memory_parser.add_argument("--limit", type=int, default=8)
+    memory_parser.add_argument("--format", choices=("text", "json"), default="text")
 
     bootstrap_parser = subparsers.add_parser("bootstrap")
     bootstrap_parser.add_argument("name", choices=tuple(sorted(ADAPTERS)), nargs="?", default="claude-code")
@@ -357,6 +362,13 @@ def main() -> int:
             print(json.dumps(asdict(context), indent=2))
         else:
             print(render_agent_context_text(context), end="")
+        return 0
+    if args.command == "memory":
+        memory = build_repo_memory(repo_root, limit=args.limit)
+        if args.format == "json":
+            print(json.dumps(memory.to_dict(), indent=2))
+        else:
+            print(render_repo_memory_text(memory), end="")
         return 0
     if args.command == "bootstrap":
         try:

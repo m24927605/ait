@@ -40,13 +40,14 @@ verification, and rollback.
 - structured user intents
 - isolated agent attempts in Git worktrees
 - agent command output and lifecycle status
+- long-term repo memory rebuilt from prior attempts and commits
 - optional daemon-ingested tool events from harnesses
 - queryable evidence, file access, and commit linkage
 - promote, discard, rebase, and verification flows
 
 ## Status
 
-This repository is at `0.6.7` alpha quality for local dogfood use. It is
+This repository is at `0.7.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -79,14 +80,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.6.7"
+pipx install "git+https://github.com/m24927605/ait.git@v0.7.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.6.7"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.7.0"
 .venv/bin/ait --help
 ```
 
@@ -165,6 +166,7 @@ ait context <intent-id>
 ait attempt list --verified-status succeeded
 ait query --on attempt 'observed.tool_calls>0'
 ait blame path/to/file.py
+ait memory
 ```
 
 ## Daemon And Harness
@@ -270,6 +272,27 @@ the attempt worktree and expose it as `AIT_CONTEXT_FILE`:
 ait run --with-context --agent shell:local --intent "Continue previous work" -- \
   python -c "import os; print(open(os.environ['AIT_CONTEXT_FILE']).read())"
 ```
+
+The context file includes long-term repo memory rebuilt from previous
+ait attempts and commits.
+
+## Long-Term Memory
+
+`ait memory` renders a compact project memory summary from local durable
+state:
+
+```bash
+ait memory
+ait memory --format json
+```
+
+For Claude Code, the repo-local wrapper injects this memory
+automatically through `AIT_CONTEXT_FILE`. This does not give the model
+permanent internal memory; it gives each run a fresh, repo-local memory
+handoff that the agent can read before editing.
+
+See `docs/long-term-memory-design.md` and
+`docs/long-term-memory-acceptance.md` for design and acceptance criteria.
 
 ## Integration Guide
 
@@ -510,7 +533,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.6.7
+git checkout v0.7.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

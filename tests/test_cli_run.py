@@ -45,6 +45,21 @@ class CliRunTests(unittest.TestCase):
         self.assertEqual("agent out\n", payload["command_stdout"])
         self.assertEqual("agent err\n", payload["command_stderr"])
 
+    def test_memory_text_outputs_repo_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "memory"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+        self.assertEqual(0, exit_code)
+        self.assertIn("AIT Long-Term Repo Memory", stdout.getvalue())
+        self.assertIn("Recent Attempts:", stdout.getvalue())
+
 
 def _init_git_repo(repo_root: Path) -> None:
     subprocess.run(["git", "init"], cwd=repo_root, check=True, capture_output=True)

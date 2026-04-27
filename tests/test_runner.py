@@ -96,6 +96,7 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(0, result.exit_code)
             self.assertTrue((Path(result.workspace_ref) / ".ait-context.md").exists())
             self.assertIn("Intent: Context file", copied.read_text(encoding="utf-8"))
+            self.assertIn("AIT Long-Term Repo Memory", copied.read_text(encoding="utf-8"))
 
     def test_claude_code_adapter_defaults_to_context_and_env(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
