@@ -44,6 +44,10 @@ memory slice.
     `.ait-context.md` by default and expose `AIT_CONTEXT_FILE`.
 18. `ait bootstrap aider` and `ait bootstrap codex` install repo-local
     wrappers that route through `ait run`.
+19. Aider and Codex wrapped runs capture stdout/stderr transcripts under
+    `.ait/traces/`.
+20. `ait memory search <query>` can find captured Aider and Codex
+    transcript content.
 
 ## Manual Smoke
 
@@ -96,10 +100,11 @@ Verify non-Claude adapter automation with a fake binary on `PATH`:
 
 ```bash
 mkdir "$tmpdir/bin"
-printf '#!/bin/sh\ncp "$AIT_CONTEXT_FILE" context-copy.txt\n' > "$tmpdir/bin/codex"
+printf '#!/bin/sh\ncp "$AIT_CONTEXT_FILE" context-copy.txt\nprintf transcript-token\n' > "$tmpdir/bin/codex"
 chmod +x "$tmpdir/bin/codex"
 PATH="$tmpdir/bin:$PATH" "$tmpdir/venv/bin/ait" bootstrap codex
 PATH="$tmpdir/repo/.ait/bin:$tmpdir/bin:$PATH" codex
+"$tmpdir/venv/bin/ait" memory search transcript-token
 ```
 
 Expected result:
@@ -112,6 +117,8 @@ Expected result:
 - memory search returns the matching curated note or attempt evidence.
 - memory search JSON metadata includes `ranker`.
 - Codex and Aider wrappers route through `ait run` and expose context.
+- Codex and Aider transcript text is stored under `.ait/traces/` and
+  searchable.
 - the root checkout is unchanged until promotion.
 
 ## Automated Coverage
@@ -124,6 +131,7 @@ The automated test suite covers:
 - local memory search over notes and attempt evidence
 - vector and lexical memory search rankers
 - non-Claude adapter context defaults and wrapper automation
+- non-Claude transcript capture and search
 - text rendering
 - text compaction
 - `ait memory` CLI output

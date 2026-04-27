@@ -107,9 +107,11 @@ Implemented increments:
 - local TF-IDF vector ranking for memory search
 - adapter support beyond Claude Code for Aider and Codex repo-local
   wrappers
+- captured Aider and Codex stdout/stderr transcripts as searchable
+  repo-local evidence
 
 The next natural increments are:
 
 - external embedding-backed ranking over local evidence, if explicitly
   configured by the user
-- native tool-level hooks beyond Claude Code
+- structured native tool-level hooks beyond Claude Code

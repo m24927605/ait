@@ -244,7 +244,13 @@ def search_repo_memory(
     conn = connect_db(root / ".ait" / "state.sqlite3")
     try:
         run_migrations(conn)
-        return search_repo_memory_with_connection(conn, query=query, limit=limit, ranker=ranker)
+        return search_repo_memory_with_connection(
+            conn,
+            query=query,
+            limit=limit,
+            ranker=ranker,
+            repo_root=root,
+        )
     finally:
         conn.close()
 
@@ -255,11 +261,12 @@ def search_repo_memory_with_connection(
     query: str,
     limit: int = 8,
     ranker: str = "vector",
+    repo_root: str | Path | None = None,
 ) -> tuple[MemorySearchResult, ...]:
     query_terms = _terms(query)
     if not query_terms:
         return ()
-    documents = _search_documents(conn)
+    documents = _search_documents(conn, repo_root=Path(repo_root).resolve() if repo_root else Path.cwd())
     if ranker == "vector":
         results = _score_documents_vector(documents, query_terms)
     elif ranker == "lexical":
@@ -325,6 +332,7 @@ def _recent_attempts(
           a.agent_id,
           a.verified_status,
           a.result_exit_code,
+          a.raw_trace_ref,
           a.started_at,
           i.title AS intent_title,
           i.status AS intent_status
@@ -439,7 +447,11 @@ def _memory_notes(
     )
 
 
-def _search_documents(conn: sqlite3.Connection) -> tuple[dict[str, object], ...]:
+def _search_documents(
+    conn: sqlite3.Connection,
+    *,
+    repo_root: Path,
+) -> tuple[dict[str, object], ...]:
     documents: list[dict[str, object]] = []
     note_rows = conn.execute(
         """
@@ -471,6 +483,7 @@ def _search_documents(conn: sqlite3.Connection) -> tuple[dict[str, object], ...]
           a.agent_id,
           a.verified_status,
           a.result_exit_code,
+          a.raw_trace_ref,
           a.started_at,
           i.title AS intent_title,
           i.description AS intent_description,
@@ -483,6 +496,8 @@ def _search_documents(conn: sqlite3.Connection) -> tuple[dict[str, object], ...]
         attempt_id = str(row["attempt_id"])
         changed_files = _changed_files(conn, attempt_id)
         commits = _commit_oids(conn, attempt_id)
+        raw_trace_ref = str(row["raw_trace_ref"] or "")
+        trace_text = _read_trace_text(raw_trace_ref, repo_root=repo_root)
         text_parts = [
             str(row["intent_title"]),
             str(row["intent_description"] or ""),
@@ -491,6 +506,7 @@ def _search_documents(conn: sqlite3.Connection) -> tuple[dict[str, object], ...]
             str(row["verified_status"]),
             " ".join(changed_files),
             " ".join(commits),
+            trace_text,
         ]
         documents.append(
             {
@@ -503,12 +519,27 @@ def _search_documents(conn: sqlite3.Connection) -> tuple[dict[str, object], ...]
                     "verified_status": str(row["verified_status"]),
                     "result_exit_code": row["result_exit_code"],
                     "started_at": str(row["started_at"]),
+                    "raw_trace_ref": raw_trace_ref,
                     "changed_files": list(changed_files),
                     "commit_oids": list(commits),
                 },
             }
         )
     return tuple(documents)
+
+
+def _read_trace_text(raw_trace_ref: str, *, repo_root: Path, limit: int = 4000) -> str:
+    if not raw_trace_ref:
+        return ""
+    path = Path(raw_trace_ref)
+    if not path.is_absolute():
+        path = repo_root / path
+    if not path.exists():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")[:limit]
+    except OSError:
+        return ""
 
 
 def _score_documents_vector(

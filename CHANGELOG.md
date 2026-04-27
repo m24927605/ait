@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.0 - 2026-04-27
+
+### Added
+
+- Capture Aider and Codex wrapped command stdout/stderr transcripts into
+  repo-local `.ait/traces/` files.
+- Attach captured transcripts to attempts as raw trace evidence.
+- Include captured Aider and Codex transcripts in `ait memory search`
+  documents.
+
 ## 0.11.0 - 2026-04-27
 
 ### Added

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import subprocess
+import sys
 import time
 
 from ait.adapters import get_adapter
@@ -73,6 +74,8 @@ def run_agent_command(
     if context_file is not None:
         env["AIT_CONTEXT_FILE"] = str(context_file)
     completed: subprocess.CompletedProcess[str] | None = None
+    should_capture_output = capture_command_output or adapter.name in {"aider", "codex"}
+    raw_trace_ref: str | None = None
     with AitHarness.open(
         attempt_id=attempt.attempt_id,
         ownership_token=attempt.ownership_token,
@@ -89,8 +92,22 @@ def run_agent_command(
             env=env,
             check=False,
             text=True,
-            capture_output=capture_command_output,
+            capture_output=should_capture_output,
         )
+        if should_capture_output and not capture_command_output:
+            if completed.stdout:
+                print(completed.stdout, end="")
+            if completed.stderr:
+                print(completed.stderr, end="", file=sys.stderr)
+        if adapter.name in {"aider", "codex"}:
+            raw_trace_ref = _write_command_transcript(
+                root,
+                attempt.attempt_id,
+                command=command,
+                stdout=completed.stdout or "",
+                stderr=completed.stderr or "",
+                exit_code=completed.returncode,
+            )
         duration_ms = int((time.monotonic() - started) * 1000)
         harness.record_tool(
             tool_name=command[0],
@@ -98,7 +115,7 @@ def run_agent_command(
             duration_ms=duration_ms,
             success=completed.returncode == 0,
         )
-        harness.finish(exit_code=completed.returncode)
+        harness.finish(exit_code=completed.returncode, raw_trace_ref=raw_trace_ref)
 
     if commit_message and completed is not None and completed.returncode == 0:
         if context_file is not None:
@@ -138,6 +155,42 @@ def _write_context_file(repo_root: Path, workspace: Path, intent_id: str) -> Pat
         encoding="utf-8",
     )
     return path
+
+
+def _write_command_transcript(
+    repo_root: Path,
+    attempt_id: str,
+    *,
+    command: list[str],
+    stdout: str,
+    stderr: str,
+    exit_code: int,
+) -> str:
+    trace_dir = repo_root / ".ait" / "traces"
+    trace_dir.mkdir(parents=True, exist_ok=True)
+    path = trace_dir / f"{_safe_trace_name(attempt_id)}.txt"
+    path.write_text(
+        "\n".join(
+            [
+                "AIT Agent Transcript",
+                f"Attempt-Id: {attempt_id}",
+                f"Command: {' '.join(command)}",
+                f"Exit-Code: {exit_code}",
+                "",
+                "STDOUT:",
+                stdout,
+                "",
+                "STDERR:",
+                stderr,
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return str(path.relative_to(repo_root))
+
+
+def _safe_trace_name(attempt_id: str) -> str:
+    return "".join(char if char.isalnum() or char in "-_." else "_" for char in attempt_id)
 
 
 def _stage_all_changes(workspace: Path) -> None:

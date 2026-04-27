@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from ait.memory import search_repo_memory
 from ait.runner import run_agent_command
 
 
@@ -155,6 +156,35 @@ class RunnerTests(unittest.TestCase):
                     self.assertEqual(expected_agent, result.attempt.attempt["agent_id"])
                     self.assertTrue(output.startswith(f"{adapter_name}\nRead AIT_CONTEXT_FILE"))
                     self.assertIn(f"Intent: {adapter_name} adapter", output)
+
+    def test_aider_and_codex_adapters_capture_transcript_for_memory_search(self) -> None:
+        for adapter_name, expected_token in (("aider", "AIDER_TRANSCRIPT_TOKEN"), ("codex", "CODEX_TRANSCRIPT_TOKEN")):
+            with self.subTest(adapter=adapter_name):
+                with tempfile.TemporaryDirectory() as tmp:
+                    repo_root = Path(tmp)
+                    _init_git_repo(repo_root)
+
+                    result = run_agent_command(
+                        repo_root,
+                        intent_title=f"{adapter_name} transcript",
+                        adapter_name=adapter_name,
+                        command=[
+                            sys.executable,
+                            "-c",
+                            f"print('{expected_token} useful transcript evidence')",
+                        ],
+                        capture_command_output=True,
+                    )
+
+                    raw_trace_ref = result.attempt.attempt["raw_trace_ref"]
+                    trace_path = repo_root / raw_trace_ref
+                    search_results = search_repo_memory(repo_root, expected_token)
+
+                    self.assertEqual(0, result.exit_code)
+                    self.assertTrue(raw_trace_ref.startswith(".ait/traces/"))
+                    self.assertIn(expected_token, trace_path.read_text(encoding="utf-8"))
+                    self.assertEqual("attempt", search_results[0].kind)
+                    self.assertEqual(result.attempt_id, search_results[0].id)
 
     def test_run_agent_command_commit_message_stages_commits_and_verifies(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

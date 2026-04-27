@@ -147,7 +147,7 @@ MIGRATIONS: tuple[Migration, ...] = (
         version=4,
         name="memory_notes",
         sql="""
-        CREATE TABLE memory_notes (
+        CREATE TABLE IF NOT EXISTS memory_notes (
             id TEXT PRIMARY KEY,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
@@ -157,7 +157,7 @@ MIGRATIONS: tuple[Migration, ...] = (
             active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1))
         );
 
-        CREATE INDEX idx_memory_notes_active_topic_updated_at
+        CREATE INDEX IF NOT EXISTS idx_memory_notes_active_topic_updated_at
             ON memory_notes(active, topic, updated_at);
         """,
     ),
