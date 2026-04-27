@@ -113,7 +113,16 @@ class CliRunTests(unittest.TestCase):
                         add_exit = cli.main()
                 with patch(
                     "sys.argv",
-                    ["ait", "memory", "search", "tests release", "--format", "json"],
+                    [
+                        "ait",
+                        "memory",
+                        "search",
+                        "tests release",
+                        "--ranker",
+                        "vector",
+                        "--format",
+                        "json",
+                    ],
                 ):
                     with redirect_stdout(search_stdout):
                         search_exit = cli.main()
@@ -123,6 +132,7 @@ class CliRunTests(unittest.TestCase):
         self.assertEqual(0, search_exit)
         self.assertEqual("note", payload[0]["kind"])
         self.assertIn("Run tests before release.", payload[0]["text"])
+        self.assertEqual("vector", payload[0]["metadata"]["ranker"])
 
 
 def _init_git_repo(repo_root: Path) -> None:

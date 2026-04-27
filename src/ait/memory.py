@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
+import math
 from pathlib import Path
 import re
 import sqlite3
@@ -237,12 +238,13 @@ def search_repo_memory(
     query: str,
     *,
     limit: int = 8,
+    ranker: str = "vector",
 ) -> tuple[MemorySearchResult, ...]:
     root = resolve_repo_root(repo_root)
     conn = connect_db(root / ".ait" / "state.sqlite3")
     try:
         run_migrations(conn)
-        return search_repo_memory_with_connection(conn, query=query, limit=limit)
+        return search_repo_memory_with_connection(conn, query=query, limit=limit, ranker=ranker)
     finally:
         conn.close()
 
@@ -252,18 +254,25 @@ def search_repo_memory_with_connection(
     *,
     query: str,
     limit: int = 8,
+    ranker: str = "vector",
 ) -> tuple[MemorySearchResult, ...]:
     query_terms = _terms(query)
     if not query_terms:
         return ()
-    results = [
-        result
-        for result in (
-            _score_document(document, query_terms)
-            for document in _search_documents(conn)
-        )
-        if result is not None
-    ]
+    documents = _search_documents(conn)
+    if ranker == "vector":
+        results = _score_documents_vector(documents, query_terms)
+    elif ranker == "lexical":
+        results = [
+            result
+            for result in (
+                _score_document_lexical(document, query_terms)
+                for document in documents
+            )
+            if result is not None
+        ]
+    else:
+        raise ValueError("memory search ranker must be 'vector' or 'lexical'")
     results.sort(key=lambda result: (-result.score, result.kind, result.id))
     return tuple(results[:limit])
 
@@ -502,7 +511,38 @@ def _search_documents(conn: sqlite3.Connection) -> tuple[dict[str, object], ...]
     return tuple(documents)
 
 
-def _score_document(
+def _score_documents_vector(
+    documents: tuple[dict[str, object], ...],
+    query_terms: tuple[str, ...],
+) -> list[MemorySearchResult]:
+    document_terms = [_terms(str(document["title"]) + " " + str(document["text"])) for document in documents]
+    if not document_terms:
+        return []
+    doc_count = len(document_terms)
+    document_frequency: dict[str, int] = {}
+    for terms in document_terms:
+        for term in set(terms):
+            document_frequency[term] = document_frequency.get(term, 0) + 1
+
+    query_vector = _tfidf_vector(query_terms, document_frequency, doc_count)
+    query_norm = _vector_norm(query_vector)
+    if query_norm == 0:
+        return []
+
+    results: list[MemorySearchResult] = []
+    for document, terms in zip(documents, document_terms, strict=True):
+        vector = _tfidf_vector(terms, document_frequency, doc_count)
+        norm = _vector_norm(vector)
+        if norm == 0:
+            continue
+        score = _dot(query_vector, vector) / (query_norm * norm)
+        if score <= 0:
+            continue
+        results.append(_search_result(document, score, "vector"))
+    return results
+
+
+def _score_document_lexical(
     document: dict[str, object],
     query_terms: tuple[str, ...],
 ) -> MemorySearchResult | None:
@@ -521,14 +561,45 @@ def _score_document(
             score += 0.75
     if score <= 0:
         return None
+    return _search_result(document, score, "lexical")
+
+
+def _search_result(document: dict[str, object], score: float, ranker: str) -> MemorySearchResult:
+    metadata = dict(document["metadata"])
+    metadata["ranker"] = ranker
     return MemorySearchResult(
         kind=str(document["kind"]),
         id=str(document["id"]),
         score=score,
-        title=title,
-        text=_compact_line(text),
-        metadata=dict(document["metadata"]),
+        title=str(document["title"]),
+        text=_compact_line(str(document["text"])),
+        metadata=metadata,
     )
+
+
+def _tfidf_vector(
+    terms: tuple[str, ...],
+    document_frequency: dict[str, int],
+    doc_count: int,
+) -> dict[str, float]:
+    counts = {term: terms.count(term) for term in set(terms)}
+    vector: dict[str, float] = {}
+    for term, count in counts.items():
+        df = document_frequency.get(term, 0)
+        if df == 0:
+            continue
+        vector[term] = (1.0 + math.log(count)) * (math.log((1 + doc_count) / (1 + df)) + 1.0)
+    return vector
+
+
+def _vector_norm(vector: dict[str, float]) -> float:
+    return math.sqrt(sum(value * value for value in vector.values()))
+
+
+def _dot(left: dict[str, float], right: dict[str, float]) -> float:
+    if len(left) > len(right):
+        left, right = right, left
+    return sum(value * right.get(term, 0.0) for term, value in left.items())
 
 
 def _terms(text: str) -> tuple[str, ...]:

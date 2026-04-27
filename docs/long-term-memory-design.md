@@ -61,6 +61,7 @@ ait memory --promoted-only
 ait memory --budget-chars 4000
 ait memory search "auth adapter"
 ait memory search "auth adapter" --format json
+ait memory search "auth adapter" --ranker lexical
 ait memory note add --topic architecture "Keep adapter layers thin."
 ait memory note list
 ait memory note remove <note-id>
@@ -103,10 +104,12 @@ Implemented increments:
 - manually curated memory notes
 - compaction policies
 - local evidence search with the `ait memory search <query>` command
+- local TF-IDF vector ranking for memory search
 - adapter support beyond Claude Code for Aider and Codex repo-local
   wrappers
 
 The next natural increments are:
 
-- embedding-backed vector ranking over local evidence
+- external embedding-backed ranking over local evidence, if explicitly
+  configured by the user
 - native tool-level hooks beyond Claude Code

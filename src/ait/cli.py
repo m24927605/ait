@@ -177,6 +177,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory_search = memory_subparsers.add_parser("search")
     memory_search.add_argument("query")
     memory_search.add_argument("--limit", type=int, default=8)
+    memory_search.add_argument("--ranker", choices=("vector", "lexical"), default="vector")
     memory_search.add_argument("--format", choices=("text", "json"), default="text")
 
     bootstrap_parser = subparsers.add_parser("bootstrap")
@@ -427,7 +428,12 @@ def main() -> int:
                     print(f"removed {args.note_id}" if removed else f"not found {args.note_id}")
                 return 0 if removed else 2
         if args.memory_command == "search":
-            results = search_repo_memory(repo_root, args.query, limit=args.limit)
+            results = search_repo_memory(
+                repo_root,
+                args.query,
+                limit=args.limit,
+                ranker=args.ranker,
+            )
             if args.format == "json":
                 print(json.dumps([asdict(result) for result in results], indent=2))
             else:

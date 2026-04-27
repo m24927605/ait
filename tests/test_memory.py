@@ -118,6 +118,30 @@ class MemoryTests(unittest.TestCase):
             self.assertEqual("attempt", attempt_results[0].kind)
             self.assertEqual(attempt_id, attempt_results[0].id)
             self.assertEqual(["src/billing.py"], attempt_results[0].metadata["changed_files"])
+            self.assertEqual("vector", attempt_results[0].metadata["ranker"])
+
+    def test_search_repo_memory_can_use_lexical_ranker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            add_memory_note(
+                repo_root,
+                topic="release",
+                body="Run smoke tests before publishing packages.",
+            )
+
+            results = search_repo_memory(repo_root, "smoke packages", ranker="lexical")
+
+            self.assertEqual("note", results[0].kind)
+            self.assertEqual("lexical", results[0].metadata["ranker"])
+
+    def test_search_repo_memory_rejects_unknown_ranker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            with self.assertRaises(ValueError):
+                search_repo_memory(repo_root, "anything", ranker="unknown")
 
 
 def _init_git_repo(repo_root: Path) -> None:

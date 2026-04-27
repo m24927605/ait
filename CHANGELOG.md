@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.11.0 - 2026-04-27
+
+### Added
+
+- Add repo-local TF-IDF vector ranking for `ait memory search`.
+- Add `ait memory search --ranker vector|lexical`, with vector ranking
+  as the default and lexical ranking retained as a deterministic
+  fallback.
+- Include the selected memory search ranker in result metadata.
+
 ## 0.10.0 - 2026-04-27
 
 ### Added

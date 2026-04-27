@@ -36,9 +36,13 @@ memory slice.
 13. `ait memory search <query>` returns relevant repo-local memory
     evidence from curated notes and previous attempts.
 14. `ait memory search <query> --format json` emits parseable JSON.
-15. `ait run --adapter aider` and `ait run --adapter codex` write
+15. `ait memory search <query>` uses repo-local vector ranking by
+    default and records the selected ranker in result metadata.
+16. `ait memory search <query> --ranker lexical` keeps the deterministic
+    lexical fallback available.
+17. `ait run --adapter aider` and `ait run --adapter codex` write
     `.ait-context.md` by default and expose `AIT_CONTEXT_FILE`.
-16. `ait bootstrap aider` and `ait bootstrap codex` install repo-local
+18. `ait bootstrap aider` and `ait bootstrap codex` install repo-local
     wrappers that route through `ait run`.
 
 ## Manual Smoke
@@ -84,6 +88,7 @@ Verify memory:
 "$tmpdir/venv/bin/ait" memory note add --topic architecture "Keep memory repo-local."
 "$tmpdir/venv/bin/ait" memory --topic architecture
 "$tmpdir/venv/bin/ait" memory search "repo-local"
+"$tmpdir/venv/bin/ait" memory search "repo-local" --ranker lexical
 "$tmpdir/venv/bin/ait" attempt list
 ```
 
@@ -105,6 +110,7 @@ Expected result:
 - curated notes appear in the `Curated Notes` section.
 - budgeted output ends with a compaction marker if truncation is needed.
 - memory search returns the matching curated note or attempt evidence.
+- memory search JSON metadata includes `ranker`.
 - Codex and Aider wrappers route through `ait run` and expose context.
 - the root checkout is unchanged until promotion.
 
@@ -116,6 +122,7 @@ The automated test suite covers:
 - memory filters
 - curated memory note lifecycle
 - local memory search over notes and attempt evidence
+- vector and lexical memory search rankers
 - non-Claude adapter context defaults and wrapper automation
 - text rendering
 - text compaction
