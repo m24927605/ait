@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.17.0 - 2026-04-28
+
+### Changed
+
+- Make `ait doctor --fix` delegate to all-agent auto-enable so the
+  legacy low-friction setup command now enables every detected supported
+  agent CLI, not only Claude Code.
+- Keep `ait doctor <adapter> --fix` as a scoped setup path for users who
+  want to enable one agent.
+- Add explicit post-enable next commands in text output, such as
+  `claude ...`, `codex ...`, and `aider ...`.
+
 ## 0.16.0 - 2026-04-28
 
 ### Added

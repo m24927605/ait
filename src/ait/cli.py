@@ -196,7 +196,7 @@ def build_parser() -> argparse.ArgumentParser:
     bootstrap_parser.add_argument("--check", action="store_true")
 
     doctor_parser = subparsers.add_parser("doctor")
-    doctor_parser.add_argument("name", choices=tuple(sorted(ADAPTERS)), nargs="?", default="claude-code")
+    doctor_parser.add_argument("name", choices=tuple(sorted(ADAPTERS)), nargs="?")
     doctor_parser.add_argument("--format", choices=("text", "json"), default="text")
     doctor_parser.add_argument("--fix", action="store_true")
 
@@ -516,12 +516,19 @@ def main() -> int:
     if args.command == "doctor":
         if args.fix:
             try:
-                print(bootstrap_shell_snippet(args.name, repo_root))
+                result = enable_available_adapters(
+                    repo_root,
+                    names=(args.name,) if args.name else None,
+                )
             except AdapterError as exc:
                 print(f"error: {exc}", file=sys.stderr)
                 return 2
-            return 0
-        result = doctor_automation(args.name, repo_root)
+            if result.shell_snippet:
+                print(result.shell_snippet)
+                return 0
+            print("error: no supported agent binaries found on PATH", file=sys.stderr)
+            return 2
+        result = doctor_automation(args.name or "claude-code", repo_root)
         if args.format == "json":
             print(json.dumps(asdict(result), indent=2))
         else:
@@ -725,6 +732,11 @@ def _format_auto_enable(result) -> str:
     if result.shell_snippet:
         lines.append("Current shell:")
         lines.append(f'- eval "$(ait enable --shell)"')
+        lines.append("Next:")
+        for item in result.installed:
+            command = item.adapter.command_name
+            if command:
+                lines.append(f"- {command} ...")
     return "\n".join(lines)
 
 

@@ -331,7 +331,7 @@ class CliAdapterTests(unittest.TestCase):
             self.assertIn("Next steps:", text)
             self.assertIn('eval "$(ait enable --shell)"', text)
 
-    def test_doctor_fix_outputs_eval_safe_shell_snippet(self) -> None:
+    def test_doctor_fix_outputs_eval_safe_shell_snippet_for_detected_agents(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp) / "repo"
             repo_root.mkdir()
@@ -341,6 +341,9 @@ class CliAdapterTests(unittest.TestCase):
             real_claude = bin_dir / "claude"
             real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
             real_claude.chmod(0o755)
+            real_codex = bin_dir / "codex"
+            real_codex.write_text("#!/bin/sh\nprintf 'real codex\\n'\n", encoding="utf-8")
+            real_codex.chmod(0o755)
             old_path = os.environ.get("PATH", "")
             stdout = io.StringIO()
             os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
@@ -357,6 +360,38 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertEqual(f'export PATH={wrapper_dir}:"$PATH"\n', stdout.getvalue())
             self.assertTrue((wrapper_dir / "claude").exists())
+            self.assertTrue((wrapper_dir / "codex").exists())
+
+    def test_doctor_fix_named_adapter_limits_enable_scope(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            real_codex = bin_dir / "codex"
+            real_codex.write_text("#!/bin/sh\nprintf 'real codex\\n'\n", encoding="utf-8")
+            real_codex.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "doctor", "codex", "--fix"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            wrapper_dir = (repo_root / ".ait" / "bin").resolve()
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual(f'export PATH={wrapper_dir}:"$PATH"\n', stdout.getvalue())
+            self.assertTrue((wrapper_dir / "codex").exists())
+            self.assertFalse((wrapper_dir / "claude").exists())
 
     def test_status_json_reports_next_steps_without_writing_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -507,6 +542,33 @@ class CliAdapterTests(unittest.TestCase):
             self.assertTrue(payload["shell_snippet"].startswith("export PATH="))
             self.assertTrue((repo_root / ".ait" / "bin" / "codex").exists())
             self.assertFalse((repo_root / ".ait" / "bin" / "aider").exists())
+
+    def test_enable_text_outputs_agent_next_steps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_codex = bin_dir / "codex"
+            real_codex.write_text("#!/bin/sh\nprintf 'real codex\\n'\n", encoding="utf-8")
+            real_codex.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "enable", "--adapter", "codex"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            text = stdout.getvalue()
+
+            self.assertEqual(0, exit_code)
+            self.assertIn("Next:", text)
+            self.assertIn("- codex ...", text)
 
     def test_enable_shell_outputs_eval_safe_snippet(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

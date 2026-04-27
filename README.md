@@ -48,7 +48,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.16.0` alpha quality for local dogfood use. It is
+This repository is at `0.17.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -81,14 +81,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.16.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.17.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.16.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.17.0"
 .venv/bin/ait --help
 ```
 
@@ -361,23 +361,24 @@ editing:
 ait run --adapter claude-code --intent "Refactor query parser" -- claude
 ```
 
-For lower user friction, install the repo-local Claude wrapper once:
+For lower user friction, install repo-local wrappers for every supported
+agent binary found on `PATH`:
 
 ```bash
 eval "$(ait doctor --fix)"
 ```
 
-To enable every supported agent binary found on `PATH` in one pass:
+The newer spelling is equivalent and more explicit:
 
 ```bash
 eval "$(ait enable --shell)"
 ```
 
-After that, invoking `claude ...` from the repository will hit
-`.ait/bin/claude`, which runs Claude Code through `ait run --adapter
-claude-code` in an isolated attempt worktree. The wrapper passes through
-all Claude arguments. It uses `AIT_INTENT` and `AIT_COMMIT_MESSAGE` when
-set, otherwise it falls back to conservative defaults:
+After that, invoking `claude ...`, `codex ...`, or `aider ...` from the
+repository will hit `.ait/bin/*`, which runs the agent through `ait run`
+in an isolated attempt worktree. The wrapper passes through all agent
+arguments. It uses `AIT_INTENT` and `AIT_COMMIT_MESSAGE` when set,
+otherwise it falls back to conservative defaults:
 
 ```bash
 AIT_INTENT="Update README" \
@@ -594,7 +595,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.16.0
+git checkout v0.17.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q
