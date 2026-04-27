@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.3 - 2026-04-27
+
+### Fixed
+
+- Make `ait run --commit-message ...` stage generated worktree changes,
+  commit them, verify the attempt, and omit the generated
+  `.ait-context.md` handoff file from the commit.
+- Return a clean CLI error if `ait run --commit-message ...` cannot
+  stage or commit the attempt worktree.
+
+### Added
+
+- Document the Claude Code worktree workflow where `ait run --adapter
+  claude-code` makes Claude edit the attempt worktree, then
+  `ait attempt promote` applies the result to the target branch.
+
 ## 0.5.2 - 2026-04-27
 
 ### Fixed

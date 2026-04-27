@@ -12,7 +12,7 @@ The MVP tracks:
 
 ## Status
 
-This repository is at `0.5.2` alpha quality for local dogfood use. It is
+This repository is at `0.5.3` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -45,14 +45,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.5.2"
+pipx install "git+https://github.com/m24927605/ait.git@v0.5.3"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.5.2"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.5.3"
 .venv/bin/ait --help
 ```
 
@@ -257,6 +257,26 @@ editing:
 ait run --adapter claude-code --intent "Refactor query parser" -- claude
 ```
 
+To make Claude edit an isolated attempt worktree and commit the result:
+
+```bash
+ait run --adapter claude-code \
+  --intent "Update README" \
+  --commit-message "update README with Claude" \
+  -- claude -p --permission-mode bypassPermissions \
+    'Append exactly this line to README.md: ait run worktree smoke ok'
+```
+
+The root checkout is unchanged until the attempt is promoted. Promote
+the resulting attempt after reviewing it:
+
+```bash
+ait attempt show <attempt-id>
+ait attempt promote <attempt-id> --to main
+```
+
+See `docs/claude-code-run-worktree.md` for the live smoke workflow.
+
 For deeper Claude Code event capture, install the native hook example
 after checking readiness:
 
@@ -393,7 +413,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.5.2
+git checkout v0.5.3
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

@@ -322,7 +322,7 @@ def main() -> int:
                 commit_message=args.commit_message,
                 with_context=args.with_context,
             )
-        except AdapterError as exc:
+        except (AdapterError, WorkspaceError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
         print(json.dumps(asdict(result), indent=2))

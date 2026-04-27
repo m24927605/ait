@@ -7,11 +7,11 @@ import subprocess
 import time
 
 from ait.adapters import get_adapter
-from ait.app import AttemptShowResult, create_attempt, create_intent, show_attempt
+from ait.app import AttemptShowResult, create_attempt, create_intent, show_attempt, verify_attempt
 from ait.context import build_agent_context, render_agent_context_text
 from ait.daemon import start_daemon
 from ait.harness import AitHarness
-from ait.workspace import create_attempt_commit
+from ait.workspace import WorkspaceError, create_attempt_commit
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,14 +96,19 @@ def run_agent_command(
         harness.finish(exit_code=completed.returncode)
 
     if commit_message and completed is not None and completed.returncode == 0:
+        if context_file is not None:
+            context_file.unlink(missing_ok=True)
+        _stage_all_changes(Path(attempt.workspace_ref))
         create_attempt_commit(
             attempt.workspace_ref,
             message=commit_message,
             intent_id=intent.intent_id,
             attempt_id=attempt.attempt_id,
         )
+        shown = verify_attempt(root, attempt_id=attempt.attempt_id)
+    else:
+        shown = show_attempt(root, attempt_id=attempt.attempt_id)
 
-    shown = show_attempt(root, attempt_id=attempt.attempt_id)
     return RunResult(
         intent_id=intent.intent_id,
         attempt_id=attempt.attempt_id,
@@ -118,3 +123,15 @@ def _write_context_file(repo_root: Path, workspace: Path, intent_id: str) -> Pat
     path = workspace / ".ait-context.md"
     path.write_text(render_agent_context_text(context), encoding="utf-8")
     return path
+
+
+def _stage_all_changes(workspace: Path) -> None:
+    completed = subprocess.run(
+        ["git", "add", "-A"],
+        cwd=workspace,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise WorkspaceError(completed.stderr.strip() or "git add -A failed")

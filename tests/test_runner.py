@@ -104,6 +104,30 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual("claude-code:manual", result.attempt.attempt["agent_id"])
             self.assertTrue(output.startswith("claude-code\nIntent: Claude adapter"))
 
+    def test_run_agent_command_commit_message_stages_commits_and_verifies(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="Commit generated change",
+                adapter_name="claude-code",
+                command=[
+                    sys.executable,
+                    "-c",
+                    "from pathlib import Path; Path('agent.txt').write_text('ok\\n')",
+                ],
+                commit_message="commit generated change",
+            )
+
+            self.assertEqual(0, result.exit_code)
+            self.assertEqual("succeeded", result.attempt.attempt["verified_status"])
+            self.assertEqual(("agent.txt",), result.attempt.files["changed"])
+            self.assertEqual(1, len(result.attempt.commits))
+            self.assertFalse((Path(result.workspace_ref) / ".ait-context.md").exists())
+            self.assertFalse(_git_stdout(Path(result.workspace_ref), "status", "--short"))
+
 
 def _init_git_repo(repo_root: Path) -> None:
     _git(repo_root, "init")
@@ -122,6 +146,16 @@ def _git(repo_root: Path, *args: str) -> None:
         capture_output=True,
         text=True,
     )
+
+
+def _git_stdout(repo_root: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
 
 
 if __name__ == "__main__":
