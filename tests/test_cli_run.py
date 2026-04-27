@@ -60,6 +60,43 @@ class CliRunTests(unittest.TestCase):
         self.assertIn("AIT Long-Term Repo Memory", stdout.getvalue())
         self.assertIn("Recent Attempts:", stdout.getvalue())
 
+    def test_memory_note_cli_adds_lists_and_removes_notes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            add_stdout = io.StringIO()
+            list_stdout = io.StringIO()
+            remove_stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "memory",
+                        "note",
+                        "add",
+                        "--topic",
+                        "architecture",
+                        "Use repo-local state only.",
+                    ],
+                ):
+                    with redirect_stdout(add_stdout):
+                        add_exit = cli.main()
+                note_id = json.loads(add_stdout.getvalue())["id"]
+                with patch("sys.argv", ["ait", "memory", "note", "list", "--topic", "architecture"]):
+                    with redirect_stdout(list_stdout):
+                        list_exit = cli.main()
+                with patch("sys.argv", ["ait", "memory", "note", "remove", note_id]):
+                    with redirect_stdout(remove_stdout):
+                        remove_exit = cli.main()
+
+        self.assertEqual(0, add_exit)
+        self.assertEqual(0, list_exit)
+        self.assertEqual(0, remove_exit)
+        self.assertIn("Use repo-local state only.", list_stdout.getvalue())
+        self.assertTrue(json.loads(remove_stdout.getvalue())["removed"])
+
 
 def _init_git_repo(repo_root: Path) -> None:
     subprocess.run(["git", "init"], cwd=repo_root, check=True, capture_output=True)

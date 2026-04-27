@@ -36,6 +36,7 @@ class MigrationTests(unittest.TestCase):
                     "intent_edges",
                     "attempt_commits",
                     "evidence_files",
+                    "memory_notes",
                 }.issubset(tables)
             )
             self.assertEqual(str(SCHEMA_VERSION), get_meta(conn, "schema_version"))
@@ -84,6 +85,20 @@ class MigrationTests(unittest.TestCase):
             ).fetchall()
         }
         self.assertIn("idx_intent_edges_child", indexes)
+
+    def test_memory_notes_has_active_topic_index(self) -> None:
+        conn = connect_db(":memory:")
+        self.addCleanup(conn.close)
+
+        run_migrations(conn)
+
+        indexes = {
+            row["name"]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'memory_notes'"
+            ).fetchall()
+        }
+        self.assertIn("idx_memory_notes_active_topic_updated_at", indexes)
 
     def test_run_migrations_rejects_newer_schema_version(self) -> None:
         conn = sqlite3.connect(":memory:")

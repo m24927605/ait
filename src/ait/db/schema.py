@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 @dataclass(frozen=True)
@@ -141,6 +141,24 @@ MIGRATIONS: tuple[Migration, ...] = (
         name="drop_result_patch_refs_json",
         sql="""
         SELECT 1;
+        """,
+    ),
+    Migration(
+        version=4,
+        name="memory_notes",
+        sql="""
+        CREATE TABLE memory_notes (
+            id TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            topic TEXT,
+            body TEXT NOT NULL,
+            source TEXT NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1))
+        );
+
+        CREATE INDEX idx_memory_notes_active_topic_updated_at
+            ON memory_notes(active, topic, updated_at);
         """,
     ),
 )

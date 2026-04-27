@@ -55,6 +55,13 @@ Inspect memory directly:
 ```bash
 ait memory
 ait memory --format json
+ait memory --path src/
+ait memory --topic architecture
+ait memory --promoted-only
+ait memory --budget-chars 4000
+ait memory note add --topic architecture "Keep adapter layers thin."
+ait memory note list
+ait memory note remove <note-id>
 ```
 
 Claude Code receives the same memory automatically through the
@@ -87,11 +94,14 @@ verify current files before editing. This matters because:
 
 ## Future Extensions
 
-The next natural increments are:
+Implemented increments:
 
 - memory filtering by file path or topic
 - promoted-only memory mode
 - manually curated memory notes
 - compaction policies
+
+The next natural increments are:
+
 - vector search over local evidence
 - adapter support beyond Claude Code

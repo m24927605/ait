@@ -132,7 +132,9 @@ def _write_context_file(repo_root: Path, workspace: Path, intent_id: str) -> Pat
     memory = build_repo_memory(repo_root)
     path = workspace / ".ait-context.md"
     path.write_text(
-        render_agent_context_text(context) + "\n" + render_repo_memory_text(memory),
+        render_agent_context_text(context)
+        + "\n"
+        + render_repo_memory_text(memory, budget_chars=12000),
         encoding="utf-8",
     )
     return path

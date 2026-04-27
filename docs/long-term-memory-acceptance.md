@@ -25,6 +25,14 @@ memory slice.
    commits.
 7. A changed Claude Code wrapper run still creates one attempt-linked
    commit.
+8. `ait memory --path <prefix>` only includes attempts and hot files
+   matching that path prefix.
+9. `ait memory --promoted-only` only includes promoted attempts.
+10. `ait memory note add/list/remove` can manage curated repo-local
+    memory notes.
+11. `ait memory --topic <topic>` filters curated notes by topic.
+12. `ait memory --budget-chars <n>` compacts rendered memory to the
+    configured character budget.
 
 ## Manual Smoke
 
@@ -64,6 +72,10 @@ Verify memory:
 
 ```bash
 "$tmpdir/venv/bin/ait" memory
+"$tmpdir/venv/bin/ait" memory --path README.md
+"$tmpdir/venv/bin/ait" memory --budget-chars 1000
+"$tmpdir/venv/bin/ait" memory note add --topic architecture "Keep memory repo-local."
+"$tmpdir/venv/bin/ait" memory --topic architecture
 "$tmpdir/venv/bin/ait" attempt list
 ```
 
@@ -72,6 +84,8 @@ Expected result:
 - `ait memory` includes a recent attempt.
 - changed files include `README.md` when Claude changed it.
 - the attempt has one commit when Claude changed files.
+- curated notes appear in the `Curated Notes` section.
+- budgeted output ends with a compaction marker if truncation is needed.
 - the root checkout is unchanged until promotion.
 
 ## Automated Coverage
@@ -79,7 +93,10 @@ Expected result:
 The automated test suite covers:
 
 - memory summary construction
+- memory filters
+- curated memory note lifecycle
 - text rendering
+- text compaction
 - `ait memory` CLI output
 - `.ait-context.md` memory injection
 - no-change commit-message runs

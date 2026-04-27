@@ -36,7 +36,13 @@ from ait.app import (
 )
 from ait.daemon import daemon_status, serve_daemon, start_daemon, stop_daemon
 from ait.db import connect_db
-from ait.memory import build_repo_memory, render_repo_memory_text
+from ait.memory import (
+    add_memory_note,
+    build_repo_memory,
+    list_memory_notes,
+    remove_memory_note,
+    render_repo_memory_text,
+)
 from ait.query import blame_path, execute_query, list_shortcut_expression, parse_blame_target
 from ait.reconcile import reconcile_repo
 from ait.repo import resolve_repo_root
@@ -146,7 +152,26 @@ def build_parser() -> argparse.ArgumentParser:
 
     memory_parser = subparsers.add_parser("memory")
     memory_parser.add_argument("--limit", type=int, default=8)
+    memory_parser.add_argument("--path", dest="path_filter")
+    memory_parser.add_argument("--topic")
+    memory_parser.add_argument("--promoted-only", action="store_true")
+    memory_parser.add_argument("--budget-chars", type=int)
     memory_parser.add_argument("--format", choices=("text", "json"), default="text")
+    memory_subparsers = memory_parser.add_subparsers(dest="memory_command")
+    memory_note = memory_subparsers.add_parser("note")
+    memory_note_subparsers = memory_note.add_subparsers(dest="memory_note_command")
+    memory_note_add = memory_note_subparsers.add_parser("add")
+    memory_note_add.add_argument("body")
+    memory_note_add.add_argument("--topic")
+    memory_note_add.add_argument("--source", default="manual")
+    memory_note_add.add_argument("--format", choices=("text", "json"), default="json")
+    memory_note_list = memory_note_subparsers.add_parser("list")
+    memory_note_list.add_argument("--topic")
+    memory_note_list.add_argument("--limit", type=int, default=100)
+    memory_note_list.add_argument("--format", choices=("text", "json"), default="text")
+    memory_note_remove = memory_note_subparsers.add_parser("remove")
+    memory_note_remove.add_argument("note_id")
+    memory_note_remove.add_argument("--format", choices=("text", "json"), default="json")
 
     bootstrap_parser = subparsers.add_parser("bootstrap")
     bootstrap_parser.add_argument("name", choices=tuple(sorted(ADAPTERS)), nargs="?", default="claude-code")
@@ -364,11 +389,48 @@ def main() -> int:
             print(render_agent_context_text(context), end="")
         return 0
     if args.command == "memory":
-        memory = build_repo_memory(repo_root, limit=args.limit)
+        if args.memory_command == "note":
+            if args.memory_note_command == "add":
+                note = add_memory_note(
+                    repo_root,
+                    body=args.body,
+                    topic=args.topic,
+                    source=args.source,
+                )
+                if args.format == "json":
+                    print(json.dumps(asdict(note), indent=2))
+                else:
+                    print(f"added {note.id}")
+                return 0
+            if args.memory_note_command == "list":
+                notes = list_memory_notes(repo_root, topic=args.topic, limit=args.limit)
+                if args.format == "json":
+                    print(json.dumps([asdict(note) for note in notes], indent=2))
+                else:
+                    if not notes:
+                        print("No memory notes.")
+                    for note in notes:
+                        topic = note.topic if note.topic else "general"
+                        print(f"{note.id}\ttopic={topic}\tsource={note.source}\t{note.body}")
+                return 0
+            if args.memory_note_command == "remove":
+                removed = remove_memory_note(repo_root, note_id=args.note_id)
+                if args.format == "json":
+                    print(json.dumps({"note_id": args.note_id, "removed": removed}, indent=2))
+                else:
+                    print(f"removed {args.note_id}" if removed else f"not found {args.note_id}")
+                return 0 if removed else 2
+        memory = build_repo_memory(
+            repo_root,
+            limit=args.limit,
+            path_filter=args.path_filter,
+            topic=args.topic,
+            promoted_only=args.promoted_only,
+        )
         if args.format == "json":
             print(json.dumps(memory.to_dict(), indent=2))
         else:
-            print(render_repo_memory_text(memory), end="")
+            print(render_repo_memory_text(memory, budget_chars=args.budget_chars), end="")
         return 0
     if args.command == "bootstrap":
         try:

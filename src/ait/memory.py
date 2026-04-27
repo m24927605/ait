@@ -3,9 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from pathlib import Path
 import sqlite3
+import uuid
 
-from ait.db import connect_db, run_migrations
+from ait.db import connect_db, run_migrations, utc_now
 from ait.repo import resolve_repo_root
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryNote:
+    id: str
+    topic: str | None
+    body: str
+    source: str
+    created_at: str
+    updated_at: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +37,7 @@ class RepoMemory:
     repo_root: str
     recent_attempts: tuple[MemoryAttempt, ...]
     hot_files: tuple[str, ...]
+    notes: tuple[MemoryNote, ...]
     recommendations: tuple[str, ...]
 
     def to_dict(self) -> dict[str, object]:
@@ -33,16 +45,31 @@ class RepoMemory:
             "repo_root": self.repo_root,
             "recent_attempts": [asdict(attempt) for attempt in self.recent_attempts],
             "hot_files": list(self.hot_files),
+            "notes": [asdict(note) for note in self.notes],
             "recommendations": list(self.recommendations),
         }
 
 
-def build_repo_memory(repo_root: str | Path, *, limit: int = 8) -> RepoMemory:
+def build_repo_memory(
+    repo_root: str | Path,
+    *,
+    limit: int = 8,
+    path_filter: str | None = None,
+    topic: str | None = None,
+    promoted_only: bool = False,
+) -> RepoMemory:
     root = resolve_repo_root(repo_root)
     conn = connect_db(root / ".ait" / "state.sqlite3")
     try:
         run_migrations(conn)
-        return build_repo_memory_with_connection(conn, repo_root=root, limit=limit)
+        return build_repo_memory_with_connection(
+            conn,
+            repo_root=root,
+            limit=limit,
+            path_filter=path_filter,
+            topic=topic,
+            promoted_only=promoted_only,
+        )
     finally:
         conn.close()
 
@@ -52,24 +79,49 @@ def build_repo_memory_with_connection(
     *,
     repo_root: str | Path,
     limit: int = 8,
+    path_filter: str | None = None,
+    topic: str | None = None,
+    promoted_only: bool = False,
 ) -> RepoMemory:
-    attempts = tuple(_recent_attempts(conn, limit=limit))
-    hot_files = _hot_files(conn, limit=10)
+    attempts = tuple(
+        _recent_attempts(
+            conn,
+            limit=limit,
+            path_filter=path_filter,
+            promoted_only=promoted_only,
+        )
+    )
+    hot_files = _hot_files(conn, limit=10, path_filter=path_filter)
+    notes = _memory_notes(conn, limit=limit, topic=topic)
     return RepoMemory(
         repo_root=str(Path(repo_root).resolve()),
         recent_attempts=attempts,
         hot_files=hot_files,
-        recommendations=_recommendations(attempts, hot_files),
+        notes=notes,
+        recommendations=_recommendations(attempts, hot_files, notes),
     )
 
 
-def render_repo_memory_text(memory: RepoMemory) -> str:
+def render_repo_memory_text(memory: RepoMemory, *, budget_chars: int | None = None) -> str:
     lines = [
         "AIT Long-Term Repo Memory",
         f"Repo: {memory.repo_root}",
         "",
-        "Recent Attempts:",
+        "Curated Notes:",
     ]
+    if not memory.notes:
+        lines.append("- none")
+    for note in memory.notes:
+        topic = note.topic if note.topic else "general"
+        lines.append(f"- {note.id} topic={topic} source={note.source}")
+        lines.append(f"  {note.body}")
+
+    lines.extend(
+        [
+            "",
+            "Recent Attempts:",
+        ]
+    )
     if not memory.recent_attempts:
         lines.append("- none recorded yet")
     for attempt in memory.recent_attempts:
@@ -95,12 +147,107 @@ def render_repo_memory_text(memory: RepoMemory) -> str:
     lines.append("Recommended Memory Use:")
     for recommendation in memory.recommendations:
         lines.append(f"- {recommendation}")
-    return "\n".join(lines) + "\n"
+    text = "\n".join(lines) + "\n"
+    if budget_chars is None or budget_chars <= 0 or len(text) <= budget_chars:
+        return text
+    marker = "\n[ait memory compacted to configured budget]\n"
+    keep = max(0, budget_chars - len(marker))
+    return text[:keep].rstrip() + marker
 
 
-def _recent_attempts(conn: sqlite3.Connection, *, limit: int) -> list[MemoryAttempt]:
+def add_memory_note(
+    repo_root: str | Path,
+    *,
+    body: str,
+    topic: str | None = None,
+    source: str = "manual",
+) -> MemoryNote:
+    root = resolve_repo_root(repo_root)
+    conn = connect_db(root / ".ait" / "state.sqlite3")
+    try:
+        run_migrations(conn)
+        note = MemoryNote(
+            id=f"note:{uuid.uuid4().hex}",
+            topic=topic,
+            body=body,
+            source=source,
+            created_at=utc_now(),
+            updated_at=utc_now(),
+        )
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO memory_notes(id, created_at, updated_at, topic, body, source, active)
+                VALUES (?, ?, ?, ?, ?, ?, 1)
+                """,
+                (note.id, note.created_at, note.updated_at, note.topic, note.body, note.source),
+            )
+        return note
+    finally:
+        conn.close()
+
+
+def list_memory_notes(
+    repo_root: str | Path,
+    *,
+    topic: str | None = None,
+    limit: int = 100,
+) -> tuple[MemoryNote, ...]:
+    root = resolve_repo_root(repo_root)
+    conn = connect_db(root / ".ait" / "state.sqlite3")
+    try:
+        run_migrations(conn)
+        return _memory_notes(conn, limit=limit, topic=topic)
+    finally:
+        conn.close()
+
+
+def remove_memory_note(repo_root: str | Path, *, note_id: str) -> bool:
+    root = resolve_repo_root(repo_root)
+    conn = connect_db(root / ".ait" / "state.sqlite3")
+    try:
+        run_migrations(conn)
+        with conn:
+            cursor = conn.execute(
+                """
+                UPDATE memory_notes
+                SET active = 0, updated_at = ?
+                WHERE id = ? AND active = 1
+                """,
+                (utc_now(), note_id),
+            )
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def _recent_attempts(
+    conn: sqlite3.Connection,
+    *,
+    limit: int,
+    path_filter: str | None,
+    promoted_only: bool,
+) -> list[MemoryAttempt]:
+    where = []
+    params: list[object] = []
+    if promoted_only:
+        where.append("a.verified_status = 'promoted'")
+    if path_filter:
+        where.append(
+            """
+            EXISTS (
+              SELECT 1
+              FROM evidence_files AS ef
+              WHERE ef.attempt_id = a.id
+                AND ef.file_path LIKE ?
+            )
+            """
+        )
+        params.append(f"{path_filter}%")
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+    params.append(limit)
     rows = conn.execute(
-        """
+        f"""
         SELECT
           a.id AS attempt_id,
           a.agent_id,
@@ -111,10 +258,11 @@ def _recent_attempts(conn: sqlite3.Connection, *, limit: int) -> list[MemoryAtte
           i.status AS intent_status
         FROM attempts AS a
         JOIN intents AS i ON i.id = a.intent_id
+        {where_sql}
         ORDER BY a.started_at DESC, a.ordinal DESC
         LIMIT ?
         """,
-        (limit,),
+        tuple(params),
     ).fetchall()
     return [
         MemoryAttempt(
@@ -158,24 +306,71 @@ def _commit_oids(conn: sqlite3.Connection, attempt_id: str) -> tuple[str, ...]:
     return tuple(str(row["commit_oid"]) for row in rows)
 
 
-def _hot_files(conn: sqlite3.Connection, *, limit: int) -> tuple[str, ...]:
+def _hot_files(
+    conn: sqlite3.Connection,
+    *,
+    limit: int,
+    path_filter: str | None,
+) -> tuple[str, ...]:
+    where = "kind IN ('changed', 'touched')"
+    params: list[object] = []
+    if path_filter:
+        where += " AND file_path LIKE ?"
+        params.append(f"{path_filter}%")
+    params.append(limit)
     rows = conn.execute(
-        """
+        f"""
         SELECT file_path, COUNT(*) AS touch_count
         FROM evidence_files
-        WHERE kind IN ('changed', 'touched')
+        WHERE {where}
         GROUP BY file_path
         ORDER BY touch_count DESC, file_path ASC
         LIMIT ?
         """,
-        (limit,),
+        tuple(params),
     ).fetchall()
     return tuple(str(row["file_path"]) for row in rows)
+
+
+def _memory_notes(
+    conn: sqlite3.Connection,
+    *,
+    limit: int,
+    topic: str | None,
+) -> tuple[MemoryNote, ...]:
+    where = "active = 1"
+    params: list[object] = []
+    if topic:
+        where += " AND topic = ?"
+        params.append(topic)
+    params.append(limit)
+    rows = conn.execute(
+        f"""
+        SELECT id, topic, body, source, created_at, updated_at
+        FROM memory_notes
+        WHERE {where}
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT ?
+        """,
+        tuple(params),
+    ).fetchall()
+    return tuple(
+        MemoryNote(
+            id=str(row["id"]),
+            topic=str(row["topic"]) if row["topic"] is not None else None,
+            body=str(row["body"]),
+            source=str(row["source"]),
+            created_at=str(row["created_at"]),
+            updated_at=str(row["updated_at"]),
+        )
+        for row in rows
+    )
 
 
 def _recommendations(
     attempts: tuple[MemoryAttempt, ...],
     hot_files: tuple[str, ...],
+    notes: tuple[MemoryNote, ...],
 ) -> tuple[str, ...]:
     items: list[str] = [
         "treat this as external memory; verify current files before editing",
@@ -186,4 +381,6 @@ def _recommendations(
         items.append(f"review latest failed attempt before repeating work: {failed.attempt_id}")
     if hot_files:
         items.append(f"inspect frequently changed files first: {', '.join(hot_files[:5])}")
+    if notes:
+        items.append("apply curated notes as stable project guidance unless current files disagree")
     return tuple(items)

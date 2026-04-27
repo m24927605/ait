@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.0 - 2026-04-27
+
+### Added
+
+- Add memory filtering by file path with `ait memory --path`.
+- Add topic filtering for curated memory with `ait memory --topic`.
+- Add promoted-only memory mode with `ait memory --promoted-only`.
+- Add manually curated memory notes through `ait memory note add`,
+  `ait memory note list`, and `ait memory note remove`.
+- Add a character-budget compaction policy with
+  `ait memory --budget-chars`.
+
 ## 0.7.0 - 2026-04-27
 
 ### Added
