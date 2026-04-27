@@ -12,7 +12,7 @@ The MVP tracks:
 
 ## Status
 
-This repository is at `0.6.4` alpha quality for local dogfood use. It is
+This repository is at `0.6.5` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -45,14 +45,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.6.4"
+pipx install "git+https://github.com/m24927605/ait.git@v0.6.5"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.6.4"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.6.5"
 .venv/bin/ait --help
 ```
 
@@ -302,6 +302,14 @@ ait doctor
 ait bootstrap --check
 ```
 
+Text `ait status` may print a one-time automation hint to stderr when
+the repo-local wrapper is not active. Use `--no-hints` for scripted
+checks:
+
+```bash
+ait --no-hints status --format json
+```
+
 To make Claude edit an isolated attempt worktree and commit the result:
 
 ```bash
@@ -468,7 +476,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.6.4
+git checkout v0.6.5
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

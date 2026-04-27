@@ -38,6 +38,7 @@ from ait.daemon import daemon_status, serve_daemon, start_daemon, stop_daemon
 from ait.db import connect_db
 from ait.query import blame_path, execute_query, list_shortcut_expression, parse_blame_target
 from ait.reconcile import reconcile_repo
+from ait.repo import resolve_repo_root
 from ait.runner import run_agent_command
 from ait.workspace import WorkspaceError
 
@@ -63,6 +64,7 @@ def package_version() -> str:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ait")
     parser.add_argument("--version", action="version", version=f"%(prog)s {package_version()}")
+    parser.add_argument("--no-hints", action="store_true")
     subparsers = parser.add_subparsers(dest="command")
 
     subparsers.add_parser("init")
@@ -398,6 +400,7 @@ def main() -> int:
             print(json.dumps(payload, indent=2))
         else:
             print(_format_status(payload))
+            _maybe_emit_automation_hint(args, repo_root, result)
         return 0
     if args.command == "adapter":
         if args.adapter_command == "list":
@@ -587,6 +590,45 @@ def _format_status(payload: dict[str, object]) -> str:
         lines.append("Next steps:")
         lines.extend(f"- {step}" for step in next_steps)
     return "\n".join(lines)
+
+
+def _maybe_emit_automation_hint(args, repo_root: Path, result) -> None:
+    if args.no_hints or result.ok:
+        return
+    hint_key = "claude_code_automation_hint_v1"
+    try:
+        root = resolve_repo_root(repo_root)
+    except ValueError:
+        return
+    hints_path = root / ".ait" / "hints.json"
+    hints = _read_hints(hints_path)
+    if hints.get(hint_key):
+        return
+    next_steps = _doctor_next_steps(result)
+    if "install Claude Code or put the real claude binary on PATH" in next_steps:
+        hint = "ait hint: install Claude Code or put the real claude binary on PATH."
+    else:
+        hint = 'ait hint: run eval "$(ait doctor --fix)" to enable Claude Code automation in this repo.'
+    print(hint, file=sys.stderr)
+    hints[hint_key] = True
+    _write_hints(hints_path, hints)
+
+
+def _read_hints(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return data
+
+
+def _write_hints(path: Path, hints: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(hints, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _format_bootstrap(result) -> str:

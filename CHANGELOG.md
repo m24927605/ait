@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.5 - 2026-04-27
+
+### Added
+
+- Add global `--no-hints` to suppress automation hints for scripted use.
+- Add one-time stderr automation hints for text `ait status` output when
+  Claude Code automation is not connected.
+- Store shown hint state in `.ait/hints.json` without affecting JSON
+  stdout.
+
 ## 0.6.4 - 2026-04-27
 
 ### Added

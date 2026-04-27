@@ -5,7 +5,7 @@ import json
 import os
 import tempfile
 import unittest
-from contextlib import chdir, redirect_stdout
+from contextlib import chdir, redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -386,6 +386,66 @@ class CliAdapterTests(unittest.TestCase):
             self.assertFalse(payload["wrapper_installed"])
             self.assertIn("ait bootstrap claude-code", payload["next_steps"])
             self.assertFalse((repo_root / ".ait").exists())
+
+    def test_status_text_emits_one_time_automation_hint_to_stderr(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            second_stderr = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "status"]):
+                        with redirect_stdout(stdout), redirect_stderr(stderr):
+                            exit_code = cli.main()
+                    with patch("sys.argv", ["ait", "status"]):
+                        with redirect_stdout(io.StringIO()), redirect_stderr(second_stderr):
+                            second_exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            hints = json.loads((repo_root / ".ait" / "hints.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual(0, second_exit_code)
+            self.assertIn("Wrapper installed: False", stdout.getvalue())
+            self.assertIn('eval "$(ait doctor --fix)"', stderr.getvalue())
+            self.assertEqual("", second_stderr.getvalue())
+            self.assertTrue(hints["claude_code_automation_hint_v1"])
+
+    def test_no_hints_suppresses_status_hint_and_hint_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stderr = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "--no-hints", "status"]):
+                        with redirect_stdout(io.StringIO()), redirect_stderr(stderr):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual("", stderr.getvalue())
+            self.assertFalse((repo_root / ".ait" / "hints.json").exists())
 
 
 if __name__ == "__main__":
