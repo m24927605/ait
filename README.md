@@ -12,7 +12,7 @@ The MVP tracks:
 
 ## Status
 
-This repository is at `0.4.4` alpha quality for local dogfood use. It is
+This repository is at `0.5.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -45,14 +45,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.4.4"
+pipx install "git+https://github.com/m24927605/ait.git@v0.5.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.4.4"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.5.0"
 .venv/bin/ait --help
 ```
 
@@ -211,6 +211,7 @@ ait adapter show claude-code
 ait adapter show claude-code --format json
 ait adapter doctor claude-code
 ait adapter doctor claude-code --format json
+ait adapter setup claude-code --print
 ```
 
 The Claude Code doctor checks that the packaged hook script and settings
@@ -261,6 +262,7 @@ after checking readiness:
 
 ```bash
 ait adapter doctor claude-code
+ait adapter setup claude-code
 ```
 
 The hook bridge records Claude Code tool events such as file reads,
@@ -327,21 +329,41 @@ chat transcript or repeated repository exploration.
 
 ## Claude Code Hook Example
 
-`examples/claude_code_hook.py` is a conservative Claude Code hook bridge.
-It creates one ait intent and attempt per Claude session, streams
-`PostToolUse` / `PostToolUseFailure` events through `AitHarness`, sends
-a heartbeat on `Stop`, and finishes the attempt on `SessionEnd`.
+`ait adapter setup claude-code` installs a conservative Claude Code hook
+bridge into the current repository at:
 
+```text
+.ait/adapters/claude-code/claude_code_hook.py
+```
+
+It also merges the hook configuration into:
+
+```text
+.claude/settings.json
+```
+
+Use `--print` to inspect the generated settings without writing files,
+or `--target` to write a different settings path:
+
+```bash
+ait adapter setup claude-code --print
+ait adapter setup claude-code --target .claude/settings.json
+```
+
+The installed hook creates one ait intent and attempt per Claude
+session, streams `PostToolUse` / `PostToolUseFailure` events through
+`AitHarness`, sends a heartbeat on `Stop`, and finishes the attempt on
+`SessionEnd`.
+
+`examples/claude_code_hook.py` is the source version of the same hook.
 Example settings are in:
 
 ```text
 examples/claude-code-settings.json
 ```
 
-To try it, copy the relevant hook entries into your Claude Code
-`settings.json` for this project. The hook expects `ait` to be importable
-by the Python interpreter used in the command, so run it from an
-installed development environment.
+The hook expects `ait` to be importable by the Python interpreter used in
+the command, so run it from an installed development environment.
 
 Current limitation: the hook records provenance, but it does not force
 Claude Code to edit inside the ait attempt worktree. The SessionStart
@@ -364,7 +386,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.4.4
+git checkout v0.5.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

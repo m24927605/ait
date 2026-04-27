@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0 - 2026-04-27
+
+### Added
+
+- Add `ait adapter setup claude-code` to install the packaged Claude
+  Code hook bridge into a repository and merge hook settings into
+  `.claude/settings.json`.
+- Add `ait adapter setup claude-code --print` for printing the generated
+  Claude Code settings without writing files.
+
 ## 0.4.4 - 2026-04-27
 
 ### Changed

@@ -58,6 +58,24 @@ class CliAdapterTests(unittest.TestCase):
         self.assertIn("git_repo", {item["name"] for item in payload["checks"]})
         self.assertIn("claude_hook_resource", {item["name"] for item in payload["checks"]})
 
+    def test_adapter_setup_print_outputs_claude_settings(self) -> None:
+        stdout = io.StringIO()
+
+        with patch("sys.argv", ["ait", "adapter", "setup", "claude-code", "--print"]):
+            with redirect_stdout(stdout):
+                exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(0, exit_code)
+        self.assertIn("SessionStart", payload["hooks"])
+        self.assertIn(".ait/adapters/claude-code/claude_code_hook.py", stdout.getvalue())
+
+    def test_adapter_setup_unsupported_adapter_returns_error(self) -> None:
+        with patch("sys.argv", ["ait", "adapter", "setup", "shell", "--print"]):
+            exit_code = cli.main()
+
+        self.assertEqual(2, exit_code)
+
 
 if __name__ == "__main__":
     unittest.main()

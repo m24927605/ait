@@ -8,7 +8,14 @@ from pathlib import Path
 import sys
 import tomllib
 
-from ait.adapters import ADAPTERS, AdapterError, doctor_adapter, get_adapter, list_adapters
+from ait.adapters import (
+    ADAPTERS,
+    AdapterError,
+    doctor_adapter,
+    get_adapter,
+    list_adapters,
+    setup_adapter,
+)
 from ait.context import build_agent_context, render_agent_context_text
 from ait.app import (
     abandon_intent,
@@ -140,6 +147,10 @@ def build_parser() -> argparse.ArgumentParser:
     adapter_doctor = adapter_subparsers.add_parser("doctor")
     adapter_doctor.add_argument("name", choices=tuple(sorted(ADAPTERS)))
     adapter_doctor.add_argument("--format", choices=("text", "json"), default="text")
+    adapter_setup = adapter_subparsers.add_parser("setup")
+    adapter_setup.add_argument("name", choices=tuple(sorted(ADAPTERS)))
+    adapter_setup.add_argument("--target", default=".claude/settings.json")
+    adapter_setup.add_argument("--print", action="store_true", dest="print_only")
 
     subparsers.add_parser("reconcile")
 
@@ -345,6 +356,22 @@ def main() -> int:
             else:
                 print(_format_adapter_doctor(result))
             return 0 if result.ok else 2
+        if args.adapter_command == "setup":
+            try:
+                result = setup_adapter(
+                    args.name,
+                    repo_root,
+                    target=args.target,
+                    print_only=args.print_only,
+                )
+            except AdapterError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 2
+            if args.print_only:
+                print(json.dumps(result.settings, indent=2, sort_keys=True))
+            else:
+                print(json.dumps(asdict(result), indent=2))
+            return 0
     if args.command == "reconcile":
         result = reconcile_repo(repo_root)
         print(json.dumps(asdict(result), indent=2))

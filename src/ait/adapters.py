@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 from importlib import resources
 from importlib.util import find_spec
 from pathlib import Path
@@ -38,6 +39,15 @@ class AdapterDoctorResult:
     @property
     def ok(self) -> bool:
         return all(check.ok for check in self.checks)
+
+
+@dataclass(frozen=True, slots=True)
+class AdapterSetupResult:
+    adapter: AgentAdapter
+    hook_path: str
+    settings_path: str | None
+    settings: dict[str, object]
+    wrote_files: tuple[str, ...]
 
 
 ADAPTERS: dict[str, AgentAdapter] = {
@@ -145,8 +155,115 @@ def doctor_adapter(name: str, repo_root: str | Path) -> AdapterDoctorResult:
     return AdapterDoctorResult(adapter=adapter, checks=tuple(checks))
 
 
+def setup_adapter(
+    name: str,
+    repo_root: str | Path,
+    *,
+    target: str | Path | None = None,
+    print_only: bool = False,
+) -> AdapterSetupResult:
+    adapter = get_adapter(name)
+    if adapter.name != "claude-code":
+        raise AdapterError(f"adapter setup is not implemented for {adapter.name}")
+
+    try:
+        root = resolve_repo_root(Path(repo_root).resolve())
+    except ValueError as exc:
+        raise AdapterError(str(exc)) from exc
+    hook_path = root / ".ait" / "adapters" / "claude-code" / "claude_code_hook.py"
+    settings_path = (
+        _resolve_target(root, target)
+        if target is not None
+        else root / ".claude" / "settings.json"
+    )
+    settings = _claude_code_settings()
+
+    wrote_files: list[str] = []
+    if not print_only:
+        hook_path.parent.mkdir(parents=True, exist_ok=True)
+        hook_path.write_text(_read_claude_resource("claude_code_hook.py"), encoding="utf-8")
+        wrote_files.append(str(hook_path))
+
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        merged = _merge_settings(_read_json_object(settings_path), settings)
+        settings_path.write_text(json.dumps(merged, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        wrote_files.append(str(settings_path))
+
+    return AdapterSetupResult(
+        adapter=adapter,
+        hook_path=str(hook_path),
+        settings_path=str(settings_path) if not print_only else None,
+        settings=settings,
+        wrote_files=tuple(wrote_files),
+    )
+
+
 def _resource_exists(name: str) -> bool:
     try:
         return resources.files("ait").joinpath("resources", "claude-code", name).is_file()
     except Exception:
         return False
+
+
+def _read_claude_resource(name: str) -> str:
+    return (
+        resources.files("ait")
+        .joinpath("resources", "claude-code", name)
+        .read_text(encoding="utf-8")
+    )
+
+
+def _resolve_target(repo_root: Path, target: str | Path) -> Path:
+    path = Path(target)
+    if path.is_absolute():
+        return path
+    return repo_root / path
+
+
+def _claude_code_settings() -> dict[str, object]:
+    command = 'python3 "$CLAUDE_PROJECT_DIR/.ait/adapters/claude-code/claude_code_hook.py"'
+    tool_events = {
+        "matcher": "Read|Grep|Glob|LS|Write|Edit|MultiEdit|NotebookEdit|Bash",
+        "hooks": [{"type": "command", "command": command}],
+    }
+    session_events = {"hooks": [{"type": "command", "command": command}]}
+    return {
+        "hooks": {
+            "SessionStart": [session_events],
+            "PostToolUse": [tool_events],
+            "PostToolUseFailure": [tool_events],
+            "Stop": [session_events],
+            "SessionEnd": [session_events],
+        }
+    }
+
+
+def _read_json_object(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise AdapterError(f"settings file must contain a JSON object: {path}")
+    return data
+
+
+def _merge_settings(existing: dict[str, object], generated: dict[str, object]) -> dict[str, object]:
+    merged = dict(existing)
+    existing_hooks = merged.setdefault("hooks", {})
+    if not isinstance(existing_hooks, dict):
+        raise AdapterError("settings hooks must be a JSON object")
+
+    generated_hooks = generated.get("hooks", {})
+    if not isinstance(generated_hooks, dict):
+        raise AdapterError("generated hooks must be a JSON object")
+
+    for event_name, generated_entries in generated_hooks.items():
+        if not isinstance(generated_entries, list):
+            raise AdapterError(f"generated hook entries must be a list: {event_name}")
+        existing_entries = existing_hooks.setdefault(event_name, [])
+        if not isinstance(existing_entries, list):
+            raise AdapterError(f"settings hook entries must be a list: {event_name}")
+        for entry in generated_entries:
+            if entry not in existing_entries:
+                existing_entries.append(entry)
+    return merged
