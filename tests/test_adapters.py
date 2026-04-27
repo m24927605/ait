@@ -33,10 +33,19 @@ class AdapterTests(unittest.TestCase):
         adapter = get_adapter("claude-code")
 
         self.assertEqual("claude-code:manual", adapter.default_agent_id)
+        self.assertEqual("claude", adapter.command_name)
         self.assertTrue(adapter.default_with_context)
         self.assertTrue(adapter.native_hooks)
         self.assertEqual("claude-code", adapter.env["AIT_ADAPTER"])
         self.assertIn("Claude Code", adapter.description)
+
+    def test_aider_and_codex_adapters_have_context_hints(self) -> None:
+        for name in ("aider", "codex"):
+            adapter = get_adapter(name)
+            self.assertEqual(name, adapter.command_name)
+            self.assertTrue(adapter.default_with_context)
+            self.assertEqual(name, adapter.env["AIT_ADAPTER"])
+            self.assertIn("AIT_CONTEXT_FILE", adapter.env["AIT_CONTEXT_HINT"])
 
     def test_list_adapters_returns_sorted_adapters(self) -> None:
         adapters = list_adapters()
@@ -117,6 +126,56 @@ class AdapterTests(unittest.TestCase):
             self.assertIn("PATH_add .ait/bin", envrc_path.read_text(encoding="utf-8"))
             self.assertIn(str(wrapper_path.resolve()), result.setup.wrote_files)
             self.assertIn(str(envrc_path.resolve()), result.setup.wrote_files)
+
+    def test_bootstrap_aider_installs_wrapper_and_envrc(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = _init_git_repo(Path(tmp) / "repo")
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_aider = bin_dir / "aider"
+            real_aider.write_text("#!/bin/sh\nprintf 'real aider\\n'\n", encoding="utf-8")
+            real_aider.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                result = bootstrap_adapter("aider", repo_root)
+            finally:
+                os.environ["PATH"] = old_path
+
+            wrapper_path = repo_root / ".ait" / "bin" / "aider"
+            wrapper = wrapper_path.read_text(encoding="utf-8")
+
+            self.assertEqual("aider", result.adapter.name)
+            self.assertTrue(result.ok)
+            self.assertTrue(wrapper_path.exists())
+            self.assertIn("PATH_add .ait/bin", (repo_root / ".envrc").read_text(encoding="utf-8"))
+            self.assertIn("ait run --adapter aider --format json", wrapper)
+            self.assertIn(str(real_aider.resolve()), wrapper)
+
+    def test_doctor_automation_reports_codex_wrapper_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = _init_git_repo(Path(tmp) / "repo")
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_codex = bin_dir / "codex"
+            real_codex.write_text("#!/bin/sh\nprintf 'real codex\\n'\n", encoding="utf-8")
+            real_codex.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                setup_adapter("codex", repo_root, install_direnv=True)
+                os.environ["PATH"] = (
+                    str(repo_root / ".ait" / "bin") + os.pathsep + str(bin_dir) + os.pathsep + old_path
+                )
+                result = doctor_automation("codex", repo_root)
+            finally:
+                os.environ["PATH"] = old_path
+
+        checks = {check.name: check for check in result.checks}
+        self.assertTrue(result.ok)
+        self.assertTrue(checks["wrapper_file"].ok)
+        self.assertTrue(checks["path_wrapper_active"].ok)
+        self.assertEqual(str(real_codex.resolve()), checks["real_agent_binary"].detail)
 
     def test_bootstrap_shell_snippet_installs_and_exports_wrapper_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

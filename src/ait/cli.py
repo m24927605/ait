@@ -636,13 +636,15 @@ def _doctor_next_steps(result) -> list[str]:
     if "automation" in checks and not checks["automation"]:
         return []
     if not checks.get("wrapper_file", True):
-        return ["ait bootstrap claude-code"]
-    if not checks.get("real_claude_binary", True):
-        return ["install Claude Code or put the real claude binary on PATH"]
+        return [f"ait bootstrap {result.adapter.name}"]
+    real_binary_ok = checks.get("real_claude_binary", checks.get("real_agent_binary", True))
+    if not real_binary_ok:
+        binary = result.adapter.command_name or result.adapter.name
+        return [f"install {binary} or put the real {binary} binary on PATH"]
     if not checks.get("path_wrapper_active", True):
         if checks.get("envrc_path", False) and checks.get("direnv_binary", False):
-            return ["direnv allow", 'eval "$(ait bootstrap claude-code --shell)"']
-        return ['eval "$(ait bootstrap claude-code --shell)"']
+            return ["direnv allow", f'eval "$(ait bootstrap {result.adapter.name} --shell)"']
+        return [f'eval "$(ait bootstrap {result.adapter.name} --shell)"']
     return []
 
 
@@ -655,6 +657,7 @@ def _status_payload(result) -> dict[str, object]:
         "wrapper_installed": checks.get("wrapper_file", False),
         "path_wrapper_active": checks.get("path_wrapper_active", False),
         "real_claude_binary": checks.get("real_claude_binary", False),
+        "real_agent_binary": checks.get("real_agent_binary", checks.get("real_claude_binary", False)),
         "direnv_available": checks.get("direnv_binary", False),
         "direnv_loaded": checks.get("direnv_env_loaded", False),
         "next_steps": _doctor_next_steps(result),
@@ -662,13 +665,14 @@ def _status_payload(result) -> dict[str, object]:
 
 
 def _format_status(payload: dict[str, object]) -> str:
+    binary_label = "Real Claude binary" if payload["adapter"] == "claude-code" else "Real agent binary"
     lines = [
         f"Adapter: {payload['adapter']}",
         f"OK: {payload['ok']}",
         f"Git repo: {payload['git_repo']}",
         f"Wrapper installed: {payload['wrapper_installed']}",
         f"PATH uses wrapper: {payload['path_wrapper_active']}",
-        f"Real Claude binary: {payload['real_claude_binary']}",
+        f"{binary_label}: {payload['real_agent_binary']}",
         f"direnv available: {payload['direnv_available']}",
         f"direnv loaded: {payload['direnv_loaded']}",
     ]
@@ -682,7 +686,11 @@ def _format_status(payload: dict[str, object]) -> str:
 def _maybe_emit_automation_hint(args, repo_root: Path, result) -> None:
     if args.no_hints or result.ok:
         return
-    hint_key = "claude_code_automation_hint_v1"
+    hint_key = (
+        "claude_code_automation_hint_v1"
+        if result.adapter.name == "claude-code"
+        else f"{result.adapter.name}_automation_hint_v1"
+    )
     try:
         root = resolve_repo_root(repo_root)
     except ValueError:
@@ -692,10 +700,13 @@ def _maybe_emit_automation_hint(args, repo_root: Path, result) -> None:
     if hints.get(hint_key):
         return
     next_steps = _doctor_next_steps(result)
-    if "install Claude Code or put the real claude binary on PATH" in next_steps:
-        hint = "ait hint: install Claude Code or put the real claude binary on PATH."
-    else:
+    install_step = next((step for step in next_steps if step.startswith("install ")), None)
+    if install_step is not None:
+        hint = f"ait hint: {install_step}."
+    elif result.adapter.name == "claude-code":
         hint = 'ait hint: run eval "$(ait doctor --fix)" to enable Claude Code automation in this repo.'
+    else:
+        hint = f'ait hint: run eval "$(ait doctor {result.adapter.name} --fix)" to enable automation in this repo.'
     print(hint, file=sys.stderr)
     hints[hint_key] = True
     _write_hints(hints_path, hints)

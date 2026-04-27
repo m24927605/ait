@@ -47,7 +47,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.9.0` alpha quality for local dogfood use. It is
+This repository is at `0.10.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -80,14 +80,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.9.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.10.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.9.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.10.0"
 .venv/bin/ait --help
 ```
 
@@ -432,9 +432,22 @@ ait run --adapter codex --intent "Implement parser edge cases" -- codex
 ait run --adapter aider --intent "Fix auth expiry" -- aider src/auth.py
 ```
 
-These adapters currently provide worktree isolation, context handoff,
-command provenance, and exit-code verification. Native tool-level hooks
-for Codex and Aider are not implemented yet.
+These adapters provide worktree isolation, context handoff, command
+provenance, and exit-code verification. They can also install
+repo-local wrappers just like Claude Code:
+
+```bash
+eval "$(ait bootstrap codex --shell)"
+eval "$(ait bootstrap aider --shell)"
+ait status codex
+ait status aider
+```
+
+After bootstrap, invoking `codex ...` or `aider ...` from that
+repository routes through `ait run --adapter codex` or
+`ait run --adapter aider`, so `AIT_CONTEXT_FILE` carries the same
+long-term memory handoff. Native tool-level hooks for Codex and Aider
+are not implemented yet.
 
 For a custom workflow, either wrap the command with `ait run` or call
 the Python harness API directly from your agent runner:
@@ -557,7 +570,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.9.0
+git checkout v0.10.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

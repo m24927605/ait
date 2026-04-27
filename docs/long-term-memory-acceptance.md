@@ -36,6 +36,10 @@ memory slice.
 13. `ait memory search <query>` returns relevant repo-local memory
     evidence from curated notes and previous attempts.
 14. `ait memory search <query> --format json` emits parseable JSON.
+15. `ait run --adapter aider` and `ait run --adapter codex` write
+    `.ait-context.md` by default and expose `AIT_CONTEXT_FILE`.
+16. `ait bootstrap aider` and `ait bootstrap codex` install repo-local
+    wrappers that route through `ait run`.
 
 ## Manual Smoke
 
@@ -83,6 +87,16 @@ Verify memory:
 "$tmpdir/venv/bin/ait" attempt list
 ```
 
+Verify non-Claude adapter automation with a fake binary on `PATH`:
+
+```bash
+mkdir "$tmpdir/bin"
+printf '#!/bin/sh\ncp "$AIT_CONTEXT_FILE" context-copy.txt\n' > "$tmpdir/bin/codex"
+chmod +x "$tmpdir/bin/codex"
+PATH="$tmpdir/bin:$PATH" "$tmpdir/venv/bin/ait" bootstrap codex
+PATH="$tmpdir/repo/.ait/bin:$tmpdir/bin:$PATH" codex
+```
+
 Expected result:
 
 - `ait memory` includes a recent attempt.
@@ -91,6 +105,7 @@ Expected result:
 - curated notes appear in the `Curated Notes` section.
 - budgeted output ends with a compaction marker if truncation is needed.
 - memory search returns the matching curated note or attempt evidence.
+- Codex and Aider wrappers route through `ait run` and expose context.
 - the root checkout is unchanged until promotion.
 
 ## Automated Coverage
@@ -101,6 +116,7 @@ The automated test suite covers:
 - memory filters
 - curated memory note lifecycle
 - local memory search over notes and attempt evidence
+- non-Claude adapter context defaults and wrapper automation
 - text rendering
 - text compaction
 - `ait memory` CLI output

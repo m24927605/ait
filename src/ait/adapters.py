@@ -22,6 +22,7 @@ class AgentAdapter:
     name: str
     default_agent_id: str
     default_with_context: bool
+    command_name: str
     env: dict[str, str] = field(default_factory=dict)
     native_hooks: bool = False
     description: str = ""
@@ -53,14 +54,11 @@ class AutomationDoctorResult:
     @property
     def ok(self) -> bool:
         checks = {check.name: check.ok for check in self.checks}
-        required = (
-            "git_repo",
-            "ait_importable",
-            "claude_hook_resource",
-            "claude_settings_resource",
-            "wrapper_file",
-            "real_claude_binary",
-        )
+        required = ["git_repo", "ait_importable", "wrapper_file"]
+        if self.adapter.name == "claude-code":
+            required.extend(["claude_hook_resource", "claude_settings_resource", "real_claude_binary"])
+        else:
+            required.append("real_agent_binary")
         if not all(checks.get(name, False) for name in required):
             return False
         return checks.get("path_wrapper_active", False) or checks.get("direnv_env_loaded", False)
@@ -86,7 +84,8 @@ class AdapterBootstrapResult:
 
     @property
     def ok(self) -> bool:
-        required = {"git_repo", "wrapper_file", "real_claude_binary"}
+        required = {"git_repo", "wrapper_file"}
+        required.add("real_claude_binary" if self.adapter.name == "claude-code" else "real_agent_binary")
         return all(check.ok for check in self.checks if check.name in required)
 
 
@@ -95,6 +94,7 @@ ADAPTERS: dict[str, AgentAdapter] = {
         name="shell",
         default_agent_id="shell:local",
         default_with_context=False,
+        command_name="",
         description="Generic shell command wrapper.",
         setup_hint="No setup required; pass a command after --.",
     ),
@@ -102,6 +102,7 @@ ADAPTERS: dict[str, AgentAdapter] = {
         name="claude-code",
         default_agent_id="claude-code:manual",
         default_with_context=True,
+        command_name="claude",
         env={
             "AIT_ADAPTER": "claude-code",
             "AIT_CONTEXT_HINT": "Read AIT_CONTEXT_FILE before starting work.",
@@ -117,17 +118,25 @@ ADAPTERS: dict[str, AgentAdapter] = {
         name="aider",
         default_agent_id="aider:main",
         default_with_context=True,
-        env={"AIT_ADAPTER": "aider"},
+        command_name="aider",
+        env={
+            "AIT_ADAPTER": "aider",
+            "AIT_CONTEXT_HINT": "Read AIT_CONTEXT_FILE before starting work.",
+        },
         description="Aider CLI wrapper with context enabled by default.",
-        setup_hint="Run aider after --; native hook capture is not implemented yet.",
+        setup_hint="Use ait bootstrap aider to install a repo-local wrapper.",
     ),
     "codex": AgentAdapter(
         name="codex",
         default_agent_id="codex:main",
         default_with_context=True,
-        env={"AIT_ADAPTER": "codex"},
+        command_name="codex",
+        env={
+            "AIT_ADAPTER": "codex",
+            "AIT_CONTEXT_HINT": "Read AIT_CONTEXT_FILE before starting work.",
+        },
         description="Codex CLI wrapper with context enabled by default.",
-        setup_hint="Run codex after --; native hook capture is not implemented yet.",
+        setup_hint="Use ait bootstrap codex to install a repo-local wrapper.",
     ),
 }
 
@@ -204,20 +213,19 @@ def doctor_automation(name: str, repo_root: str | Path) -> AutomationDoctorResul
     except ValueError:
         return AutomationDoctorResult(adapter=adapter, checks=tuple(checks))
 
-    if adapter.name != "claude-code":
-        checks.append(
-            AdapterDoctorCheck(
-                "automation",
-                False,
-                f"automation doctor is not implemented for {adapter.name}",
-            )
-        )
+    if adapter.name == "shell":
+        checks.append(AdapterDoctorCheck("automation", False, "shell adapter has no fixed binary wrapper"))
         return AutomationDoctorResult(adapter=adapter, checks=tuple(checks))
 
-    wrapper_path = root / ".ait" / "bin" / "claude"
+    wrapper_path = root / ".ait" / "bin" / adapter.command_name
     envrc_path = root / ".envrc"
-    active_claude = shutil.which("claude")
+    active_binary = shutil.which(adapter.command_name)
     direnv = shutil.which("direnv")
+    real_binary_check = (
+        _real_claude_check(wrapper_path)
+        if adapter.name == "claude-code"
+        else _real_agent_binary_check(adapter, wrapper_path)
+    )
 
     checks.extend(
         [
@@ -228,8 +236,8 @@ def doctor_automation(name: str, repo_root: str | Path) -> AutomationDoctorResul
             ),
             AdapterDoctorCheck(
                 "path_wrapper_active",
-                active_claude is not None and Path(active_claude).resolve() == wrapper_path.resolve(),
-                active_claude or "claude not found on PATH",
+                active_binary is not None and Path(active_binary).resolve() == wrapper_path.resolve(),
+                active_binary or f"{adapter.command_name} not found on PATH",
             ),
             AdapterDoctorCheck(
                 "direnv_binary",
@@ -246,7 +254,7 @@ def doctor_automation(name: str, repo_root: str | Path) -> AutomationDoctorResul
                 Path(os.environ.get("DIRENV_FILE", "")).resolve() == envrc_path.resolve(),
                 os.environ.get("DIRENV_FILE") or "current shell has not loaded this .envrc",
             ),
-            _real_claude_check(wrapper_path),
+            real_binary_check,
         ]
     )
     return AutomationDoctorResult(adapter=adapter, checks=tuple(checks))
@@ -287,39 +295,47 @@ def setup_adapter(
     install_direnv: bool = False,
 ) -> AdapterSetupResult:
     adapter = get_adapter(name)
-    if adapter.name != "claude-code":
-        raise AdapterError(f"adapter setup is not implemented for {adapter.name}")
+    if adapter.name == "shell":
+        raise AdapterError("adapter setup is not implemented for shell")
 
     try:
         root = resolve_repo_root(Path(repo_root).resolve())
     except ValueError as exc:
         raise AdapterError(str(exc)) from exc
-    hook_path = root / ".ait" / "adapters" / "claude-code" / "claude_code_hook.py"
-    wrapper_path = root / ".ait" / "bin" / "claude"
+    hook_path = root / ".ait" / "adapters" / adapter.name
+    if adapter.name == "claude-code":
+        hook_path = hook_path / "claude_code_hook.py"
+    wrapper_path = root / ".ait" / "bin" / adapter.command_name
     direnv_path = root / ".envrc"
     settings_path = (
         _resolve_target(root, target)
         if target is not None
         else root / ".claude" / "settings.json"
+        if adapter.name == "claude-code"
+        else None
     )
-    settings = _claude_code_settings()
+    settings = _claude_code_settings() if adapter.name == "claude-code" else {}
     install_wrapper = install_wrapper or install_direnv
+    if adapter.name != "claude-code":
+        install_wrapper = True
 
     wrote_files: list[str] = []
     if not print_only:
-        hook_path.parent.mkdir(parents=True, exist_ok=True)
-        hook_path.write_text(_read_claude_resource("claude_code_hook.py"), encoding="utf-8")
-        wrote_files.append(str(hook_path))
+        if adapter.name == "claude-code":
+            hook_path.parent.mkdir(parents=True, exist_ok=True)
+            hook_path.write_text(_read_claude_resource("claude_code_hook.py"), encoding="utf-8")
+            wrote_files.append(str(hook_path))
 
-        settings_path.parent.mkdir(parents=True, exist_ok=True)
-        merged = _merge_settings(_read_json_object(settings_path), settings)
-        settings_path.write_text(json.dumps(merged, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        wrote_files.append(str(settings_path))
+            assert settings_path is not None
+            settings_path.parent.mkdir(parents=True, exist_ok=True)
+            merged = _merge_settings(_read_json_object(settings_path), settings)
+            settings_path.write_text(json.dumps(merged, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            wrote_files.append(str(settings_path))
 
         if install_wrapper:
-            real_claude = _find_real_claude(wrapper_path)
+            real_binary = _find_real_binary(adapter.command_name, wrapper_path)
             wrapper_path.parent.mkdir(parents=True, exist_ok=True)
-            wrapper_path.write_text(_claude_wrapper_script(real_claude), encoding="utf-8")
+            wrapper_path.write_text(_adapter_wrapper_script(adapter, real_binary), encoding="utf-8")
             wrapper_path.chmod(0o755)
             wrote_files.append(str(wrapper_path))
 
@@ -330,7 +346,7 @@ def setup_adapter(
     return AdapterSetupResult(
         adapter=adapter,
         hook_path=str(hook_path),
-        settings_path=str(settings_path) if not print_only else None,
+        settings_path=str(settings_path) if settings_path is not None and not print_only else None,
         wrapper_path=str(wrapper_path) if install_wrapper and not print_only else None,
         direnv_path=str(direnv_path) if install_direnv and not print_only else None,
         settings=settings,
@@ -434,37 +450,55 @@ def _envrc_has_wrapper_path(path: Path) -> bool:
 
 def _real_claude_check(wrapper_path: Path) -> AdapterDoctorCheck:
     try:
-        real_claude = _find_real_claude(wrapper_path)
+        real_claude = _find_real_binary("claude", wrapper_path)
     except AdapterError as exc:
         return AdapterDoctorCheck("real_claude_binary", False, str(exc))
     return AdapterDoctorCheck("real_claude_binary", True, real_claude)
 
 
-def _find_real_claude(wrapper_path: Path) -> str:
+def _real_agent_binary_check(adapter: AgentAdapter, wrapper_path: Path) -> AdapterDoctorCheck:
+    try:
+        real_binary = _find_real_binary(adapter.command_name, wrapper_path)
+    except AdapterError as exc:
+        return AdapterDoctorCheck("real_agent_binary", False, str(exc))
+    return AdapterDoctorCheck("real_agent_binary", True, real_binary)
+
+
+def _find_real_binary(command_name: str, wrapper_path: Path) -> str:
     wrapper = wrapper_path.resolve()
     for directory in os.environ.get("PATH", "").split(os.pathsep):
         if not directory:
             continue
-        candidate = (Path(directory) / "claude").resolve()
+        candidate = (Path(directory) / command_name).resolve()
         if candidate == wrapper:
             continue
         if candidate.is_file() and os.access(candidate, os.X_OK):
             return str(candidate)
-    found = shutil.which("claude")
+    found = shutil.which(command_name)
     if found is None:
-        raise AdapterError("could not find claude on PATH")
+        raise AdapterError(f"could not find {command_name} on PATH")
     return found
 
 
-def _claude_wrapper_script(real_claude: str) -> str:
+def _adapter_wrapper_script(adapter: AgentAdapter, real_binary: str) -> str:
     ait_executable = Path(sys.executable).with_name("ait")
     ait_command = str(ait_executable) if ait_executable.exists() else "ait"
+    intent = {
+        "claude-code": "Claude Code session",
+        "aider": "Aider session",
+        "codex": "Codex session",
+    }.get(adapter.name, f"{adapter.name} session")
+    commit_message = {
+        "claude-code": "claude code changes",
+        "aider": "aider changes",
+        "codex": "codex changes",
+    }.get(adapter.name, f"{adapter.name} changes")
     return (
         "#!/bin/sh\n"
         "set -eu\n"
-        ': "${AIT_INTENT:=Claude Code session}"\n'
-        ': "${AIT_COMMIT_MESSAGE:=claude code changes}"\n'
-        f"exec {shlex.quote(ait_command)} run --adapter claude-code --format json "
+        f': "${{AIT_INTENT:={intent}}}"\n'
+        f': "${{AIT_COMMIT_MESSAGE:={commit_message}}}"\n'
+        f"exec {shlex.quote(ait_command)} run --adapter {shlex.quote(adapter.name)} --format json "
         '--intent "$AIT_INTENT" --commit-message "$AIT_COMMIT_MESSAGE" -- '
-        f"{shlex.quote(real_claude)} \"$@\"\n"
+        f"{shlex.quote(real_binary)} \"$@\"\n"
     )

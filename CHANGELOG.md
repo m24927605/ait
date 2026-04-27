@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.0 - 2026-04-27
+
+### Added
+
+- Add repo-local wrapper, bootstrap, doctor, and direnv automation for
+  the Aider and Codex adapters.
+- Add `AIT_CONTEXT_HINT` for Aider and Codex so their wrapped runs use
+  the same memory/context handoff contract as Claude Code.
+- Keep Claude Code native hook setup while generalizing adapter
+  automation checks for non-Claude fixed-binary adapters.
+
 ## 0.9.0 - 2026-04-27
 
 ### Added

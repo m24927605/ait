@@ -103,8 +103,10 @@ Implemented increments:
 - manually curated memory notes
 - compaction policies
 - local evidence search with the `ait memory search <query>` command
+- adapter support beyond Claude Code for Aider and Codex repo-local
+  wrappers
 
 The next natural increments are:
 
 - embedding-backed vector ranking over local evidence
-- adapter support beyond Claude Code
+- native tool-level hooks beyond Claude Code

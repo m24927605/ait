@@ -125,6 +125,37 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual("claude-code:manual", result.attempt.attempt["agent_id"])
             self.assertTrue(output.startswith("claude-code\nIntent: Claude adapter"))
 
+    def test_aider_and_codex_adapters_default_to_context_and_env(self) -> None:
+        for adapter_name, expected_agent in (("aider", "aider:main"), ("codex", "codex:main")):
+            with self.subTest(adapter=adapter_name):
+                with tempfile.TemporaryDirectory() as tmp:
+                    repo_root = Path(tmp)
+                    _init_git_repo(repo_root)
+
+                    result = run_agent_command(
+                        repo_root,
+                        intent_title=f"{adapter_name} adapter",
+                        adapter_name=adapter_name,
+                        command=[
+                            sys.executable,
+                            "-c",
+                            (
+                                "import os;"
+                                "from pathlib import Path;"
+                                "Path('adapter.txt').write_text("
+                                "os.environ['AIT_ADAPTER'] + '\\n' + "
+                                "os.environ['AIT_CONTEXT_HINT'] + '\\n' + "
+                                "Path(os.environ['AIT_CONTEXT_FILE']).read_text())"
+                            ),
+                        ],
+                    )
+
+                    output = (Path(result.workspace_ref) / "adapter.txt").read_text(encoding="utf-8")
+                    self.assertEqual(0, result.exit_code)
+                    self.assertEqual(expected_agent, result.attempt.attempt["agent_id"])
+                    self.assertTrue(output.startswith(f"{adapter_name}\nRead AIT_CONTEXT_FILE"))
+                    self.assertIn(f"Intent: {adapter_name} adapter", output)
+
     def test_run_agent_command_commit_message_stages_commits_and_verifies(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
