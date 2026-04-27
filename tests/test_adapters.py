@@ -6,6 +6,7 @@ from dataclasses import asdict
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 
 from ait.adapters import (
@@ -79,6 +80,7 @@ class AdapterTests(unittest.TestCase):
             self.assertIn(str(hook_path.resolve()), result.wrote_files)
             self.assertIn(str(settings_path.resolve()), result.wrote_files)
             self.assertIn("SessionStart", settings["hooks"])
+            self.assertIn(sys.executable, json.dumps(settings))
             self.assertIn(".ait/adapters/claude-code/claude_code_hook.py", json.dumps(settings))
 
     def test_setup_claude_code_merges_existing_settings(self) -> None:

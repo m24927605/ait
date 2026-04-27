@@ -5,6 +5,8 @@ import json
 from importlib import resources
 from importlib.util import find_spec
 from pathlib import Path
+import shlex
+import sys
 
 from ait.repo import resolve_repo_root
 
@@ -221,7 +223,10 @@ def _resolve_target(repo_root: Path, target: str | Path) -> Path:
 
 
 def _claude_code_settings() -> dict[str, object]:
-    command = 'python3 "$CLAUDE_PROJECT_DIR/.ait/adapters/claude-code/claude_code_hook.py"'
+    command = (
+        f"{shlex.quote(sys.executable)} "
+        '"$CLAUDE_PROJECT_DIR/.ait/adapters/claude-code/claude_code_hook.py"'
+    )
     tool_events = {
         "matcher": "Read|Grep|Glob|LS|Write|Edit|MultiEdit|NotebookEdit|Bash",
         "hooks": [{"type": "command", "command": command}],

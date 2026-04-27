@@ -12,7 +12,7 @@ The MVP tracks:
 
 ## Status
 
-This repository is at `0.5.1` alpha quality for local dogfood use. It is
+This repository is at `0.5.2` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -45,14 +45,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.5.1"
+pipx install "git+https://github.com/m24927605/ait.git@v0.5.2"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.5.1"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.5.2"
 .venv/bin/ait --help
 ```
 
@@ -369,8 +369,8 @@ The packaged hook path installed by `ait adapter setup claude-code` is
 covered by an end-to-end regression test that simulates Claude Code
 `SessionStart`, `PostToolUse`, and `SessionEnd` payloads and verifies
 that ait records the attempt and tool evidence. A live Claude Code smoke
-test is still recommended before relying on hook telemetry in a new
-environment.
+test with Claude Code `2.1.119` also verified real hook payloads record
+ait attempts and tool evidence; see `docs/claude-code-live-smoke.md`.
 
 Current limitation: the hook records provenance, but it does not force
 Claude Code to edit inside the ait attempt worktree. The SessionStart
@@ -393,7 +393,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.5.1
+git checkout v0.5.2
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

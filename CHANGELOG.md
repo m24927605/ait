@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.2 - 2026-04-27
+
+### Fixed
+
+- Generate Claude Code hook settings with the Python executable that ran
+  `ait adapter setup`, so pipx and virtualenv installs can import
+  `ait` from the hook process.
+
+### Added
+
+- Document the live Claude Code smoke test that verified real Claude
+  Code hook payloads record ait attempts and tool evidence.
+
 ## 0.5.1 - 2026-04-27
 
 ### Added
