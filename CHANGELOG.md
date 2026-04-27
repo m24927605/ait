@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.4 - 2026-04-27
+
+### Added
+
+- Add `ait run --format json|text`; JSON mode captures command stdout
+  and stderr in result fields so stdout remains parseable JSON for CI
+  and scripts.
+
 ## 0.5.3 - 2026-04-27
 
 ### Fixed

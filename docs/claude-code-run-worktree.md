@@ -6,7 +6,7 @@ reviewable isolation, an ait-linked commit, and an explicit promote step.
 
 Validated on 2026-04-27 with:
 
-- `ait-vcs` local build for `0.5.3`
+- `ait-vcs` local build for `0.5.4`
 - Claude Code `2.1.119`
 - Python 3.14
 
@@ -38,6 +38,7 @@ Run Claude through `ait run` and provide a commit message:
 ```bash
 "$tmpdir/venv/bin/ait" run \
   --adapter claude-code \
+  --format json \
   --intent "Claude run worktree smoke" \
   --commit-message "claude run smoke" \
   -- claude -p --permission-mode bypassPermissions --max-budget-usd 1 \
@@ -51,8 +52,10 @@ exits successfully, ait removes the generated context file, stages the
 remaining worktree changes, creates an ait-linked commit, and verifies
 the attempt.
 
-Claude's own stdout is forwarded before the final ait JSON result. The
-JSON result includes the `attempt_id` and `workspace_ref`.
+In JSON mode, Claude's stdout and stderr are captured in the final ait
+JSON result as `command_stdout` and `command_stderr`, so stdout remains
+safe to parse with `jq` or `json.load`. The JSON result includes the
+`attempt_id` and `workspace_ref`.
 
 ## Verify Isolation
 

@@ -20,6 +20,8 @@ class RunResult:
     attempt_id: str
     workspace_ref: str
     exit_code: int
+    command_stdout: str | None
+    command_stderr: str | None
     attempt: AttemptShowResult
 
 
@@ -34,6 +36,7 @@ def run_agent_command(
     description: str | None = None,
     commit_message: str | None = None,
     with_context: bool = False,
+    capture_command_output: bool = False,
 ) -> RunResult:
     if not intent_title.strip():
         raise ValueError("intent title must not be empty")
@@ -85,6 +88,7 @@ def run_agent_command(
             env=env,
             check=False,
             text=True,
+            capture_output=capture_command_output,
         )
         duration_ms = int((time.monotonic() - started) * 1000)
         harness.record_tool(
@@ -114,6 +118,8 @@ def run_agent_command(
         attempt_id=attempt.attempt_id,
         workspace_ref=attempt.workspace_ref,
         exit_code=completed.returncode if completed is not None else 1,
+        command_stdout=completed.stdout if completed is not None and capture_command_output else None,
+        command_stderr=completed.stderr if completed is not None and capture_command_output else None,
         attempt=shown,
     )
 

@@ -12,7 +12,7 @@ The MVP tracks:
 
 ## Status
 
-This repository is at `0.5.3` alpha quality for local dogfood use. It is
+This repository is at `0.5.4` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -45,14 +45,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.5.3"
+pipx install "git+https://github.com/m24927605/ait.git@v0.5.4"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.5.3"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.5.4"
 .venv/bin/ait --help
 ```
 
@@ -169,6 +169,17 @@ ait run --agent shell:local --intent "Try a generated change" -- \
   python -c "from pathlib import Path; Path('agent.txt').write_text('ok\n')"
 ```
 
+By default, `ait run` prints parseable JSON. Command stdout and stderr
+are captured as `command_stdout` and `command_stderr` fields:
+
+```bash
+attempt_id="$(ait run --format json --intent "Try change" -- \
+  python -c "print('agent output')" | python -c 'import json,sys; print(json.load(sys.stdin)["attempt_id"])')"
+```
+
+Use `--format text` to stream command stdout and stderr directly to the
+terminal while still printing the final ait result afterward.
+
 The wrapped process receives:
 
 ```text
@@ -261,6 +272,7 @@ To make Claude edit an isolated attempt worktree and commit the result:
 
 ```bash
 ait run --adapter claude-code \
+  --format json \
   --intent "Update README" \
   --commit-message "update README with Claude" \
   -- claude -p --permission-mode bypassPermissions \
@@ -413,7 +425,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.5.3
+git checkout v0.5.4
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

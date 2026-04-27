@@ -50,6 +50,26 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual("failed", result.attempt.attempt["verified_status"])
             self.assertEqual(1, result.attempt.evidence_summary["observed_commands_run"])
 
+    def test_run_agent_command_can_capture_command_output(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="Capture command",
+                command=[
+                    sys.executable,
+                    "-c",
+                    "import sys; print('out'); print('err', file=sys.stderr)",
+                ],
+                capture_command_output=True,
+            )
+
+            self.assertEqual(0, result.exit_code)
+            self.assertEqual("out\n", result.command_stdout)
+            self.assertEqual("err\n", result.command_stderr)
+
     def test_run_agent_command_can_write_context_file_for_wrapped_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
