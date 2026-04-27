@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.18.0 - 2026-04-28
+
+### Added
+
+- Add `ait shell show` to print the persistent shell integration block.
+- Add `ait shell install` for opt-in zsh/bash rc integration that
+  automatically activates `.ait/bin` when the current directory is an
+  AIT-enabled repository.
+- Add `ait shell uninstall` to remove the managed shell integration
+  block.
+
 ## 0.17.0 - 2026-04-28
 
 ### Changed

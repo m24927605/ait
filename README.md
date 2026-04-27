@@ -48,7 +48,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.17.0` alpha quality for local dogfood use. It is
+This repository is at `0.18.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -81,14 +81,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.17.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.18.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.17.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.18.0"
 .venv/bin/ait --help
 ```
 
@@ -394,6 +394,25 @@ ait bootstrap
 direnv allow
 ```
 
+To make new zsh/bash sessions auto-activate `.ait/bin` whenever you
+enter an AIT-enabled repository, install the opt-in shell integration:
+
+```bash
+ait shell install --shell zsh
+```
+
+Inspect it before installing:
+
+```bash
+ait shell show --shell zsh
+```
+
+Remove it later with:
+
+```bash
+ait shell uninstall --shell zsh
+```
+
 Check whether the automation path is ready:
 
 ```bash
@@ -542,6 +561,9 @@ ait adapter setup claude-code --install-wrapper
 ait adapter setup claude-code --install-wrapper --install-direnv
 ait enable
 ait enable --shell
+ait shell show --shell zsh
+ait shell install --shell zsh
+ait shell uninstall --shell zsh
 ait bootstrap
 ait bootstrap claude-code
 ait bootstrap claude-code --shell
@@ -595,7 +617,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.17.0
+git checkout v0.18.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

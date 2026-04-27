@@ -51,6 +51,12 @@ from ait.query import blame_path, execute_query, list_shortcut_expression, parse
 from ait.reconcile import reconcile_repo
 from ait.repo import resolve_repo_root
 from ait.runner import run_agent_command
+from ait.shell_integration import (
+    ShellIntegrationError,
+    install_shell_integration,
+    shell_snippet,
+    uninstall_shell_integration,
+)
 from ait.workspace import WorkspaceError
 
 
@@ -214,6 +220,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     enable_parser.add_argument("--format", choices=("text", "json"), default="text")
     enable_parser.add_argument("--shell", action="store_true")
+
+    shell_parser = subparsers.add_parser("shell")
+    shell_subparsers = shell_parser.add_subparsers(dest="shell_command")
+    shell_show = shell_subparsers.add_parser("show")
+    shell_show.add_argument("--shell", choices=("zsh", "bash"), default="zsh")
+    shell_install = shell_subparsers.add_parser("install")
+    shell_install.add_argument("--shell", choices=("zsh", "bash"))
+    shell_install.add_argument("--rc-path")
+    shell_install.add_argument("--format", choices=("text", "json"), default="text")
+    shell_uninstall = shell_subparsers.add_parser("uninstall")
+    shell_uninstall.add_argument("--shell", choices=("zsh", "bash"))
+    shell_uninstall.add_argument("--rc-path")
+    shell_uninstall.add_argument("--format", choices=("text", "json"), default="text")
 
     adapter_parser = subparsers.add_parser("adapter")
     adapter_subparsers = adapter_parser.add_subparsers(dest="adapter_command")
@@ -576,6 +595,28 @@ def main() -> int:
         else:
             print(_format_auto_enable(result))
         return 0 if result.ok else 2
+    if args.command == "shell":
+        try:
+            if args.shell_command == "show":
+                print(shell_snippet(args.shell), end="")
+                return 0
+            if args.shell_command == "install":
+                result = install_shell_integration(shell=args.shell, rc_path=args.rc_path)
+                if args.format == "json":
+                    print(json.dumps(asdict(result), indent=2))
+                else:
+                    print(_format_shell_integration("installed", result))
+                return 0
+            if args.shell_command == "uninstall":
+                result = uninstall_shell_integration(shell=args.shell, rc_path=args.rc_path)
+                if args.format == "json":
+                    print(json.dumps(asdict(result), indent=2))
+                else:
+                    print(_format_shell_integration("removed", result))
+                return 0
+        except ShellIntegrationError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
     if args.command == "adapter":
         if args.adapter_command == "list":
             adapters = [asdict(adapter) for adapter in list_adapters()]
@@ -737,6 +778,25 @@ def _format_auto_enable(result) -> str:
             command = item.adapter.command_name
             if command:
                 lines.append(f"- {command} ...")
+    return "\n".join(lines)
+
+
+def _format_shell_integration(action: str, result) -> str:
+    state = "changed" if result.changed else "already current"
+    lines = [
+        f"Shell: {result.shell}",
+        f"RC file: {result.rc_path}",
+        f"Action: {action}",
+        f"State: {state}",
+    ]
+    if action == "installed":
+        lines.extend(
+            [
+                "Next:",
+                f"- reload {result.rc_path} or open a new terminal",
+                "- run ait doctor --fix once in each repo that should get wrappers",
+            ]
+        )
     return "\n".join(lines)
 
 

@@ -51,6 +51,20 @@ For virtualenv installs, use the local executable:
 eval "$(.venv/bin/ait enable --shell)"
 ```
 
+For persistent zsh/bash activation in new terminal sessions, install
+the opt-in shell integration after reviewing it:
+
+```bash
+ait shell show --shell zsh
+ait shell install --shell zsh
+```
+
+This writes a marked block to your shell rc file. Remove it with:
+
+```bash
+ait shell uninstall --shell zsh
+```
+
 ## Verify
 
 Check that the wrapper is active:
