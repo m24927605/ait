@@ -843,7 +843,7 @@ class CliAdapterTests(unittest.TestCase):
             old_path = os.environ.get("PATH", "")
             stdout = io.StringIO()
             stderr = io.StringIO()
-            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + "/usr/bin:/bin"
             try:
                 with chdir(repo_root):
                     with patch("sys.argv", ["ait", "status", "--all"]):
@@ -853,8 +853,13 @@ class CliAdapterTests(unittest.TestCase):
                 os.environ["PATH"] = old_path
 
             self.assertEqual(0, exit_code)
-            self.assertIn("AIT Agent Automation Status", stdout.getvalue())
-            self.assertIn("aider:", stdout.getvalue())
+            text = stdout.getvalue()
+            self.assertIn("AIT Agent CLI Readiness", text)
+            self.assertIn("- aider: run ait init --adapter aider", text)
+            self.assertIn("- codex: install codex", text)
+            self.assertIn("- cursor: install cursor", text)
+            self.assertIn("- gemini: install gemini", text)
+            self.assertIn("details: adapter=aider", text)
             self.assertIn("run ait init once", stderr.getvalue())
 
     def test_repair_named_adapter_rebuilds_damaged_wrapper_and_envrc(self) -> None:

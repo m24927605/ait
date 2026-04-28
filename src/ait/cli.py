@@ -1298,13 +1298,13 @@ def _doctor_next_steps(result) -> list[str]:
 
 def _agent_cli_message(payload: dict[str, object]) -> str:
     adapter = str(payload["adapter"])
-    command = "claude" if adapter == "claude-code" else adapter
+    command = _agent_command_name(adapter)
     if payload["ok"]:
         return f"ready: run {command} ..."
-    if not payload["wrapper_installed"]:
-        return f"not ready: run ait init --adapter {adapter}"
     if not payload["real_agent_binary"]:
         return f"not ready: install {command} or put the real {command} binary on PATH"
+    if not payload["wrapper_installed"]:
+        return f"not ready: run ait init --adapter {adapter}"
     if not payload["path_wrapper_active"]:
         if payload["direnv_available"]:
             return f"not ready in this shell: run direnv allow once, then run {command} ..."
@@ -1419,13 +1419,13 @@ def _format_status(payload: dict[str, object]) -> str:
 
 def _agent_cli_summary(payload: dict[str, object]) -> str:
     adapter = str(payload["adapter"])
-    command = "claude" if adapter == "claude-code" else adapter
+    command = _agent_command_name(adapter)
     if payload["agent_cli_ready"]:
         return f"ready, run {command} ..."
-    if not payload["wrapper_installed"]:
-        return f"run ait init --adapter {adapter}"
     if not payload["real_agent_binary"]:
         return f"install {command}"
+    if not payload["wrapper_installed"]:
+        return f"run ait init --adapter {adapter}"
     if not payload["path_wrapper_active"]:
         if payload["direnv_available"]:
             return "run direnv allow once"
@@ -1434,15 +1434,18 @@ def _agent_cli_summary(payload: dict[str, object]) -> str:
 
 
 def _format_status_all(payload: list[dict[str, object]]) -> str:
-    lines = ["AIT Agent Automation Status"]
+    lines = ["AIT Agent CLI Readiness"]
     for item in payload:
+        command = _agent_command_name(str(item["adapter"]))
         lines.append(
-            "- "
-            f"{item['adapter']}: ok={item['ok']} "
+            f"- {command}: {_agent_cli_summary(item)}"
+        )
+        lines.append(
+            "  details: "
+            f"adapter={item['adapter']} "
             f"wrapper={item['wrapper_installed']} "
             f"path={item['path_wrapper_active']} "
             f"real_binary={item['real_agent_binary']} "
-            f"agent_cli_ready={item.get('agent_cli_ready', False)} "
             f"memory={item.get('memory', {}).get('initialized', False) if isinstance(item.get('memory'), dict) else False} "
             f"memory_health={item.get('memory', {}).get('health', 'unknown') if isinstance(item.get('memory'), dict) else 'unknown'}"
         )
@@ -1450,6 +1453,10 @@ def _format_status_all(payload: list[dict[str, object]]) -> str:
         if next_steps:
             lines.append(f"  next: {', '.join(str(step) for step in next_steps)}")
     return "\n".join(lines)
+
+
+def _agent_command_name(adapter: str) -> str:
+    return "claude" if adapter == "claude-code" else adapter
 
 
 def _maybe_emit_automation_hint(args, repo_root: Path, result) -> None:

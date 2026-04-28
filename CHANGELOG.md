@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.42.0 - 2026-04-28
+
+### Changed
+
+- Make text `ait status --all` report multi-agent CLI readiness first,
+  using command names such as `claude`, `codex`, `aider`, `gemini`, and
+  `cursor`.
+- Keep detailed wrapper, PATH, binary, and memory checks in indented
+  detail lines while preserving JSON status fields for automation.
+- Prefer install guidance over init guidance when a real agent binary is
+  missing from `PATH`.
+- Document same-repo multi-agent collaboration: wrappers and adapter
+  identities are separate, while memory and attempt evidence share the
+  repo-local `.ait/` state.
+
 ## 0.41.0 - 2026-04-28
 
 ### Added

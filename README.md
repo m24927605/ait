@@ -42,7 +42,8 @@ agent/attempt memory into a compact `AIT Relevant Memory` context
 section, skipping notes with lint errors by default so suspected secrets
 or duplicate bad memory are not injected back into the agent. This is a
 zero-touch path: day to day, users keep using `claude`, `codex`,
-`aider`, `gemini`, or `cursor` and do not need to run memory commands. Repo-local policy lets a
+`aider`, `gemini`, or `cursor` and do not need to run memory commands.
+Repo-local policy lets a
 project owner tighten automatic recall by source pattern or lint
 severity for teams that need stricter governance. Those settings are
 guardrails for ait's background automation, not a daily workflow for
@@ -74,7 +75,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.41.0` alpha quality for local dogfood use. It is
+This repository is at `0.42.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -107,14 +108,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.41.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.42.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.41.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.42.0"
 .venv/bin/ait --help
 ```
 
@@ -529,6 +530,14 @@ ait status --all
 ait doctor
 ```
 
+In one repository, multiple agent CLIs share the same `.ait/` state.
+Each command has its own wrapper and adapter identity, so `claude ...`,
+`codex ...`, `aider ...`, `gemini ...`, and `cursor ...` remain
+distinguishable in attempts and commits. Their imported agent memory,
+attempt memory, traces, and evidence all feed the same repo-local
+history, so agents can collaborate without the user manually moving
+context between tools.
+
 Text `ait status` may print a one-time automation hint to stderr when
 the repo-local wrapper is not active. Use `--no-hints` for scripted
 checks:
@@ -748,7 +757,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.41.0
+git checkout v0.42.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q
