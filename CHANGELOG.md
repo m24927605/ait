@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.35.0 - 2026-04-28
+
+### Added
+
+- Make regular `ait init` create the repo-local memory policy guardrail
+  alongside wrappers, `.envrc`, database state, and agent-memory import.
+- Add explicit `agent_cli_ready` and `agent_cli_message` fields to
+  `ait status --format json` so automation can tell whether a user can
+  directly invoke the agent CLI.
+- Show direct agent CLI readiness in text `ait status` output.
+- Include memory policy creation state in `ait init` output.
+
 ## 0.34.0 - 2026-04-28
 
 ### Added

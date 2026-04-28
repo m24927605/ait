@@ -14,23 +14,25 @@ repo-local wrappers for the agent CLIs it can find, then keep using
 ```bash
 pipx install ait-vcs
 cd your-repo
-eval "$(ait init --shell)"
+ait init
+direnv allow   # only needed when direnv blocks the new .envrc
 claude ...
 ```
 
-`ait init --shell` initializes `.ait/`, installs repo-local wrappers for
-detected agent CLIs, and prints a shell export for the current terminal.
-After that, detected agent commands resolve to `.ait/bin/*` inside that
-repository. The wrappers run agents through `ait run`, so the agent edits
-an isolated attempt worktree and `ait` automatically records successful
-changes as an attempt-linked commit. If the agent or user already made a
-commit, ait records that existing commit instead of creating a duplicate;
-manual `git commit` remains allowed. Existing agent memory files such as
-`CLAUDE.md` and `AGENTS.md` are imported automatically during regular
-`ait init` and again on first wrapped agent run when needed. After each
-wrapped run, `ait` also writes a compact attempt memory note with status,
-changed files, commits, and confidence so future agents can reuse what
-happened.
+`ait init` initializes `.ait/`, installs repo-local wrappers for detected
+agent CLIs, writes `.envrc` for repo-local activation, imports detected
+agent memory, and creates the default memory policy guardrail. After the
+repo shell has loaded `.ait/bin`, detected agent commands resolve to
+`.ait/bin/*` inside that repository. The wrappers run agents through
+`ait run`, so the agent edits an isolated attempt worktree and `ait`
+automatically records successful changes as an attempt-linked commit. If
+the agent or user already made a commit, ait records that existing commit
+instead of creating a duplicate; manual `git commit` remains allowed.
+Existing agent memory files such as `CLAUDE.md` and `AGENTS.md` are
+imported automatically during regular `ait init` and again on first
+wrapped agent run when needed. After each wrapped run, `ait` also writes a
+compact attempt memory note with status, changed files, commits, and
+confidence so future agents can reuse what happened.
 When a new wrapped run starts, `ait` retrieves the most relevant
 agent/attempt memory into a compact `AIT Relevant Memory` context
 section, skipping notes with lint errors by default so suspected secrets
@@ -49,7 +51,8 @@ If you do not use `pipx`, install in a virtual environment:
 ```bash
 python3.14 -m venv .venv
 .venv/bin/pip install ait-vcs
-eval "$(.venv/bin/ait init --shell)"
+.venv/bin/ait init
+direnv allow
 ```
 
 See [docs/getting-started.md](docs/getting-started.md) for activation,
@@ -67,7 +70,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.34.0` alpha quality for local dogfood use. It is
+This repository is at `0.35.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -100,14 +103,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.34.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.35.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.34.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.35.0"
 .venv/bin/ait --help
 ```
 
@@ -414,14 +417,24 @@ For lower user friction, install repo-local wrappers for every supported
 agent binary found on `PATH`:
 
 ```bash
-eval "$(ait init --shell)"
+ait init
+direnv allow
 ```
 
-This initializes `.ait/`, installs wrappers for detected agent CLIs, and
-activates `.ait/bin` in the current shell. The lower-level commands are
-still available:
+This initializes `.ait/`, installs wrappers for detected agent CLIs,
+writes `.envrc`, imports detected agent memory, and creates the default
+memory policy. `direnv allow` is only needed when direnv blocks the new
+`.envrc`. To check whether the current shell is ready for direct agent
+CLI use:
 
 ```bash
+ait status
+```
+
+The lower-level commands are still available:
+
+```bash
+eval "$(ait init --shell)"
 eval "$(ait doctor --fix)"
 eval "$(ait enable --shell)"
 ```
@@ -726,7 +739,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.34.0
+git checkout v0.35.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

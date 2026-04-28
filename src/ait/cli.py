@@ -363,11 +363,12 @@ def main() -> int:
             print("error: no supported agent binaries found on PATH", file=sys.stderr)
             return 2
         memory_import = ensure_agent_memory_imported(result.repo_root)
+        memory_policy = init_memory_policy(result.repo_root)
         statuses = tuple(
             doctor_automation(item.adapter.name, result.repo_root)
             for item in automation.installed
         )
-        payload = _init_payload(result, automation, statuses, memory_import)
+        payload = _init_payload(result, automation, statuses, memory_import, memory_policy)
         if args.format == "json":
             print(json.dumps(payload, indent=2))
         else:
@@ -1032,7 +1033,7 @@ def _format_memory_import(result) -> str:
     return "\n".join(lines)
 
 
-def _init_payload(init_result, automation, statuses, memory_import=None) -> dict[str, object]:
+def _init_payload(init_result, automation, statuses, memory_import=None, memory_policy=None) -> dict[str, object]:
     status_payloads = [_status_payload(status) for status in statuses]
     payload = {
         "repo_root": str(init_result.repo_root),
@@ -1048,6 +1049,8 @@ def _init_payload(init_result, automation, statuses, memory_import=None) -> dict
     }
     if memory_import is not None:
         payload["memory_import"] = memory_import.to_dict()
+    if memory_policy is not None:
+        payload["memory_policy"] = memory_policy.to_dict()
     return payload
 
 
@@ -1081,6 +1084,10 @@ def _format_init(payload: dict[str, object]) -> str:
                     lines.append(f"- {item.get('source')}")
         elif memory_skipped:
             lines.append("Imported memory: none")
+    memory_policy = payload.get("memory_policy")
+    if isinstance(memory_policy, dict):
+        state = "created" if memory_policy.get("created") else "already current"
+        lines.append(f"Memory policy: {state}")
     if ready:
         lines.append("Ready now:")
         lines.extend(f"- {name}" for name in ready)
@@ -1250,6 +1257,22 @@ def _doctor_next_steps(result) -> list[str]:
     return []
 
 
+def _agent_cli_message(payload: dict[str, object]) -> str:
+    adapter = str(payload["adapter"])
+    command = "claude" if adapter == "claude-code" else adapter
+    if payload["ok"]:
+        return f"ready: run {command} ..."
+    if not payload["wrapper_installed"]:
+        return f"not ready: run ait init --adapter {adapter}"
+    if not payload["real_agent_binary"]:
+        return f"not ready: install {command} or put the real {command} binary on PATH"
+    if not payload["path_wrapper_active"]:
+        if payload["direnv_available"]:
+            return f"not ready in this shell: run direnv allow once, then run {command} ..."
+        return f"not ready in this shell: run eval \"$(ait init --shell)\", then run {command} ..."
+    return "not ready: inspect next_steps"
+
+
 def _memory_status_payload(repo_root: Path) -> dict[str, object]:
     try:
         status = agent_memory_status(repo_root).to_dict()
@@ -1298,7 +1321,7 @@ def _memory_status_payload(repo_root: Path) -> dict[str, object]:
 
 def _status_payload(result, *, memory_status: dict[str, object] | None = None) -> dict[str, object]:
     checks = {check.name: check.ok for check in result.checks}
-    return {
+    payload = {
         "adapter": result.adapter.name,
         "ok": result.ok,
         "git_repo": checks.get("git_repo", False),
@@ -1311,6 +1334,9 @@ def _status_payload(result, *, memory_status: dict[str, object] | None = None) -
         "memory": memory_status or {},
         "next_steps": _doctor_next_steps(result),
     }
+    payload["agent_cli_ready"] = payload["ok"]
+    payload["agent_cli_message"] = _agent_cli_message(payload)
+    return payload
 
 
 def _format_status(payload: dict[str, object]) -> str:
@@ -1324,6 +1350,8 @@ def _format_status(payload: dict[str, object]) -> str:
         f"{binary_label}: {payload['real_agent_binary']}",
         f"direnv available: {payload['direnv_available']}",
         f"direnv loaded: {payload['direnv_loaded']}",
+        f"Agent CLI ready: {payload['agent_cli_ready']}",
+        f"Agent CLI: {payload['agent_cli_message']}",
     ]
     memory = payload.get("memory", {})
     if isinstance(memory, dict):
@@ -1358,6 +1386,7 @@ def _format_status_all(payload: list[dict[str, object]]) -> str:
             f"wrapper={item['wrapper_installed']} "
             f"path={item['path_wrapper_active']} "
             f"real_binary={item['real_agent_binary']} "
+            f"agent_cli_ready={item.get('agent_cli_ready', False)} "
             f"memory={item.get('memory', {}).get('initialized', False) if isinstance(item.get('memory'), dict) else False} "
             f"memory_health={item.get('memory', {}).get('health', 'unknown') if isinstance(item.get('memory'), dict) else 'unknown'}"
         )

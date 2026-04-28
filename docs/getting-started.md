@@ -27,12 +27,14 @@ python3.14 -m venv .venv
 Run this from inside a Git repository:
 
 ```bash
-eval "$(ait init --shell)"
+ait init
+direnv allow
 ```
 
-`ait init --shell` initializes `.ait/`, installs repo-local wrappers for
-supported agent CLIs found on `PATH`, and prints a shell export that puts
-`.ait/bin` first on `PATH` for the current terminal session. Detected
+`ait init` initializes `.ait/`, installs repo-local wrappers for
+supported agent CLIs found on `PATH`, writes `.envrc`, imports detected
+agent memory, and creates the default memory policy guardrail. `direnv
+allow` is only needed when direnv blocks the new `.envrc`. Detected
 wrappers include:
 
 ```text
@@ -43,17 +45,23 @@ wrappers include:
 
 After that, detected agent commands in this repository run through `ait`.
 
+Check whether the current shell is ready:
+
+```bash
+ait status
+```
+
 For virtualenv installs, use the local executable:
 
 ```bash
-eval "$(.venv/bin/ait init --shell)"
+.venv/bin/ait init
+direnv allow
 ```
 
-For a readable report instead of an eval-safe snippet, run:
+For an eval-safe current-shell snippet instead of direnv, run:
 
 ```bash
-ait init
-ait status --all
+eval "$(ait init --shell)"
 ```
 
 For persistent zsh/bash activation in new terminal sessions, install

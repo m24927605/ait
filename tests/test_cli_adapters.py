@@ -242,6 +242,7 @@ class CliAdapterTests(unittest.TestCase):
             self.assertTrue((repo_root / ".ait" / "config.json").exists())
             self.assertTrue((repo_root / ".ait" / "bin" / "claude").exists())
             self.assertTrue((repo_root / ".ait" / "bin" / "codex").exists())
+            self.assertTrue((repo_root / ".ait" / "memory-policy.json").exists())
             self.assertIn("PATH_add .ait/bin", (repo_root / ".envrc").read_text(encoding="utf-8"))
 
     def test_init_json_can_limit_adapter_scope(self) -> None:
@@ -274,6 +275,7 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertEqual(["codex"], payload["installed_adapters"])
             self.assertTrue(payload["shell_snippet"].startswith("export PATH="))
+            self.assertTrue(payload["memory_policy"]["created"])
             self.assertTrue((repo_root / ".ait" / "bin" / "codex").exists())
             self.assertFalse((repo_root / ".ait" / "bin" / "claude").exists())
 
@@ -552,6 +554,8 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertEqual("claude-code", payload["adapter"])
             self.assertFalse(payload["wrapper_installed"])
+            self.assertFalse(payload["agent_cli_ready"])
+            self.assertIn("run ait init --adapter claude-code", payload["agent_cli_message"])
             self.assertFalse(payload["memory"]["initialized"])
             self.assertEqual("uninitialized", payload["memory"]["health"])
             self.assertEqual(["CLAUDE.md"], payload["memory"]["pending_paths"])
@@ -614,6 +618,7 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertEqual(0, second_exit_code)
             self.assertIn("Wrapper installed: False", stdout.getvalue())
+            self.assertIn("Agent CLI ready: False", stdout.getvalue())
             self.assertIn('eval "$(ait init --shell)"', stderr.getvalue())
             self.assertEqual("", second_stderr.getvalue())
             self.assertTrue(hints["claude_code_automation_hint_v1"])
