@@ -75,7 +75,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.42.0` alpha quality for local dogfood use. It is
+This repository is at `0.43.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -108,14 +108,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.42.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.43.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.42.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.43.0"
 .venv/bin/ait --help
 ```
 
@@ -429,7 +429,8 @@ direnv allow   # only if prompted
 This initializes `.ait/`, installs wrappers for detected agent CLIs,
 writes `.envrc`, imports detected agent memory, and creates the default
 memory policy. After that, invoking `claude ...`, `codex ...`,
-`aider ...`, `gemini ...`, or `cursor ...` from the repository will hit `.ait/bin/*`, which runs the
+`aider ...`, `gemini ...`, or `cursor ...` from the repository will hit
+`.ait/bin/*`, which runs the
 agent through `ait run` in an isolated attempt worktree. The wrapper
 passes through all agent arguments. It uses `AIT_INTENT` and
 `AIT_COMMIT_MESSAGE` when set, otherwise it falls back to conservative
@@ -757,7 +758,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.42.0
+git checkout v0.43.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

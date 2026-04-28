@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.43.0 - 2026-04-29
+
+### Changed
+
+- Make text `ait init` report installed agent wrappers with user-facing
+  command names such as `claude`, `codex`, `aider`, `gemini`, and
+  `cursor` instead of internal adapter names.
+- Make `ait init` ready/next command suggestions use the same command
+  names.
+- Add regression coverage proving one `ait init` installs wrappers for
+  every detected supported agent CLI on `PATH`.
+
 ## 0.42.0 - 2026-04-28
 
 ### Changed

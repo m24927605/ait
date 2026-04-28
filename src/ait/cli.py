@@ -1094,8 +1094,7 @@ def _format_init(payload: dict[str, object]) -> str:
         f"State: {payload['ait_dir']}",
     ]
     if installed:
-        lines.append("Agent wrappers:")
-        lines.extend(f"- {name}" for name in installed)
+        lines.append("Agent wrappers: " + ", ".join(_agent_command_name(name) for name in installed))
     else:
         lines.append("Agent wrappers: none")
     if skipped:
@@ -1120,7 +1119,7 @@ def _format_init(payload: dict[str, object]) -> str:
         lines.append(f"Memory policy: {state}")
     if ready:
         lines.append("Ready now:")
-        lines.extend(f"- {name}" for name in ready)
+        lines.extend(f"- {_agent_command_name(name)}" for name in ready)
     elif payload.get("shell_snippet"):
         if any(item.get("direnv_available") and not item.get("direnv_loaded") for item in statuses):
             lines.extend(
@@ -1138,7 +1137,7 @@ def _format_init(payload: dict[str, object]) -> str:
                     "After that:",
                 ]
             )
-        lines.extend(f"- {name.split('-')[0] if name == 'claude-code' else name} ..." for name in installed)
+        lines.extend(f"- {_agent_command_name(name)} ..." for name in installed)
     else:
         lines.extend(
             [

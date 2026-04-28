@@ -237,14 +237,45 @@ class CliAdapterTests(unittest.TestCase):
 
             self.assertEqual(0, exit_code)
             self.assertIn("AIT initialized", text)
-            self.assertIn("- claude-code", text)
-            self.assertIn("- codex", text)
+            self.assertIn("Agent wrappers: claude, codex", text)
             self.assertIn("Current shell:", text)
             self.assertTrue("direnv allow" in text or 'eval "$(ait init --shell)"' in text)
             self.assertTrue((repo_root / ".ait" / "config.json").exists())
             self.assertTrue((repo_root / ".ait" / "bin" / "claude").exists())
             self.assertTrue((repo_root / ".ait" / "bin" / "codex").exists())
             self.assertTrue((repo_root / ".ait" / "memory-policy.json").exists())
+            self.assertIn("PATH_add .ait/bin", (repo_root / ".envrc").read_text(encoding="utf-8"))
+
+    def test_init_text_initializes_every_detected_agent_cli_wrapper(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            _git_commit_initial(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            for command in ("claude", "codex", "aider", "gemini", "cursor"):
+                path = bin_dir / command
+                path.write_text(f"#!/bin/sh\nprintf 'real {command}\\n'\n", encoding="utf-8")
+                path.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + "/usr/bin:/bin"
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "init"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            text = stdout.getvalue()
+
+            self.assertEqual(0, exit_code)
+            self.assertIn("Agent wrappers: aider, claude, codex, cursor, gemini", text)
+            for command in ("claude", "codex", "aider", "gemini", "cursor"):
+                self.assertTrue((repo_root / ".ait" / "bin" / command).exists())
+                self.assertIn(f"- {command} ...", text)
             self.assertIn("PATH_add .ait/bin", (repo_root / ".envrc").read_text(encoding="utf-8"))
 
     def test_init_json_can_limit_adapter_scope(self) -> None:
