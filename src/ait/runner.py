@@ -18,6 +18,7 @@ from ait.memory import (
     build_repo_memory,
     ensure_agent_memory_imported,
     render_repo_memory_text,
+    search_repo_memory,
 )
 from ait.memory_policy import EXCLUDED_MARKER, load_memory_policy, transcript_excluded
 from ait.redaction import redact_text
@@ -197,9 +198,16 @@ def _write_context_file(
         auto_query.query,
         sources=auto_query.sources,
     )
+    relevant_memory = _render_relevant_memory(
+        repo_root,
+        auto_query.query,
+        budget_chars=4000,
+    )
     path = workspace / ".ait-context.md"
     path.write_text(
         render_agent_context_text(context)
+        + "\n"
+        + relevant_memory
         + "\n"
         + render_repo_memory_text(memory, budget_chars=12000)
         + "\n"
@@ -207,6 +215,31 @@ def _write_context_file(
         encoding="utf-8",
     )
     return path
+
+
+def _render_relevant_memory(repo_root: Path, query: str, *, budget_chars: int) -> str:
+    results = [
+        result
+        for result in search_repo_memory(repo_root, query, limit=8)
+        if result.kind == "note"
+        and str(result.metadata.get("source", "")).startswith(("attempt-memory:", "agent-memory:"))
+    ][:6]
+    lines = ["AIT Relevant Memory", f"Query: {query}", ""]
+    if not results:
+        lines.append("- none")
+    for result in results:
+        source = str(result.metadata.get("source", ""))
+        score = f"{result.score:.2f}"
+        text = " ".join(result.text.split())
+        lines.append(f"- {source} score={score} topic={result.title}")
+        if text:
+            lines.append(f"  {text[:800]}")
+    text = "\n".join(lines) + "\n"
+    if len(text) <= budget_chars:
+        return text
+    marker = "\n[ait relevant memory compacted to configured budget]\n"
+    keep = max(0, budget_chars - len(marker))
+    return text[:keep].rstrip() + marker
 
 
 def _write_command_transcript(

@@ -120,6 +120,7 @@ class RunnerTests(unittest.TestCase):
             self.assertTrue((repo_root / ".ait" / "brain" / "REPORT.md").exists())
             self.assertIn("Intent: Context file", copied.read_text(encoding="utf-8"))
             self.assertIn("AIT Long-Term Repo Memory", copied.read_text(encoding="utf-8"))
+            self.assertIn("AIT Relevant Memory", copied.read_text(encoding="utf-8"))
             self.assertIn("AIT Repo Brain Briefing", copied.read_text(encoding="utf-8"))
             self.assertIn("Briefing Query Sources:", copied.read_text(encoding="utf-8"))
             self.assertIn("command_args:", copied.read_text(encoding="utf-8"))
@@ -180,9 +181,52 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(1, len(notes))
             self.assertEqual(f"attempt-memory:{result.attempt_id}", notes[0].source)
             self.assertIn("confidence=high", notes[0].body)
+            self.assertIn("intent_title=Remember successful attempt", notes[0].body)
             self.assertIn("verified_status=succeeded", notes[0].body)
             self.assertIn("changed_files=agent.txt", notes[0].body)
             self.assertIn(result.attempt.commits[0]["commit_oid"], notes[0].body)
+
+    def test_next_context_includes_relevant_attempt_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            first = run_agent_command(
+                repo_root,
+                intent_title="Billing adapter retry path",
+                adapter_name="claude-code",
+                command=[
+                    sys.executable,
+                    "-c",
+                    "from pathlib import Path; Path('billing_retry.py').write_text('ok\\n')",
+                ],
+                commit_message="add billing retry path",
+            )
+            second = run_agent_command(
+                repo_root,
+                intent_title="Improve billing adapter retry path",
+                agent_id="shell:test",
+                command=[
+                    sys.executable,
+                    "-c",
+                    (
+                        "import os;"
+                        "from pathlib import Path;"
+                        "p=Path(os.environ['AIT_CONTEXT_FILE']);"
+                        "Path('context-copy.txt').write_text(p.read_text())"
+                    ),
+                ],
+                with_context=True,
+            )
+
+            copied = (Path(second.workspace_ref) / "context-copy.txt").read_text(encoding="utf-8")
+
+            self.assertEqual(0, first.exit_code)
+            self.assertEqual(0, second.exit_code)
+            self.assertIn("AIT Relevant Memory", copied)
+            self.assertIn(f"attempt-memory:{first.attempt_id}", copied)
+            self.assertIn("Billing adapter retry path", copied)
+            self.assertIn("changed_files=billing_retry.py", copied)
 
     def test_run_agent_command_adds_failed_attempt_memory_note(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

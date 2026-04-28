@@ -282,11 +282,13 @@ def add_attempt_memory_note(repo_root: str | Path, attempt_result) -> MemoryNote
         tuple(str(path) for path in files.get("changed", ())),
     )
     commits = tuple(str(commit.get("commit_oid")) for commit in getattr(attempt_result, "commits", []) if commit.get("commit_oid"))
+    intent = _attempt_memory_intent_fields(root, str(attempt.get("intent_id") or ""))
     verified_status = str(attempt.get("verified_status") or "pending")
     exit_code = attempt.get("result_exit_code")
     confidence = "high" if verified_status in {"succeeded", "promoted"} else "advisory"
     body = _attempt_memory_note_body(
         attempt=attempt,
+        intent=intent,
         changed_files=changed_files,
         commits=commits,
         confidence=confidence,
@@ -434,9 +436,35 @@ def _policy_visible_files(root: Path, paths: tuple[str, ...]) -> tuple[str, ...]
     return tuple(path for path in paths if not path_excluded(path, policy))
 
 
+def _attempt_memory_intent_fields(root: Path, intent_id: str) -> dict[str, str]:
+    if not intent_id:
+        return {}
+    conn = connect_db(root / ".ait" / "state.sqlite3")
+    try:
+        run_migrations(conn)
+        row = conn.execute(
+            """
+            SELECT title, kind, description
+            FROM intents
+            WHERE id = ?
+            """,
+            (intent_id,),
+        ).fetchone()
+        if row is None:
+            return {}
+        return {
+            "title": str(row["title"]),
+            "kind": str(row["kind"] or ""),
+            "description": str(row["description"] or ""),
+        }
+    finally:
+        conn.close()
+
+
 def _attempt_memory_note_body(
     *,
     attempt: dict[str, object],
+    intent: dict[str, str],
     changed_files: tuple[str, ...],
     commits: tuple[str, ...],
     confidence: str,
@@ -448,6 +476,9 @@ def _attempt_memory_note_body(
     verified_status = str(attempt.get("verified_status") or "pending")
     reported_status = str(attempt.get("reported_status") or "created")
     raw_trace_ref = str(attempt.get("raw_trace_ref") or "")
+    intent_title = intent.get("title", "")
+    intent_kind = intent.get("kind", "")
+    intent_description = intent.get("description", "")
     changed_text = ", ".join(changed_files) if changed_files else "none"
     commits_text = ", ".join(commits) if commits else "none"
     return "\n".join(
@@ -455,6 +486,9 @@ def _attempt_memory_note_body(
             "AIT attempt memory",
             f"attempt_id={attempt_id}",
             f"intent_id={intent_id}",
+            f"intent_title={intent_title}",
+            f"intent_kind={intent_kind}",
+            f"intent_description={intent_description}",
             f"agent_id={agent_id}",
             f"reported_status={reported_status}",
             f"verified_status={verified_status}",
@@ -466,7 +500,7 @@ def _attempt_memory_note_body(
             "",
             (
                 "Reusable summary: "
-                f"{agent_id} completed attempt {attempt_id} with status {verified_status}. "
+                f"{agent_id} completed {intent_title or 'an attempt'} with status {verified_status}. "
                 f"Changed files: {changed_text}. Commits: {commits_text}."
             ),
         ]

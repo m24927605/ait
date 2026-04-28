@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.29.0 - 2026-04-28
+
+### Added
+
+- Add `AIT Relevant Memory` to wrapped agent context files.
+- Retrieve the most relevant `agent-memory` and `attempt-memory` notes
+  using the generated intent, command, kind, and agent query.
+- Compact relevant memory to a fixed budget before injecting context so
+  long-term memory remains token-conscious.
+- Include intent title, kind, and description in automatic attempt
+  memory notes to improve future recall quality.
+
 ## 0.28.0 - 2026-04-28
 
 ### Added
