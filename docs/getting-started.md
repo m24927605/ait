@@ -28,14 +28,13 @@ Run this from inside a Git repository:
 
 ```bash
 ait init
-direnv allow
+direnv allow   # only if prompted
 ```
 
 `ait init` initializes `.ait/`, installs repo-local wrappers for
 supported agent CLIs found on `PATH`, writes `.envrc`, imports detected
 agent memory, and creates the default memory policy guardrail. `direnv
-allow` is only needed when direnv blocks the new `.envrc`. Detected
-wrappers include:
+allow` is only needed when prompted. Detected wrappers include:
 
 ```text
 .ait/bin/claude
@@ -44,6 +43,12 @@ wrappers include:
 ```
 
 After that, detected agent commands in this repository run through `ait`.
+
+Use the agent CLI normally:
+
+```bash
+claude ...
+```
 
 Check whether the current shell is ready:
 
@@ -55,18 +60,14 @@ For virtualenv installs, use the local executable:
 
 ```bash
 .venv/bin/ait init
-direnv allow
+direnv allow   # only if prompted
 ```
 
-For an eval-safe current-shell snippet instead of direnv, run:
+Advanced troubleshooting commands are available when shell activation or
+wrapper setup needs inspection:
 
 ```bash
 eval "$(ait init --shell)"
-```
-
-For automated repair, use:
-
-```bash
 ait doctor --fix --format json
 ```
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.39.0 - 2026-04-28
+
+### Changed
+
+- Tighten user-facing docs around the normal daily path: install,
+  `ait init`, `direnv allow` only if prompted, then keep running
+  `claude`, `codex`, or `aider`.
+- Move lower-level shell, doctor, and bootstrap commands out of the
+  primary README workflow and into advanced/troubleshooting context.
+- Extend release smoke coverage to run `claude ...` through `PATH`
+  rather than invoking `.ait/bin/claude` directly, matching the command
+  users actually type.
+
 ## 0.38.0 - 2026-04-28
 
 ### Changed

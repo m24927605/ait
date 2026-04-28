@@ -73,7 +73,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.38.0` alpha quality for local dogfood use. It is
+This repository is at `0.39.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -106,14 +106,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.38.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.39.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.38.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.39.0"
 .venv/bin/ait --help
 ```
 
@@ -421,39 +421,19 @@ agent binary found on `PATH`:
 
 ```bash
 ait init
-direnv allow
+direnv allow   # only if prompted
 ```
 
 This initializes `.ait/`, installs wrappers for detected agent CLIs,
 writes `.envrc`, imports detected agent memory, and creates the default
-memory policy. `direnv allow` is only needed when direnv blocks the new
-`.envrc`. To check whether the current shell is ready for direct agent
-CLI use:
-
-```bash
-ait status
-```
-
-The lower-level commands are still available:
-
-```bash
-eval "$(ait init --shell)"
-eval "$(ait doctor --fix)"
-eval "$(ait enable --shell)"
-```
-
-`ait doctor --fix --format json` is the scripted repair form. It
-initializes `.ait/`, repairs wrappers and `.envrc`, imports detected
-agent memory, creates the default memory policy, and reports whether the
-current shell can directly run the wrapped agent CLI.
-
-After that, invoking `claude ...`, `codex ...`, or `aider ...` from the
-repository will hit `.ait/bin/*`, which runs the agent through `ait run`
-in an isolated attempt worktree. The wrapper passes through all agent
-arguments. It uses `AIT_INTENT` and `AIT_COMMIT_MESSAGE` when set,
-otherwise it falls back to conservative defaults. On successful runs,
-ait auto-commits changed attempt worktrees; if the agent already created
-a commit, ait records that commit and does not create another one:
+memory policy. After that, invoking `claude ...`, `codex ...`, or
+`aider ...` from the repository will hit `.ait/bin/*`, which runs the
+agent through `ait run` in an isolated attempt worktree. The wrapper
+passes through all agent arguments. It uses `AIT_INTENT` and
+`AIT_COMMIT_MESSAGE` when set, otherwise it falls back to conservative
+defaults. On successful runs, ait auto-commits changed attempt worktrees;
+if the agent already created a commit, ait records that commit and does
+not create another one:
 
 ```bash
 AIT_INTENT="Update README" \
@@ -462,9 +442,31 @@ claude -p --permission-mode bypassPermissions \
   'Append one line to README.md'
 ```
 
+To check whether the current shell is ready for direct agent CLI use:
+
+```bash
+ait status
+```
+
 If a repo-local wrapper cannot find the real agent binary, it prints a
 diagnostic with the adapter, repo, wrapper path, real binary path, and a
 next step such as `ait status codex`.
+
+Lower-level activation commands are still available for troubleshooting
+and scripted setups:
+
+```bash
+eval "$(ait init --shell)"
+eval "$(ait doctor --fix)"
+eval "$(ait enable --shell)"
+ait doctor --fix --format json
+ait bootstrap --check
+```
+
+`ait doctor --fix --format json` is the scripted repair form. It
+initializes `.ait/`, repairs wrappers and `.envrc`, imports detected
+agent memory, creates the default memory policy, and reports whether the
+current shell can directly run the wrapped agent CLI.
 
 If a wrapper or `.envrc` is damaged after setup, repair the repo-local
 automation and conservative memory lint issues without learning the
@@ -499,13 +501,6 @@ ait memory lint
 ait memory lint --fix
 ```
 
-To set up direnv instead of changing the current shell directly:
-
-```bash
-ait bootstrap
-direnv allow
-```
-
 To make new zsh/bash sessions auto-activate `.ait/bin` whenever you
 enter an AIT-enabled repository, install the opt-in shell integration:
 
@@ -531,7 +526,6 @@ Check whether the automation path is ready:
 ait status
 ait status --all
 ait doctor
-ait bootstrap --check
 ```
 
 Text `ait status` may print a one-time automation hint to stderr when
@@ -747,7 +741,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.38.0
+git checkout v0.39.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q
