@@ -530,6 +530,7 @@ class CliAdapterTests(unittest.TestCase):
             repo_root = Path(tmp) / "repo"
             repo_root.mkdir()
             _git_init(repo_root)
+            (repo_root / "CLAUDE.md").write_text("Import me later.\n", encoding="utf-8")
             bin_dir = Path(tmp) / "bin"
             bin_dir.mkdir()
             real_claude = bin_dir / "claude"
@@ -551,6 +552,8 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertEqual("claude-code", payload["adapter"])
             self.assertFalse(payload["wrapper_installed"])
+            self.assertFalse(payload["memory"]["initialized"])
+            self.assertEqual(["CLAUDE.md"], payload["memory"]["pending_paths"])
             self.assertIn("ait init --adapter claude-code", payload["next_steps"])
             self.assertFalse((repo_root / ".ait").exists())
 
@@ -690,6 +693,7 @@ class CliAdapterTests(unittest.TestCase):
             repo_root.mkdir()
             _git_init(repo_root)
             _git_commit_initial(repo_root)
+            (repo_root / "AGENTS.md").write_text("Keep wrappers current.\n", encoding="utf-8")
             bin_dir = Path(tmp) / "bin"
             bin_dir.mkdir()
             real_aider = bin_dir / "aider"
@@ -714,6 +718,8 @@ class CliAdapterTests(unittest.TestCase):
             self.assertIn("- aider", text)
             self.assertIn("Status changes:", text)
             self.assertIn("wrapper_installed: False -> True", text)
+            self.assertIn("Imported memory:", text)
+            self.assertIn("agent-memory:codex:AGENTS.md", text)
             self.assertIn("Current shell:", text)
             self.assertTrue((repo_root / ".ait" / "bin" / "aider").exists())
 
@@ -723,6 +729,7 @@ class CliAdapterTests(unittest.TestCase):
             repo_root.mkdir()
             _git_init(repo_root)
             _git_commit_initial(repo_root)
+            (repo_root / "CLAUDE.md").write_text("Repair should still import memory.\n", encoding="utf-8")
             stdout = io.StringIO()
             old_path = os.environ.get("PATH", "")
             os.environ["PATH"] = "/usr/bin:/bin"
@@ -739,6 +746,10 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(2, exit_code)
             self.assertEqual([], payload["installed_adapters"])
             self.assertEqual(["codex"], [item["name"] for item in payload["skipped_adapters"]])
+            self.assertEqual(
+                ["agent-memory:claude:CLAUDE.md"],
+                [item["source"] for item in payload["memory_import"]["imported"]],
+            )
             self.assertFalse((repo_root / ".ait" / "bin" / "codex").exists())
             self.assertFalse((repo_root / ".envrc").exists())
 

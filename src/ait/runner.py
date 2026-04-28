@@ -13,7 +13,7 @@ from ait.brain import build_auto_briefing_query, build_repo_brain_briefing_from_
 from ait.context import build_agent_context, render_agent_context_text
 from ait.daemon import start_daemon
 from ait.harness import AitHarness
-from ait.memory import build_repo_memory, render_repo_memory_text
+from ait.memory import build_repo_memory, ensure_agent_memory_imported, render_repo_memory_text
 from ait.memory_policy import EXCLUDED_MARKER, load_memory_policy, transcript_excluded
 from ait.redaction import redact_text
 from ait.workspace import WorkspaceError, create_attempt_commit
@@ -52,6 +52,7 @@ def run_agent_command(
     resolved_agent_id = agent_id or adapter.default_agent_id
     resolved_with_context = with_context or adapter.default_with_context
     root = Path(repo_root).resolve()
+    ensure_agent_memory_imported(root)
     daemon = start_daemon(root)
     if not daemon.running:
         raise RuntimeError(f"ait daemon did not start at {daemon.socket_path}")

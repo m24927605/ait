@@ -7,7 +7,7 @@ import unittest
 import json
 from pathlib import Path
 
-from ait.memory import search_repo_memory
+from ait.memory import list_memory_notes, search_repo_memory
 from ait.runner import run_agent_command
 
 
@@ -125,6 +125,37 @@ class RunnerTests(unittest.TestCase):
             self.assertIn("command_args:", copied.read_text(encoding="utf-8"))
             self.assertIn("agent:", copied.read_text(encoding="utf-8"))
             self.assertNotIn("Edges:", copied.read_text(encoding="utf-8"))
+
+    def test_run_agent_command_auto_imports_agent_memory_before_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            (repo_root / "CLAUDE.md").write_text("Use repair before release.\n", encoding="utf-8")
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="Auto memory",
+                agent_id="shell:test",
+                command=[
+                    sys.executable,
+                    "-c",
+                    (
+                        "import os;"
+                        "from pathlib import Path;"
+                        "p=Path(os.environ['AIT_CONTEXT_FILE']);"
+                        "Path('context-copy.txt').write_text(p.read_text())"
+                    ),
+                ],
+                with_context=True,
+            )
+
+            copied = Path(result.workspace_ref) / "context-copy.txt"
+            notes = list_memory_notes(repo_root, topic="agent-memory")
+
+            self.assertEqual(0, result.exit_code)
+            self.assertEqual(1, len(notes))
+            self.assertIn("Use repair before release.", notes[0].body)
+            self.assertIn("Use repair before release.", copied.read_text(encoding="utf-8"))
 
     def test_claude_code_adapter_defaults_to_context_and_env(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

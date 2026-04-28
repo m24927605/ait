@@ -49,7 +49,9 @@ from ait.daemon import daemon_status, serve_daemon, start_daemon, stop_daemon
 from ait.db import connect_db
 from ait.memory import (
     add_memory_note,
+    agent_memory_status,
     build_repo_memory,
+    ensure_agent_memory_imported,
     import_agent_memory,
     list_memory_notes,
     remove_memory_note,
@@ -338,7 +340,7 @@ def main() -> int:
                 return 0
             print("error: no supported agent binaries found on PATH", file=sys.stderr)
             return 2
-        memory_import = import_agent_memory(result.repo_root)
+        memory_import = ensure_agent_memory_imported(result.repo_root)
         statuses = tuple(
             doctor_automation(item.adapter.name, result.repo_root)
             for item in automation.installed
@@ -696,7 +698,8 @@ def main() -> int:
                 for name in sorted(ADAPTERS)
                 if name != "shell"
             )
-            payload = [_status_payload(result) for result in results]
+            memory_status = _memory_status_payload(repo_root)
+            payload = [_status_payload(result, memory_status=memory_status) for result in results]
             if args.format == "json":
                 print(json.dumps(payload, indent=2))
             else:
@@ -704,7 +707,7 @@ def main() -> int:
                 _maybe_emit_status_all_hint(args, repo_root, results)
             return 0
         result = doctor_automation(args.name, repo_root)
-        payload = _status_payload(result)
+        payload = _status_payload(result, memory_status=_memory_status_payload(repo_root))
         if args.format == "json":
             print(json.dumps(payload, indent=2))
         else:
@@ -717,11 +720,12 @@ def main() -> int:
         try:
             init_result = init_repo(repo_root)
             result = enable_available_adapters(init_result.repo_root, names=names)
+            memory_import = ensure_agent_memory_imported(init_result.repo_root)
         except AdapterError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
         after = tuple(doctor_automation(name, init_result.repo_root) for name in names)
-        payload = _repair_payload(before, result, after)
+        payload = _repair_payload(before, result, after, memory_import)
         if args.format == "json":
             print(json.dumps(payload, indent=2))
         else:
@@ -1020,7 +1024,7 @@ def _format_init(payload: dict[str, object]) -> str:
     return "\n".join(lines)
 
 
-def _repair_payload(before, result, after) -> dict[str, object]:
+def _repair_payload(before, result, after, memory_import=None) -> dict[str, object]:
     before_payload = [_status_payload(item) for item in before]
     after_payload = [_status_payload(item) for item in after]
     before_by_adapter = {str(item["adapter"]): item for item in before_payload}
@@ -1040,7 +1044,7 @@ def _repair_payload(before, result, after) -> dict[str, object]:
             if previous.get(key) != item.get(key)
         }
         changes.append({"adapter": adapter, "changed": changed_fields})
-    return {
+    payload = {
         "before": before_payload,
         "after": after_payload,
         "installed_adapters": [item.adapter.name for item in result.installed],
@@ -1048,6 +1052,9 @@ def _repair_payload(before, result, after) -> dict[str, object]:
         "shell_snippet": result.shell_snippet,
         "changes": changes,
     }
+    if memory_import is not None:
+        payload["memory_import"] = memory_import.to_dict()
+    return payload
 
 
 def _format_repair(payload: dict[str, object]) -> str:
@@ -1064,6 +1071,16 @@ def _format_repair(payload: dict[str, object]) -> str:
         for item in skipped:
             if isinstance(item, dict):
                 lines.append(f"- {item.get('name')}: {item.get('detail')}")
+    memory_import = payload.get("memory_import")
+    if isinstance(memory_import, dict):
+        imported = memory_import.get("imported", [])
+        if imported:
+            lines.append("Imported memory:")
+            for item in imported:
+                if isinstance(item, dict):
+                    lines.append(f"- {item.get('source')}")
+        else:
+            lines.append("Imported memory: already current")
     changes = payload.get("changes", [])
     if changes:
         lines.append("Status changes:")
@@ -1128,7 +1145,20 @@ def _doctor_next_steps(result) -> list[str]:
     return []
 
 
-def _status_payload(result) -> dict[str, object]:
+def _memory_status_payload(repo_root: Path) -> dict[str, object]:
+    try:
+        return agent_memory_status(repo_root).to_dict()
+    except ValueError:
+        return {
+            "initialized": False,
+            "imported_sources": [],
+            "candidate_paths": [],
+            "pending_paths": [],
+            "state_path": "",
+        }
+
+
+def _status_payload(result, *, memory_status: dict[str, object] | None = None) -> dict[str, object]:
     checks = {check.name: check.ok for check in result.checks}
     return {
         "adapter": result.adapter.name,
@@ -1140,6 +1170,7 @@ def _status_payload(result) -> dict[str, object]:
         "real_agent_binary": checks.get("real_agent_binary", checks.get("real_claude_binary", False)),
         "direnv_available": checks.get("direnv_binary", False),
         "direnv_loaded": checks.get("direnv_env_loaded", False),
+        "memory": memory_status or {},
         "next_steps": _doctor_next_steps(result),
     }
 
@@ -1156,6 +1187,15 @@ def _format_status(payload: dict[str, object]) -> str:
         f"direnv available: {payload['direnv_available']}",
         f"direnv loaded: {payload['direnv_loaded']}",
     ]
+    memory = payload.get("memory", {})
+    if isinstance(memory, dict):
+        imported = memory.get("imported_sources", [])
+        pending = memory.get("pending_paths", [])
+        lines.append(f"Memory initialized: {memory.get('initialized', False)}")
+        lines.append(f"Memory imported sources: {len(imported) if isinstance(imported, list) else 0}")
+        if pending:
+            lines.append("Memory pending:")
+            lines.extend(f"- {path}" for path in pending)
     next_steps = payload.get("next_steps", [])
     if next_steps:
         lines.append("Next steps:")
@@ -1171,7 +1211,8 @@ def _format_status_all(payload: list[dict[str, object]]) -> str:
             f"{item['adapter']}: ok={item['ok']} "
             f"wrapper={item['wrapper_installed']} "
             f"path={item['path_wrapper_active']} "
-            f"real_binary={item['real_agent_binary']}"
+            f"real_binary={item['real_agent_binary']} "
+            f"memory={item.get('memory', {}).get('initialized', False) if isinstance(item.get('memory'), dict) else False}"
         )
         next_steps = item.get("next_steps", [])
         if next_steps:

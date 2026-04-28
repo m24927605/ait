@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.27.0 - 2026-04-28
+
+### Added
+
+- Add automatic agent memory import before every wrapped `ait run`, so
+  existing `CLAUDE.md`, `AGENTS.md`, Codex, Claude, and Cursor memory
+  files are picked up even when users only activate wrappers and run an
+  agent CLI.
+- Add repo-local agent memory import state at
+  `.ait/memory/agent-import-state.json` to avoid repeated imports when
+  memory files have not changed.
+- Show agent memory initialization state, imported source count, and
+  pending memory files from `ait status`.
+- Make `ait repair` also repair agent memory import state.
+
 ## 0.26.0 - 2026-04-28
 
 ### Added

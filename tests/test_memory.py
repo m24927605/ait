@@ -10,7 +10,9 @@ from ait.app import create_commit_for_attempt, create_attempt, create_intent
 from ait.db import connect_db, run_migrations
 from ait.memory import (
     add_memory_note,
+    agent_memory_status,
     build_repo_memory,
+    ensure_agent_memory_imported,
     import_agent_memory,
     list_memory_notes,
     remove_memory_note,
@@ -118,6 +120,24 @@ class MemoryTests(unittest.TestCase):
 
             self.assertEqual(0, len(result.imported))
             self.assertEqual("excluded by memory policy", result.skipped[0]["reason"])
+
+    def test_ensure_agent_memory_imported_uses_repo_local_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            (repo_root / "CLAUDE.md").write_text("Prefer repair before release.\n", encoding="utf-8")
+
+            first = ensure_agent_memory_imported(repo_root)
+            second = ensure_agent_memory_imported(repo_root)
+            status = agent_memory_status(repo_root)
+
+            self.assertEqual(1, len(first.imported))
+            self.assertEqual(0, len(second.imported))
+            self.assertTrue((repo_root / ".ait" / "memory" / "agent-import-state.json").exists())
+            self.assertTrue(status.initialized)
+            self.assertEqual(("CLAUDE.md",), status.candidate_paths)
+            self.assertEqual((), status.pending_paths)
+            self.assertEqual(("agent-memory:claude:CLAUDE.md",), status.imported_sources)
 
     def test_memory_filters_attempts_by_path_and_promoted_status(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

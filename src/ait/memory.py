@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
+import json
 import math
 from pathlib import Path
 import re
@@ -80,6 +81,24 @@ class MemoryImportResult:
         return {
             "imported": [asdict(note) for note in self.imported],
             "skipped": list(self.skipped),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class AgentMemoryStatus:
+    initialized: bool
+    imported_sources: tuple[str, ...]
+    candidate_paths: tuple[str, ...]
+    pending_paths: tuple[str, ...]
+    state_path: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "initialized": self.initialized,
+            "imported_sources": list(self.imported_sources),
+            "candidate_paths": list(self.candidate_paths),
+            "pending_paths": list(self.pending_paths),
+            "state_path": self.state_path,
         }
 
 
@@ -305,6 +324,59 @@ def import_agent_memory(
     return MemoryImportResult(imported=tuple(imported), skipped=tuple(skipped))
 
 
+def ensure_agent_memory_imported(repo_root: str | Path) -> MemoryImportResult:
+    root = resolve_repo_root(repo_root)
+    state_path = _agent_memory_import_state_path(root)
+    signature = _agent_memory_signature(root)
+    state = _read_agent_memory_import_state(state_path)
+    status = agent_memory_status(root)
+    if state.get("signature") == signature and status.initialized and not status.pending_paths:
+        return MemoryImportResult(imported=(), skipped=())
+    result = import_agent_memory(root)
+    _write_agent_memory_import_state(state_path, signature=signature, result=result)
+    return result
+
+
+def agent_memory_status(repo_root: str | Path) -> AgentMemoryStatus:
+    root = resolve_repo_root(repo_root)
+    candidates = _existing_agent_memory_files(root)
+    imported_sources = _existing_agent_memory_sources(root)
+    imported_paths = {
+        source.split(":", 2)[2]
+        for source in imported_sources
+        if source.startswith("agent-memory:") and len(source.split(":", 2)) == 3
+    }
+    candidate_paths = tuple(relative_path for _, relative_path, _ in candidates)
+    pending_paths = tuple(path for path in candidate_paths if path not in imported_paths)
+    return AgentMemoryStatus(
+        initialized=bool(imported_sources) or not candidate_paths,
+        imported_sources=imported_sources,
+        candidate_paths=candidate_paths,
+        pending_paths=pending_paths,
+        state_path=str(_agent_memory_import_state_path(root)),
+    )
+
+
+def _existing_agent_memory_sources(root: Path) -> tuple[str, ...]:
+    db_path = root / ".ait" / "state.sqlite3"
+    if not db_path.exists():
+        return ()
+    conn = connect_db(db_path)
+    try:
+        run_migrations(conn)
+        rows = conn.execute(
+            """
+            SELECT source
+            FROM memory_notes
+            WHERE active = 1 AND topic = 'agent-memory' AND source LIKE 'agent-memory:%'
+            ORDER BY created_at ASC, id ASC
+            """
+        ).fetchall()
+        return tuple(str(row["source"]) for row in rows)
+    finally:
+        conn.close()
+
+
 def list_memory_notes(
     repo_root: str | Path,
     *,
@@ -337,6 +409,83 @@ def remove_memory_note(repo_root: str | Path, *, note_id: str) -> bool:
         return cursor.rowcount > 0
     finally:
         conn.close()
+
+
+def _agent_memory_import_state_path(root: Path) -> Path:
+    return root / ".ait" / "memory" / "agent-import-state.json"
+
+
+def _agent_memory_signature(root: Path) -> list[dict[str, object]]:
+    signature: list[dict[str, object]] = []
+    for source_name, relative_path, path in _existing_agent_memory_files(root):
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        signature.append(
+            {
+                "source": source_name,
+                "path": relative_path,
+                "mtime_ns": stat.st_mtime_ns,
+                "size": stat.st_size,
+            }
+        )
+    return signature
+
+
+def _existing_agent_memory_files(root: Path) -> tuple[tuple[str, str, Path], ...]:
+    policy = load_memory_policy(root)
+    files: list[tuple[str, str, Path]] = []
+    seen: set[str] = set()
+    candidates = _agent_memory_candidates(
+        root,
+        source_names=tuple(AGENT_MEMORY_CANDIDATES),
+        paths=(),
+    )
+    for source_name, relative_path, path in candidates:
+        if not path.exists():
+            continue
+        if path.is_dir():
+            for child in sorted(item for item in path.rglob("*") if item.is_file()):
+                child_relative = child.relative_to(root).as_posix()
+                if child_relative in seen or path_excluded(child_relative, policy):
+                    continue
+                files.append((source_name, child_relative, child))
+                seen.add(child_relative)
+            continue
+        if relative_path in seen or path_excluded(relative_path, policy):
+            continue
+        files.append((source_name, relative_path, path))
+        seen.add(relative_path)
+    return tuple(files)
+
+
+def _read_agent_memory_import_state(path: Path) -> dict[str, object]:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _write_agent_memory_import_state(
+    path: Path,
+    *,
+    signature: list[dict[str, object]],
+    result: MemoryImportResult,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "signature": signature,
+                "last_result": result.to_dict(),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 def _agent_memory_candidates(
