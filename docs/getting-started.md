@@ -64,6 +64,17 @@ For an eval-safe current-shell snippet instead of direnv, run:
 eval "$(ait init --shell)"
 ```
 
+For automated repair, use:
+
+```bash
+ait doctor --fix --format json
+```
+
+That path performs the same repo setup work as `ait init`, repairs
+detected agent wrappers, imports existing agent memory files, creates the
+default memory policy, and reports whether the current shell is ready for
+direct `claude`, `codex`, or `aider` use.
+
 For persistent zsh/bash activation in new terminal sessions, install
 the opt-in shell integration after reviewing it:
 

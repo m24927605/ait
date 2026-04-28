@@ -238,7 +238,8 @@ class CliAdapterTests(unittest.TestCase):
             self.assertIn("AIT initialized", text)
             self.assertIn("- claude-code", text)
             self.assertIn("- codex", text)
-            self.assertIn('eval "$(ait init --shell)"', text)
+            self.assertIn("Current shell:", text)
+            self.assertTrue("direnv allow" in text or 'eval "$(ait init --shell)"' in text)
             self.assertTrue((repo_root / ".ait" / "config.json").exists())
             self.assertTrue((repo_root / ".ait" / "bin" / "claude").exists())
             self.assertTrue((repo_root / ".ait" / "bin" / "codex").exists())
@@ -495,6 +496,42 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(f'export PATH={wrapper_dir}:"$PATH"\n', stdout.getvalue())
             self.assertTrue((wrapper_dir / "claude").exists())
             self.assertTrue((wrapper_dir / "codex").exists())
+            self.assertTrue((repo_root / ".ait" / "memory-policy.json").exists())
+
+    def test_doctor_fix_json_initializes_memory_policy_and_imports_agent_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            _git_commit_initial(repo_root)
+            (repo_root / "CLAUDE.md").write_text("Prefer low-interruption agent CLI use.\n", encoding="utf-8")
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "doctor", "claude-code", "--fix", "--format", "json"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            payload = json.loads(stdout.getvalue())
+            notes = list_memory_notes(repo_root, topic="agent-memory")
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual(["claude-code"], payload["installed_adapters"])
+            self.assertTrue(payload["memory_policy"]["created"])
+            self.assertEqual(["agent-memory:claude:CLAUDE.md"], [
+                item["source"] for item in payload["memory_import"]["imported"]
+            ])
+            self.assertEqual(1, len(notes))
+            self.assertTrue((repo_root / ".ait" / "memory-policy.json").exists())
 
     def test_doctor_fix_named_adapter_limits_enable_scope(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -619,7 +656,7 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(0, second_exit_code)
             self.assertIn("Wrapper installed: False", stdout.getvalue())
             self.assertIn("Agent CLI ready: False", stdout.getvalue())
-            self.assertIn('eval "$(ait init --shell)"', stderr.getvalue())
+            self.assertIn("run ait init once", stderr.getvalue())
             self.assertEqual("", second_stderr.getvalue())
             self.assertTrue(hints["claude_code_automation_hint_v1"])
 
@@ -678,7 +715,7 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertIn("AIT Agent Automation Status", stdout.getvalue())
             self.assertIn("aider:", stdout.getvalue())
-            self.assertIn('eval "$(ait init --shell)"', stderr.getvalue())
+            self.assertIn("run ait init once", stderr.getvalue())
 
     def test_repair_named_adapter_rebuilds_damaged_wrapper_and_envrc(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

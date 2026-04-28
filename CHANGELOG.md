@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.36.0 - 2026-04-28
+
+### Added
+
+- Make `ait doctor --fix` perform the same repo initialization side
+  effects as regular `ait init`: database bootstrap, wrapper repair,
+  agent-memory import, and default memory policy creation.
+- Add `ait doctor --fix --format json` output with initialization,
+  memory import, memory policy, and direct agent CLI readiness details.
+- Keep default `ait doctor --fix` stdout eval-safe for existing
+  `eval "$(ait doctor --fix)"` setups while still repairing repo memory
+  and policy state in the background.
+
+### Changed
+
+- Prefer `ait init`/`direnv allow` in one-time automation hints instead
+  of teaching users to rely on lower-level shell snippets.
+- Make `ait init` text output prefer `direnv allow` when direnv is
+  available and only fall back to `eval "$(ait init --shell)"` when it
+  is not.
+
 ## 0.35.0 - 2026-04-28
 
 ### Added
