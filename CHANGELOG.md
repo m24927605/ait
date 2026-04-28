@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.28.0 - 2026-04-28
+
+### Added
+
+- Add automatic attempt memory notes after every `ait run` so completed
+  agent work is preserved as reusable long-term memory.
+- Record structured low-noise attempt summaries with attempt id, intent
+  id, agent id, status, exit code, confidence, changed files, commit
+  oids, and trace reference.
+- Add source-based deduplication for attempt memory notes.
+- Store successful attempts with high confidence and failed attempts
+  with advisory confidence.
+
 ## 0.27.0 - 2026-04-28
 
 ### Added

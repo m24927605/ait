@@ -157,6 +157,54 @@ class RunnerTests(unittest.TestCase):
             self.assertIn("Use repair before release.", notes[0].body)
             self.assertIn("Use repair before release.", copied.read_text(encoding="utf-8"))
 
+    def test_run_agent_command_adds_attempt_memory_note(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="Remember successful attempt",
+                adapter_name="claude-code",
+                command=[
+                    sys.executable,
+                    "-c",
+                    "from pathlib import Path; Path('agent.txt').write_text('ok\\n')",
+                ],
+                commit_message="commit generated change",
+            )
+
+            notes = list_memory_notes(repo_root, topic="attempt-memory")
+
+            self.assertEqual(0, result.exit_code)
+            self.assertEqual(1, len(notes))
+            self.assertEqual(f"attempt-memory:{result.attempt_id}", notes[0].source)
+            self.assertIn("confidence=high", notes[0].body)
+            self.assertIn("verified_status=succeeded", notes[0].body)
+            self.assertIn("changed_files=agent.txt", notes[0].body)
+            self.assertIn(result.attempt.commits[0]["commit_oid"], notes[0].body)
+
+    def test_run_agent_command_adds_failed_attempt_memory_note(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="Remember failed attempt",
+                agent_id="shell:test",
+                command=[sys.executable, "-c", "raise SystemExit(5)"],
+            )
+
+            notes = list_memory_notes(repo_root, topic="attempt-memory")
+
+            self.assertEqual(5, result.exit_code)
+            self.assertEqual(1, len(notes))
+            self.assertEqual(f"attempt-memory:{result.attempt_id}", notes[0].source)
+            self.assertIn("confidence=advisory", notes[0].body)
+            self.assertIn("verified_status=failed", notes[0].body)
+            self.assertIn("exit_code=5", notes[0].body)
+
     def test_claude_code_adapter_defaults_to_context_and_env(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

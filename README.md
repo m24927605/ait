@@ -25,7 +25,9 @@ repository. The wrappers run agents through `ait run`, so the agent edits
 an isolated attempt worktree and `ait` records the result as an
 attempt-linked commit. Existing agent memory files such as `CLAUDE.md`
 and `AGENTS.md` are imported automatically during regular `ait init` and
-again on first wrapped agent run when needed.
+again on first wrapped agent run when needed. After each wrapped run,
+`ait` also writes a compact attempt memory note with status, changed
+files, commits, and confidence so future agents can reuse what happened.
 
 If you do not use `pipx`, install in a virtual environment:
 
@@ -50,7 +52,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.27.0` alpha quality for local dogfood use. It is
+This repository is at `0.28.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -83,14 +85,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.27.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.28.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.27.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.28.0"
 .venv/bin/ait --help
 ```
 
@@ -680,7 +682,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.27.0
+git checkout v0.28.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

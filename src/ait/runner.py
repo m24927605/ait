@@ -13,7 +13,12 @@ from ait.brain import build_auto_briefing_query, build_repo_brain_briefing_from_
 from ait.context import build_agent_context, render_agent_context_text
 from ait.daemon import start_daemon
 from ait.harness import AitHarness
-from ait.memory import build_repo_memory, ensure_agent_memory_imported, render_repo_memory_text
+from ait.memory import (
+    add_attempt_memory_note,
+    build_repo_memory,
+    ensure_agent_memory_imported,
+    render_repo_memory_text,
+)
 from ait.memory_policy import EXCLUDED_MARKER, load_memory_policy, transcript_excluded
 from ait.redaction import redact_text
 from ait.workspace import WorkspaceError, create_attempt_commit
@@ -154,6 +159,7 @@ def run_agent_command(
         shown = verify_attempt(root, attempt_id=attempt.attempt_id)
     else:
         shown = show_attempt(root, attempt_id=attempt.attempt_id)
+    add_attempt_memory_note(root, shown)
 
     return RunResult(
         intent_id=intent.intent_id,

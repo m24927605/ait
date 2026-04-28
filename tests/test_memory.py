@@ -6,10 +6,11 @@ import unittest
 import json
 from pathlib import Path
 
-from ait.app import create_commit_for_attempt, create_attempt, create_intent
+from ait.app import create_commit_for_attempt, create_attempt, create_intent, show_attempt
 from ait.db import connect_db, run_migrations
 from ait.memory import (
     add_memory_note,
+    add_attempt_memory_note,
     agent_memory_status,
     build_repo_memory,
     ensure_agent_memory_imported,
@@ -138,6 +139,23 @@ class MemoryTests(unittest.TestCase):
             self.assertEqual(("CLAUDE.md",), status.candidate_paths)
             self.assertEqual((), status.pending_paths)
             self.assertEqual(("agent-memory:claude:CLAUDE.md",), status.imported_sources)
+
+    def test_add_attempt_memory_note_deduplicates_by_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            attempt_id = _commit_attempt(repo_root, "Attempt memory", "src/app.py")
+
+            shown = show_attempt(repo_root, attempt_id=attempt_id)
+            first = add_attempt_memory_note(repo_root, shown)
+            second = add_attempt_memory_note(repo_root, shown)
+            notes = list_memory_notes(repo_root, topic="attempt-memory")
+
+            self.assertIsNotNone(first)
+            self.assertIsNone(second)
+            self.assertEqual(1, len(notes))
+            self.assertEqual(f"attempt-memory:{attempt_id}", notes[0].source)
+            self.assertIn("changed_files=src/app.py", notes[0].body)
 
     def test_memory_filters_attempts_by_path_and_promoted_status(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

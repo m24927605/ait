@@ -266,6 +266,40 @@ def add_memory_note(
         conn.close()
 
 
+def add_attempt_memory_note(repo_root: str | Path, attempt_result) -> MemoryNote | None:
+    root = resolve_repo_root(repo_root)
+    attempt = dict(attempt_result.attempt)
+    attempt_id = str(attempt.get("id") or "")
+    if not attempt_id:
+        return None
+    source = f"attempt-memory:{attempt_id}"
+    if _active_memory_source_exists(root, source):
+        return None
+
+    files = getattr(attempt_result, "files", {}) or {}
+    changed_files = _policy_visible_files(
+        root,
+        tuple(str(path) for path in files.get("changed", ())),
+    )
+    commits = tuple(str(commit.get("commit_oid")) for commit in getattr(attempt_result, "commits", []) if commit.get("commit_oid"))
+    verified_status = str(attempt.get("verified_status") or "pending")
+    exit_code = attempt.get("result_exit_code")
+    confidence = "high" if verified_status in {"succeeded", "promoted"} else "advisory"
+    body = _attempt_memory_note_body(
+        attempt=attempt,
+        changed_files=changed_files,
+        commits=commits,
+        confidence=confidence,
+        exit_code=exit_code,
+    )
+    return add_memory_note(
+        root,
+        topic="attempt-memory",
+        body=body,
+        source=source,
+    )
+
+
 def import_agent_memory(
     repo_root: str | Path,
     *,
@@ -375,6 +409,68 @@ def _existing_agent_memory_sources(root: Path) -> tuple[str, ...]:
         return tuple(str(row["source"]) for row in rows)
     finally:
         conn.close()
+
+
+def _active_memory_source_exists(root: Path, source: str) -> bool:
+    conn = connect_db(root / ".ait" / "state.sqlite3")
+    try:
+        run_migrations(conn)
+        row = conn.execute(
+            """
+            SELECT 1
+            FROM memory_notes
+            WHERE active = 1 AND source = ?
+            LIMIT 1
+            """,
+            (source,),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def _policy_visible_files(root: Path, paths: tuple[str, ...]) -> tuple[str, ...]:
+    policy = load_memory_policy(root)
+    return tuple(path for path in paths if not path_excluded(path, policy))
+
+
+def _attempt_memory_note_body(
+    *,
+    attempt: dict[str, object],
+    changed_files: tuple[str, ...],
+    commits: tuple[str, ...],
+    confidence: str,
+    exit_code: object,
+) -> str:
+    attempt_id = str(attempt.get("id") or "")
+    intent_id = str(attempt.get("intent_id") or "")
+    agent_id = str(attempt.get("agent_id") or "")
+    verified_status = str(attempt.get("verified_status") or "pending")
+    reported_status = str(attempt.get("reported_status") or "created")
+    raw_trace_ref = str(attempt.get("raw_trace_ref") or "")
+    changed_text = ", ".join(changed_files) if changed_files else "none"
+    commits_text = ", ".join(commits) if commits else "none"
+    return "\n".join(
+        [
+            "AIT attempt memory",
+            f"attempt_id={attempt_id}",
+            f"intent_id={intent_id}",
+            f"agent_id={agent_id}",
+            f"reported_status={reported_status}",
+            f"verified_status={verified_status}",
+            f"exit_code={exit_code}",
+            f"confidence={confidence}",
+            f"changed_files={changed_text}",
+            f"commit_oids={commits_text}",
+            f"raw_trace_ref={raw_trace_ref}",
+            "",
+            (
+                "Reusable summary: "
+                f"{agent_id} completed attempt {attempt_id} with status {verified_status}. "
+                f"Changed files: {changed_text}. Commits: {commits_text}."
+            ),
+        ]
+    )
 
 
 def list_memory_notes(
