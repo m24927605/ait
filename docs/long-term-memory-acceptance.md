@@ -91,7 +91,7 @@ Verify empty memory:
 Run Claude Code through `ait`:
 
 ```bash
-eval "$("$tmpdir/venv/bin/ait" doctor --fix)"
+eval "$("$tmpdir/venv/bin/ait" init --shell)"
 AIT_INTENT="Memory smoke" \
 AIT_COMMIT_MESSAGE="memory smoke commit" \
 claude -p 'Append one line to README.md'

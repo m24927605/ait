@@ -84,6 +84,7 @@ class CliAdapterTests(unittest.TestCase):
             repo_root = Path(tmp) / "repo"
             repo_root.mkdir()
             _git_init(repo_root)
+            _git_commit_initial(repo_root)
             bin_dir = Path(tmp) / "bin"
             bin_dir.mkdir()
             real_claude = bin_dir / "claude"
@@ -113,6 +114,7 @@ class CliAdapterTests(unittest.TestCase):
             repo_root = Path(tmp) / "repo"
             repo_root.mkdir()
             _git_init(repo_root)
+            _git_commit_initial(repo_root)
             bin_dir = Path(tmp) / "bin"
             bin_dir.mkdir()
             real_claude = bin_dir / "claude"
@@ -152,6 +154,7 @@ class CliAdapterTests(unittest.TestCase):
             repo_root = Path(tmp) / "repo"
             repo_root.mkdir()
             _git_init(repo_root)
+            _git_commit_initial(repo_root)
             bin_dir = Path(tmp) / "bin"
             bin_dir.mkdir()
             real_claude = bin_dir / "claude"
@@ -202,6 +205,104 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertEqual("claude-code", payload["adapter"]["name"])
             self.assertTrue((repo_root / ".ait" / "bin" / "claude").exists())
+
+    def test_init_text_initializes_repo_and_detected_agent_wrappers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            _git_commit_initial(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            real_codex = bin_dir / "codex"
+            real_codex.write_text("#!/bin/sh\nprintf 'real codex\\n'\n", encoding="utf-8")
+            real_codex.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "init"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            text = stdout.getvalue()
+
+            self.assertEqual(0, exit_code)
+            self.assertIn("AIT initialized", text)
+            self.assertIn("- claude-code", text)
+            self.assertIn("- codex", text)
+            self.assertIn('eval "$(ait init --shell)"', text)
+            self.assertTrue((repo_root / ".ait" / "config.json").exists())
+            self.assertTrue((repo_root / ".ait" / "bin" / "claude").exists())
+            self.assertTrue((repo_root / ".ait" / "bin" / "codex").exists())
+            self.assertIn("PATH_add .ait/bin", (repo_root / ".envrc").read_text(encoding="utf-8"))
+
+    def test_init_json_can_limit_adapter_scope(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            _git_commit_initial(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            real_codex = bin_dir / "codex"
+            real_codex.write_text("#!/bin/sh\nprintf 'real codex\\n'\n", encoding="utf-8")
+            real_codex.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "init", "--adapter", "codex", "--format", "json"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            payload = json.loads(stdout.getvalue())
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual(["codex"], payload["installed_adapters"])
+            self.assertTrue(payload["shell_snippet"].startswith("export PATH="))
+            self.assertTrue((repo_root / ".ait" / "bin" / "codex").exists())
+            self.assertFalse((repo_root / ".ait" / "bin" / "claude").exists())
+
+    def test_init_shell_outputs_eval_safe_snippet(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            _git_commit_initial(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_codex = bin_dir / "codex"
+            real_codex.write_text("#!/bin/sh\nprintf 'real codex\\n'\n", encoding="utf-8")
+            real_codex.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "init", "--adapter", "codex", "--shell"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            wrapper_dir = (repo_root / ".ait" / "bin").resolve()
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual(f'export PATH={wrapper_dir}:"$PATH"\n', stdout.getvalue())
+            self.assertTrue((wrapper_dir / "codex").exists())
 
     def test_doctor_claude_code_json_reports_automation_checks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -329,7 +430,7 @@ class CliAdapterTests(unittest.TestCase):
 
             self.assertEqual(2, exit_code)
             self.assertIn("Next steps:", text)
-            self.assertIn('eval "$(ait enable --shell)"', text)
+            self.assertIn('eval "$(ait init --shell)"', text)
 
     def test_doctor_fix_outputs_eval_safe_shell_snippet_for_detected_agents(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -419,7 +520,7 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertEqual("claude-code", payload["adapter"])
             self.assertFalse(payload["wrapper_installed"])
-            self.assertIn("ait enable --adapter claude-code", payload["next_steps"])
+            self.assertIn("ait init --adapter claude-code", payload["next_steps"])
             self.assertFalse((repo_root / ".ait").exists())
 
     def test_status_text_emits_one_time_automation_hint_to_stderr(self) -> None:
@@ -453,7 +554,7 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertEqual(0, second_exit_code)
             self.assertIn("Wrapper installed: False", stdout.getvalue())
-            self.assertIn('eval "$(ait enable --shell)"', stderr.getvalue())
+            self.assertIn('eval "$(ait init --shell)"', stderr.getvalue())
             self.assertEqual("", second_stderr.getvalue())
             self.assertTrue(hints["claude_code_automation_hint_v1"])
 
@@ -485,7 +586,7 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual({"aider", "claude-code", "codex"}, set(by_adapter))
             self.assertTrue(by_adapter["codex"]["real_agent_binary"])
             self.assertFalse(by_adapter["codex"]["wrapper_installed"])
-            self.assertIn("ait enable --adapter codex", by_adapter["codex"]["next_steps"])
+            self.assertIn("ait init --adapter codex", by_adapter["codex"]["next_steps"])
 
     def test_status_all_text_emits_enable_hint(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -512,7 +613,7 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertIn("AIT Agent Automation Status", stdout.getvalue())
             self.assertIn("aider:", stdout.getvalue())
-            self.assertIn('eval "$(ait enable --shell)"', stderr.getvalue())
+            self.assertIn('eval "$(ait init --shell)"', stderr.getvalue())
 
     def test_enable_json_installs_all_detected_agent_wrappers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -631,3 +732,13 @@ def _git_init(repo_root: Path) -> None:
     import subprocess
 
     subprocess.run(["git", "init"], cwd=repo_root, check=True, capture_output=True)
+
+
+def _git_commit_initial(repo_root: Path) -> None:
+    import subprocess
+
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_root, check=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_root, check=True)
+    (repo_root / "README.md").write_text("initial\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo_root, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo_root, check=True, capture_output=True)

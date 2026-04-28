@@ -14,12 +14,13 @@ repo-local wrappers for the agent CLIs it can find, then keep using
 ```bash
 pipx install ait-vcs
 cd your-repo
-ait status
-eval "$(ait enable --shell)"
+eval "$(ait init --shell)"
 claude ...
 ```
 
-After `enable --shell`, detected agent commands resolve to `.ait/bin/*`
+`ait init --shell` initializes `.ait/`, installs repo-local wrappers for
+detected agent CLIs, and prints a shell export for the current terminal.
+After that, detected agent commands resolve to `.ait/bin/*`
 inside that repository. The wrappers run agents through `ait run`, so
 the agent edits an isolated attempt worktree and `ait` records the
 result as an attempt-linked commit.
@@ -29,8 +30,7 @@ If you do not use `pipx`, install in a virtual environment:
 ```bash
 python3.14 -m venv .venv
 .venv/bin/pip install ait-vcs
-.venv/bin/ait status
-eval "$(.venv/bin/ait enable --shell)"
+eval "$(.venv/bin/ait init --shell)"
 ```
 
 See [docs/getting-started.md](docs/getting-started.md) for activation,
@@ -48,7 +48,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.21.0` alpha quality for local dogfood use. It is
+This repository is at `0.22.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -81,14 +81,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.21.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.22.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.21.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.22.0"
 .venv/bin/ait --help
 ```
 
@@ -391,12 +391,15 @@ For lower user friction, install repo-local wrappers for every supported
 agent binary found on `PATH`:
 
 ```bash
-eval "$(ait doctor --fix)"
+eval "$(ait init --shell)"
 ```
 
-The newer spelling is equivalent and more explicit:
+This initializes `.ait/`, installs wrappers for detected agent CLIs, and
+activates `.ait/bin` in the current shell. The lower-level commands are
+still available:
 
 ```bash
+eval "$(ait doctor --fix)"
 eval "$(ait enable --shell)"
 ```
 
@@ -585,6 +588,9 @@ ait adapter setup claude-code --print
 ait adapter setup claude-code --target .claude/settings.json
 ait adapter setup claude-code --install-wrapper
 ait adapter setup claude-code --install-wrapper --install-direnv
+ait init
+ait init --shell
+ait init --adapter codex --format json
 ait enable
 ait enable --shell
 ait shell show --shell zsh
@@ -643,7 +649,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.21.0
+git checkout v0.22.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

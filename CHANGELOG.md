@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.22.0 - 2026-04-28
+
+### Added
+
+- Make `ait init` perform repo initialization plus automatic wrapper
+  setup for detected Claude Code, Codex, and Aider binaries.
+- Add `ait init --shell` as an eval-safe one-command activation path
+  for the current shell.
+- Add `ait init --adapter <name>` and `ait init --format json` for
+  scoped or scripted initialization.
+- Report installed, skipped, ready, and next shell activation state from
+  `ait init`.
+
 ## 0.21.0 - 2026-04-28
 
 ### Added

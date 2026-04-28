@@ -94,7 +94,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-hints", action="store_true")
     subparsers = parser.add_subparsers(dest="command")
 
-    subparsers.add_parser("init")
+    init_parser = subparsers.add_parser("init")
+    init_parser.add_argument(
+        "--adapter",
+        choices=tuple(name for name in sorted(ADAPTERS) if name != "shell"),
+        action="append",
+        dest="init_adapters",
+    )
+    init_parser.add_argument("--format", choices=("text", "json"), default="text")
+    init_parser.add_argument("--shell", action="store_true")
     intent_parser = subparsers.add_parser("intent")
     intent_subparsers = intent_parser.add_subparsers(dest="intent_command")
     intent_new = intent_subparsers.add_parser("new")
@@ -301,18 +309,29 @@ def main() -> int:
 
     if args.command == "init":
         result = init_repo(repo_root)
-        print(
-            json.dumps(
-                {
-                    "repo_root": str(result.repo_root),
-                    "ait_dir": str(result.ait_dir),
-                    "db_path": str(result.db_path),
-                    "repo_id": result.repo_id,
-                    "socket_path": str(result.socket_path),
-                },
-                indent=2,
+        try:
+            automation = enable_available_adapters(
+                result.repo_root,
+                names=tuple(args.init_adapters) if args.init_adapters else None,
             )
+        except AdapterError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        if args.shell:
+            if automation.shell_snippet:
+                print(automation.shell_snippet)
+                return 0
+            print("error: no supported agent binaries found on PATH", file=sys.stderr)
+            return 2
+        statuses = tuple(
+            doctor_automation(item.adapter.name, result.repo_root)
+            for item in automation.installed
         )
+        payload = _init_payload(result, automation, statuses)
+        if args.format == "json":
+            print(json.dumps(payload, indent=2))
+        else:
+            print(_format_init(payload))
         return 0
     if args.command == "intent" and args.intent_command == "new":
         result = create_intent(
@@ -869,6 +888,64 @@ def _format_auto_enable(result) -> str:
     return "\n".join(lines)
 
 
+def _init_payload(init_result, automation, statuses) -> dict[str, object]:
+    status_payloads = [_status_payload(status) for status in statuses]
+    return {
+        "repo_root": str(init_result.repo_root),
+        "ait_dir": str(init_result.ait_dir),
+        "db_path": str(init_result.db_path),
+        "repo_id": init_result.repo_id,
+        "socket_path": str(init_result.socket_path),
+        "installed_adapters": [item.adapter.name for item in automation.installed],
+        "skipped_adapters": [asdict(item) for item in automation.skipped],
+        "shell_snippet": automation.shell_snippet,
+        "ready_adapters": [item["adapter"] for item in status_payloads if item["ok"]],
+        "status": status_payloads,
+    }
+
+
+def _format_init(payload: dict[str, object]) -> str:
+    installed = [str(item) for item in payload.get("installed_adapters", [])]
+    skipped = payload.get("skipped_adapters", [])
+    ready = [str(item) for item in payload.get("ready_adapters", [])]
+    lines = [
+        "AIT initialized",
+        f"Repo: {payload['repo_root']}",
+        f"State: {payload['ait_dir']}",
+    ]
+    if installed:
+        lines.append("Agent wrappers:")
+        lines.extend(f"- {name}" for name in installed)
+    else:
+        lines.append("Agent wrappers: none")
+    if skipped:
+        lines.append("Skipped:")
+        for item in skipped:
+            if isinstance(item, dict):
+                lines.append(f"- {item.get('name')}: {item.get('detail')}")
+    if ready:
+        lines.append("Ready now:")
+        lines.extend(f"- {name}" for name in ready)
+    elif payload.get("shell_snippet"):
+        lines.extend(
+            [
+                "Current shell:",
+                '- eval "$(ait init --shell)"',
+                "After that:",
+            ]
+        )
+        lines.extend(f"- {name.split('-')[0] if name == 'claude-code' else name} ..." for name in installed)
+    else:
+        lines.extend(
+            [
+                "Current shell: no supported agent CLI found on PATH",
+                "Next:",
+                "- install claude, codex, or aider, then run ait init",
+            ]
+        )
+    return "\n".join(lines)
+
+
 def _format_shell_integration(action: str, result) -> str:
     state = "changed" if result.changed else "already current"
     lines = [
@@ -895,15 +972,15 @@ def _doctor_next_steps(result) -> list[str]:
     if "automation" in checks and not checks["automation"]:
         return []
     if not checks.get("wrapper_file", True):
-        return [f"ait enable --adapter {result.adapter.name}"]
+        return [f"ait init --adapter {result.adapter.name}"]
     real_binary_ok = checks.get("real_claude_binary", checks.get("real_agent_binary", True))
     if not real_binary_ok:
         binary = result.adapter.command_name or result.adapter.name
         return [f"install {binary} or put the real {binary} binary on PATH"]
     if not checks.get("path_wrapper_active", True):
         if checks.get("envrc_path", False) and checks.get("direnv_binary", False):
-            return ["direnv allow", 'eval "$(ait enable --shell)"']
-        return ['eval "$(ait enable --shell)"']
+            return ["direnv allow", 'eval "$(ait init --shell)"']
+        return ['eval "$(ait init --shell)"']
     return []
 
 
@@ -979,7 +1056,7 @@ def _maybe_emit_automation_hint(args, repo_root: Path, result) -> None:
     if install_step is not None:
         hint = f"ait hint: {install_step}."
     else:
-        hint = 'ait hint: run eval "$(ait enable --shell)" to enable detected agent automation in this repo.'
+        hint = 'ait hint: run eval "$(ait init --shell)" to enable detected agent automation in this repo.'
     print(hint, file=sys.stderr)
     hints[hint_key] = True
     _write_hints(hints_path, hints)
@@ -1007,7 +1084,7 @@ def _maybe_emit_status_all_hint(args, repo_root: Path, results) -> None:
     if missing_real and len(missing_real) == len(results):
         hint = "ait hint: install an agent CLI such as claude, codex, or aider first."
     else:
-        hint = 'ait hint: run eval "$(ait enable --shell)" to enable detected agent automation in this repo.'
+        hint = 'ait hint: run eval "$(ait init --shell)" to enable detected agent automation in this repo.'
     print(hint, file=sys.stderr)
     hints[hint_key] = True
     _write_hints(hints_path, hints)

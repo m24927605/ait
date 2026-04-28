@@ -27,12 +27,13 @@ python3.14 -m venv .venv
 Run this from inside a Git repository:
 
 ```bash
-ait status
-eval "$(ait enable --shell)"
+eval "$(ait init --shell)"
 ```
 
-`ait enable --shell` installs repo-local wrappers for supported agent
-CLIs found on `PATH`, such as:
+`ait init --shell` initializes `.ait/`, installs repo-local wrappers for
+supported agent CLIs found on `PATH`, and prints a shell export that puts
+`.ait/bin` first on `PATH` for the current terminal session. Detected
+wrappers include:
 
 ```text
 .ait/bin/claude
@@ -40,15 +41,19 @@ CLIs found on `PATH`, such as:
 .ait/bin/aider
 ```
 
-It prints a shell export that puts `.ait/bin` first on `PATH` for the
-current terminal session. After that, detected agent commands in this
-repository run through `ait`.
+After that, detected agent commands in this repository run through `ait`.
 
 For virtualenv installs, use the local executable:
 
 ```bash
-.venv/bin/ait status
-eval "$(.venv/bin/ait enable --shell)"
+eval "$(.venv/bin/ait init --shell)"
+```
+
+For a readable report instead of an eval-safe snippet, run:
+
+```bash
+ait init
+ait status --all
 ```
 
 For persistent zsh/bash activation in new terminal sessions, install
@@ -128,8 +133,8 @@ To remove the repo-local wrapper files:
 rm -f .ait/bin/claude
 ```
 
-If you enabled direnv instead of using `doctor --fix`, remove or edit
-the `PATH_add .ait/bin` line in `.envrc`, then reload the shell.
+If `.envrc` was written by `ait init`, remove or edit the
+`PATH_add .ait/bin` line, then reload the shell.
 
 The `.ait/` directory contains local metadata for this repository. Do
 not delete it if you want to keep recorded intents, attempts, evidence,
