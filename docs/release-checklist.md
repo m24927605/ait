@@ -12,13 +12,71 @@ Before tagging:
 6. Confirm README install and quickstart are current.
 7. Build with `.venv/bin/python -m build`.
 8. Check artifacts with `.venv/bin/python -m twine check dist/*`.
-9. Run a fresh venv smoke test from `dist/*.whl`.
+9. Run a fresh venv smoke test from `dist/*.whl`, including the
+   PATH-based `claude ...` wrapper smoke below.
 10. Tag with the intended `vX.Y.Z`.
 11. Push `main` and `vX.Y.Z` to GitHub.
 12. Create a GitHub release with the built wheel and sdist.
 13. Confirm GitHub Actions CI and Publish pass.
 14. Confirm PyPI lists the new version.
-15. Run a fresh venv smoke test from PyPI.
+15. Run a fresh venv smoke test from PyPI, including the PATH-based
+    `claude ...` wrapper smoke below.
+
+## PATH Claude Wrapper Smoke
+
+Run this once against the local wheel and once against the just-published
+PyPI version. The important detail is that the smoke invokes `claude`
+through `PATH`; it should not call `.ait/bin/claude` directly.
+
+For a local wheel:
+
+```bash
+set -e
+tmpdir="$(mktemp -d)"
+python3.14 -m venv "$tmpdir/venv"
+"$tmpdir/venv/bin/pip" install -q dist/ait_vcs-X.Y.Z-py3-none-any.whl
+repo="$tmpdir/repo" && mkdir "$repo" && cd "$repo"
+git init -q
+git config user.email test@example.com
+git config user.name 'Test User'
+printf 'hello\n' > README.md
+git add README.md
+git commit -qm init
+bin="$tmpdir/bin" && mkdir "$bin"
+cat > "$bin/claude" <<'SH'
+#!/bin/sh
+printf 'real claude reached\n'
+printf 'agent wrote through PATH claude\n' > path-claude-output.txt
+SH
+chmod +x "$bin/claude"
+PATH="$bin:$PATH" "$tmpdir/venv/bin/ait" init --adapter claude-code --format json > init.json
+rm .ait/memory-policy.json
+printf 'Prefer direct PATH claude use.\n' > CLAUDE.md
+PATH="$repo/.ait/bin:$bin:$PATH" claude --fake-prompt > wrapper.json
+"$tmpdir/venv/bin/ait" memory --format json > memory.json
+"$tmpdir/venv/bin/python" - <<'PY'
+import json
+from pathlib import Path
+init = json.loads(Path('init.json').read_text())
+wrapper = json.loads(Path('wrapper.json').read_text())
+memory = json.loads(Path('memory.json').read_text())
+assert init['installed_adapters'] == ['claude-code'], init
+assert wrapper['exit_code'] == 0, wrapper
+assert wrapper['attempt']['commits'], wrapper
+assert Path('.ait/memory-policy.json').exists()
+assert Path(wrapper['workspace_ref'], 'path-claude-output.txt').exists(), wrapper
+sources = {item['source'] for item in memory['notes']}
+assert 'agent-memory:claude:CLAUDE.md' in sources, sources
+assert any(source.startswith('attempt-memory:') for source in sources), sources
+print('PATH claude smoke ok')
+PY
+```
+
+For PyPI, replace the install line with:
+
+```bash
+"$tmpdir/venv/bin/pip" install -q --no-cache-dir ait-vcs==X.Y.Z
+```
 
 ## PyPI Release
 

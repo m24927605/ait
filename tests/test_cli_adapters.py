@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from contextlib import chdir, redirect_stderr, redirect_stdout
@@ -307,6 +308,71 @@ class CliAdapterTests(unittest.TestCase):
             ])
             self.assertEqual(1, len(notes))
             self.assertIn("Run repair before release.", notes[0].body)
+
+    def test_path_claude_invocation_hits_wrapper_and_self_repairs_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            _git_commit_initial(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text(
+                "#!/bin/sh\n"
+                "printf 'real claude reached\\n'\n"
+                "printf 'agent wrote through PATH claude\\n' > path-claude-output.txt\n",
+                encoding="utf-8",
+            )
+            real_claude.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            init_stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "init", "--adapter", "claude-code", "--format", "json"]):
+                        with redirect_stdout(init_stdout):
+                            init_exit_code = cli.main()
+                    (repo_root / ".ait" / "memory-policy.json").unlink()
+                    (repo_root / "CLAUDE.md").write_text(
+                        "Prefer direct PATH claude use.\n",
+                        encoding="utf-8",
+                    )
+                    env = {
+                        **os.environ,
+                        "PATH": (
+                            str(repo_root / ".ait" / "bin")
+                            + os.pathsep
+                            + str(bin_dir)
+                            + os.pathsep
+                            + old_path
+                        ),
+                    }
+                    completed = subprocess.run(
+                        ["claude", "--fake-prompt"],
+                        cwd=repo_root,
+                        env=env,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+            finally:
+                os.environ["PATH"] = old_path
+
+            init_payload = json.loads(init_stdout.getvalue())
+            wrapper_payload = json.loads(completed.stdout)
+            notes = list_memory_notes(repo_root)
+
+            self.assertEqual(0, init_exit_code)
+            self.assertEqual(["claude-code"], init_payload["installed_adapters"])
+            self.assertEqual(0, completed.returncode)
+            self.assertEqual(0, wrapper_payload["exit_code"])
+            self.assertTrue((repo_root / ".ait" / "memory-policy.json").exists())
+            self.assertTrue(Path(wrapper_payload["workspace_ref"], "path-claude-output.txt").exists())
+            self.assertTrue(wrapper_payload["attempt"]["commits"])
+            sources = {note.source for note in notes}
+            self.assertIn("agent-memory:claude:CLAUDE.md", sources)
+            self.assertTrue(any(source.startswith("attempt-memory:") for source in sources))
 
     def test_init_shell_outputs_eval_safe_snippet(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.40.0 - 2026-04-28
+
+### Added
+
+- Add an automated integration test for the normal user command path:
+  `ait init`, PATH resolving `claude` to the repo-local wrapper, wrapper
+  self-repair, agent-memory import, attempt-memory creation, and attempt
+  commit creation.
+- Document the reusable PATH-based Claude wrapper smoke test in the
+  release checklist so future releases validate the same workflow users
+  type at the terminal.
+
 ## 0.39.0 - 2026-04-28
 
 ### Changed
