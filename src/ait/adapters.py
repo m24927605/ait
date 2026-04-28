@@ -545,12 +545,39 @@ def _adapter_wrapper_script(adapter: AgentAdapter, real_binary: str) -> str:
         "aider": "aider changes",
         "codex": "codex changes",
     }.get(adapter.name, f"{adapter.name} changes")
+    real_command = adapter.command_name
     return (
         "#!/bin/sh\n"
         "set -eu\n"
+        f"AIT_WRAPPER_ADAPTER={shlex.quote(adapter.name)}\n"
+        f"AIT_WRAPPER_COMMAND={shlex.quote(real_command)}\n"
+        f"AIT_WRAPPER_REAL_BINARY={shlex.quote(real_binary)}\n"
+        f"AIT_WRAPPER_AIT_COMMAND={shlex.quote(ait_command)}\n"
+        'AIT_WRAPPER_PATH="${0}"\n'
+        'AIT_WRAPPER_REPO="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"\n'
+        "export AIT_WRAPPER_ADAPTER AIT_WRAPPER_COMMAND AIT_WRAPPER_REAL_BINARY AIT_WRAPPER_PATH AIT_WRAPPER_REPO\n"
+        'if [ ! -x "$AIT_WRAPPER_REAL_BINARY" ]; then\n'
+        '  printf "%s\\n" "ait wrapper failed: real ${AIT_WRAPPER_COMMAND} binary not found or not executable" >&2\n'
+        '  printf "%s\\n" "adapter: ${AIT_WRAPPER_ADAPTER}" >&2\n'
+        '  printf "%s\\n" "repo: ${AIT_WRAPPER_REPO}" >&2\n'
+        '  printf "%s\\n" "wrapper: ${AIT_WRAPPER_PATH}" >&2\n'
+        '  printf "%s\\n" "real_binary: ${AIT_WRAPPER_REAL_BINARY}" >&2\n'
+        '  printf "%s\\n" "next: run ait status ${AIT_WRAPPER_ADAPTER}" >&2\n'
+        "  exit 127\n"
+        "fi\n"
+        'if [ "$AIT_WRAPPER_REAL_BINARY" = "$AIT_WRAPPER_PATH" ]; then\n'
+        '  printf "%s\\n" "ait wrapper failed: wrapper recursion detected" >&2\n'
+        '  printf "%s\\n" "adapter: ${AIT_WRAPPER_ADAPTER}" >&2\n'
+        '  printf "%s\\n" "repo: ${AIT_WRAPPER_REPO}" >&2\n'
+        '  printf "%s\\n" "wrapper: ${AIT_WRAPPER_PATH}" >&2\n'
+        '  printf "%s\\n" "real_binary: ${AIT_WRAPPER_REAL_BINARY}" >&2\n'
+        '  printf "%s\\n" "next: run ait init --adapter ${AIT_WRAPPER_ADAPTER} --shell" >&2\n'
+        "  exit 126\n"
+        "fi\n"
         f': "${{AIT_INTENT:={intent}}}"\n'
         f': "${{AIT_COMMIT_MESSAGE:={commit_message}}}"\n'
-        f"exec {shlex.quote(ait_command)} run --adapter {shlex.quote(adapter.name)} --format json "
+        'exec "$AIT_WRAPPER_AIT_COMMAND" '
+        f"run --adapter {shlex.quote(adapter.name)} --format json "
         '--intent "$AIT_INTENT" --commit-message "$AIT_COMMIT_MESSAGE" -- '
-        f"{shlex.quote(real_binary)} \"$@\"\n"
+        '"$AIT_WRAPPER_REAL_BINARY" "$@"\n'
     )

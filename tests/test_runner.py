@@ -52,6 +52,25 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual("failed", result.attempt.attempt["verified_status"])
             self.assertEqual(1, result.attempt.evidence_summary["observed_commands_run"])
 
+    def test_run_agent_command_records_missing_command_as_failed_attempt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="Missing command",
+                command=["/definitely/missing/ait-agent-binary"],
+                capture_command_output=True,
+            )
+
+            self.assertEqual(127, result.exit_code)
+            self.assertEqual("", result.command_stdout)
+            self.assertIn("ait run failed: command not executable", result.command_stderr or "")
+            self.assertEqual("finished", result.attempt.attempt["reported_status"])
+            self.assertEqual("failed", result.attempt.attempt["verified_status"])
+            self.assertEqual(1, result.attempt.evidence_summary["observed_commands_run"])
+
     def test_run_agent_command_can_capture_command_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

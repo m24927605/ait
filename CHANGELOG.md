@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.23.0 - 2026-04-28
+
+### Added
+
+- Add wrapper preflight diagnostics for missing or non-executable real
+  agent binaries, including adapter, repo, wrapper path, real binary,
+  and next-step output.
+- Add wrapper recursion diagnostics that point users back to scoped
+  `ait init --adapter <name> --shell` setup.
+- Record direct `ait run -- <missing-command>` failures as failed
+  attempts with clear command-not-executable stderr instead of raising a
+  traceback.
+
 ## 0.22.0 - 2026-04-28
 
 ### Added

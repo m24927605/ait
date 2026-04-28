@@ -150,7 +150,7 @@ class AdapterTests(unittest.TestCase):
             self.assertTrue(result.ok)
             self.assertTrue(wrapper_path.exists())
             self.assertIn("PATH_add .ait/bin", (repo_root / ".envrc").read_text(encoding="utf-8"))
-            self.assertIn("ait run --adapter aider --format json", wrapper)
+            self.assertIn("run --adapter aider --format json", wrapper)
             self.assertIn(str(real_aider.resolve()), wrapper)
 
     def test_doctor_automation_reports_codex_wrapper_state(self) -> None:
@@ -301,8 +301,77 @@ class AdapterTests(unittest.TestCase):
             self.assertEqual(str(wrapper_path.resolve()), result.wrapper_path)
             self.assertIn(str(wrapper_path.resolve()), result.wrote_files)
             self.assertIn(str(real_claude), wrapper)
-            self.assertIn("ait run --adapter claude-code --format json", wrapper)
+            self.assertIn("run --adapter claude-code --format json", wrapper)
             self.assertTrue(os.access(wrapper_path, os.X_OK))
+
+    def test_wrapper_reports_missing_real_binary_with_next_step(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = _init_git_repo(Path(tmp) / "repo")
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_codex = bin_dir / "codex"
+            real_codex.write_text("#!/bin/sh\nprintf 'real codex\\n'\n", encoding="utf-8")
+            real_codex.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                setup_adapter("codex", repo_root, install_wrapper=True)
+            finally:
+                os.environ["PATH"] = old_path
+            real_codex.unlink()
+
+            wrapper_path = repo_root / ".ait" / "bin" / "codex"
+            completed = subprocess.run(
+                [str(wrapper_path), "--version"],
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(127, completed.returncode)
+            self.assertIn("ait wrapper failed: real codex binary not found", completed.stderr)
+            self.assertIn("adapter: codex", completed.stderr)
+            self.assertIn(f"wrapper: {wrapper_path}", completed.stderr)
+            self.assertIn(str(real_codex), completed.stderr)
+            self.assertIn("next: run ait status codex", completed.stderr)
+
+    def test_wrapper_reports_recursion_with_init_next_step(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = _init_git_repo(Path(tmp) / "repo")
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_aider = bin_dir / "aider"
+            real_aider.write_text("#!/bin/sh\nprintf 'real aider\\n'\n", encoding="utf-8")
+            real_aider.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                setup_adapter("aider", repo_root, install_wrapper=True)
+            finally:
+                os.environ["PATH"] = old_path
+
+            wrapper_path = repo_root / ".ait" / "bin" / "aider"
+            wrapper = wrapper_path.read_text(encoding="utf-8")
+            wrapper_path.write_text(
+                wrapper.replace(
+                    f"AIT_WRAPPER_REAL_BINARY={real_aider.resolve()}",
+                    f"AIT_WRAPPER_REAL_BINARY={wrapper_path}",
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [str(wrapper_path), "--version"],
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(126, completed.returncode)
+            self.assertIn("ait wrapper failed: wrapper recursion detected", completed.stderr)
+            self.assertIn("adapter: aider", completed.stderr)
+            self.assertIn("next: run ait init --adapter aider --shell", completed.stderr)
 
     def test_setup_claude_code_can_install_direnv_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

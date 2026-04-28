@@ -99,14 +99,22 @@ def run_agent_command(
             "harness_version": "ait-run",
         },
     ) as harness:
-        completed = subprocess.run(
-            command,
-            cwd=workspace,
-            env=env,
-            check=False,
-            text=True,
-            capture_output=should_capture_output,
-        )
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=workspace,
+                env=env,
+                check=False,
+                text=True,
+                capture_output=should_capture_output,
+            )
+        except OSError as exc:
+            completed = subprocess.CompletedProcess(
+                command,
+                127,
+                "",
+                f"ait run failed: command not executable: {command[0]} ({exc})\n",
+            )
         if should_capture_output and not capture_command_output:
             if completed.stdout:
                 print(completed.stdout, end="")
