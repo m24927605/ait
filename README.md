@@ -31,7 +31,9 @@ files, commits, and confidence so future agents can reuse what happened.
 When a new wrapped run starts, `ait` retrieves the most relevant
 agent/attempt memory into a compact `AIT Relevant Memory` context
 section. Use `ait memory recall <query>` or `ait memory recall --auto`
-to inspect what memory would be selected before a run.
+to inspect what memory would be selected before a run. Use
+`ait memory lint` to audit memory quality and `ait memory lint --fix` for
+conservative duplicate, secret, and overlong-note repairs.
 
 If you do not use `pipx`, install in a virtual environment:
 
@@ -56,7 +58,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.30.0` alpha quality for local dogfood use. It is
+This repository is at `0.31.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -89,14 +91,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.30.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.31.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.30.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.31.0"
 .venv/bin/ait --help
 ```
 
@@ -686,7 +688,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.30.0
+git checkout v0.31.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

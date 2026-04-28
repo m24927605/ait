@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.31.0 - 2026-04-28
+
+### Added
+
+- Add `ait memory lint` to report long-term memory quality issues such
+  as duplicates, overlong notes, possible secrets, missing confidence,
+  low-information notes, and stale attempt-memory sources.
+- Add `ait memory lint --format json` for CI and automation.
+- Add conservative `ait memory lint --fix` actions for exact duplicate
+  deactivation, secret redaction, and overlong note compaction.
+- Add lint result summaries with checked note count, issue count, fix
+  count, per-note severity, fixability, and applied fixes.
+
 ## 0.30.0 - 2026-04-28
 
 ### Added

@@ -15,6 +15,7 @@ from ait.memory import (
     build_repo_memory,
     ensure_agent_memory_imported,
     import_agent_memory,
+    lint_memory_notes,
     list_memory_notes,
     remove_memory_note,
     render_repo_memory_text,
@@ -67,6 +68,53 @@ class MemoryTests(unittest.TestCase):
 
             self.assertTrue(remove_memory_note(repo_root, note_id=note.id))
             self.assertEqual((), list_memory_notes(repo_root))
+
+    def test_memory_lint_reports_bad_notes_without_flagging_healthy_notes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            add_memory_note(repo_root, topic="architecture", source="manual", body="Keep API adapters thin and tested.")
+            add_memory_note(repo_root, topic="scratch", source="manual", body="x")
+            add_memory_note(
+                repo_root,
+                topic="attempt-memory",
+                source="attempt-memory:missing",
+                body="AIT attempt memory\nchanged_files=src/app.py\nReusable summary without confidence",
+            )
+
+            result = lint_memory_notes(repo_root)
+            by_code = {issue.code for issue in result.issues}
+
+            self.assertEqual(3, result.checked)
+            self.assertIn("low_information", by_code)
+            self.assertIn("missing_confidence", by_code)
+            self.assertIn("stale_attempt_memory", by_code)
+            self.assertFalse(any(issue.source == "manual" and issue.topic == "architecture" for issue in result.issues))
+
+    def test_memory_lint_fix_conservatively_improves_fixable_issues(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            add_memory_note(repo_root, topic="release", source="manual", body="Run tests before release.")
+            add_memory_note(repo_root, topic="release", source="manual", body="Run tests before release.")
+            add_memory_note(
+                repo_root,
+                topic="security",
+                source="manual",
+                body="Do not keep GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz123456 in memory.",
+            )
+            add_memory_note(repo_root, topic="long", source="manual", body="word " * 120)
+
+            before = lint_memory_notes(repo_root, max_chars=80)
+            fixed = lint_memory_notes(repo_root, fix=True, max_chars=80)
+            after = lint_memory_notes(repo_root, max_chars=80)
+            notes_text = "\n".join(note.body for note in list_memory_notes(repo_root, limit=20))
+
+            self.assertGreater(len([issue for issue in before.issues if issue.fixable]), 0)
+            self.assertGreaterEqual(len(fixed.fixes), 3)
+            self.assertLess(len([issue for issue in after.issues if issue.fixable]), len([issue for issue in before.issues if issue.fixable]))
+            self.assertNotIn("ghp_abcdefghijklmnopqrstuvwxyz123456", notes_text)
+            self.assertEqual(3, len(list_memory_notes(repo_root, limit=20)))
 
     def test_import_agent_memory_detects_common_agent_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -55,11 +55,13 @@ from ait.memory import (
     build_repo_memory,
     ensure_agent_memory_imported,
     import_agent_memory,
+    lint_memory_notes,
     list_memory_notes,
     remove_memory_note,
     render_repo_memory_text,
     render_relevant_memory_recall,
     render_memory_search_results,
+    render_memory_lint_result,
     search_repo_memory,
 )
 from ait.memory_policy import init_memory_policy, load_memory_policy
@@ -221,6 +223,10 @@ def build_parser() -> argparse.ArgumentParser:
     memory_recall.add_argument("--limit", type=int, default=6)
     memory_recall.add_argument("--budget-chars", type=int, default=4000)
     memory_recall.add_argument("--format", choices=("text", "json"), default="text")
+    memory_lint = memory_subparsers.add_parser("lint")
+    memory_lint.add_argument("--fix", action="store_true")
+    memory_lint.add_argument("--max-chars", type=int, default=6000)
+    memory_lint.add_argument("--format", choices=("text", "json"), default="text")
     memory_import = memory_subparsers.add_parser("import")
     memory_import.add_argument("--source", default="auto")
     memory_import.add_argument("--path", action="append", dest="import_paths")
@@ -647,6 +653,17 @@ def main() -> int:
             else:
                 print(render_relevant_memory_recall(recall), end="")
             return 0
+        if args.memory_command == "lint":
+            result = lint_memory_notes(
+                repo_root,
+                fix=args.fix,
+                max_chars=args.max_chars,
+            )
+            if args.format == "json":
+                print(json.dumps(result.to_dict(), indent=2))
+            else:
+                print(render_memory_lint_result(result), end="")
+            return 0 if not result.issues else 2
         if args.memory_command == "import":
             result = import_agent_memory(
                 repo_root,

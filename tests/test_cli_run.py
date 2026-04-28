@@ -216,6 +216,56 @@ class CliRunTests(unittest.TestCase):
         self.assertTrue(any(item["source"] == "intent_title" for item in payload["query_sources"]))
         self.assertTrue(any(item["source"] == "command_args" for item in payload["query_sources"]))
 
+    def test_memory_lint_cli_reports_and_fixes_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            lint_stdout = io.StringIO()
+            fix_stdout = io.StringIO()
+            after_stdout = io.StringIO()
+
+            with chdir(repo_root):
+                for _ in range(2):
+                    with patch(
+                        "sys.argv",
+                        ["ait", "memory", "note", "add", "--topic", "release", "Run tests before release."],
+                    ):
+                        with redirect_stdout(io.StringIO()):
+                            self.assertEqual(0, cli.main())
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "memory",
+                        "note",
+                        "add",
+                        "--topic",
+                        "security",
+                        "Do not keep GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz123456 in memory.",
+                    ],
+                ):
+                    with redirect_stdout(io.StringIO()):
+                        self.assertEqual(0, cli.main())
+                with patch("sys.argv", ["ait", "memory", "lint", "--format", "json"]):
+                    with redirect_stdout(lint_stdout):
+                        lint_exit = cli.main()
+                with patch("sys.argv", ["ait", "memory", "lint", "--fix", "--format", "json"]):
+                    with redirect_stdout(fix_stdout):
+                        fix_exit = cli.main()
+                with patch("sys.argv", ["ait", "memory", "lint", "--format", "json"]):
+                    with redirect_stdout(after_stdout):
+                        after_exit = cli.main()
+
+        lint_payload = json.loads(lint_stdout.getvalue())
+        fix_payload = json.loads(fix_stdout.getvalue())
+        after_payload = json.loads(after_stdout.getvalue())
+        self.assertEqual(2, lint_exit)
+        self.assertEqual(2, fix_exit)
+        self.assertEqual(0, after_exit)
+        self.assertGreater(lint_payload["issue_count"], 0)
+        self.assertGreaterEqual(fix_payload["fix_count"], 2)
+        self.assertEqual(0, after_payload["issue_count"])
+
     def test_memory_import_cli_imports_agent_memory_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
