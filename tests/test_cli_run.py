@@ -134,6 +134,88 @@ class CliRunTests(unittest.TestCase):
         self.assertIn("Run tests before release.", payload[0]["text"])
         self.assertEqual("vector", payload[0]["metadata"]["ranker"])
 
+    def test_memory_recall_cli_outputs_selected_memory_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            add_stdout = io.StringIO()
+            recall_stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "memory",
+                        "note",
+                        "add",
+                        "--topic",
+                        "attempt-memory",
+                        "--source",
+                        "attempt-memory:test",
+                        "Billing retry path changed_files=billing_retry.py confidence=high",
+                    ],
+                ):
+                    with redirect_stdout(add_stdout):
+                        add_exit = cli.main()
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "memory",
+                        "recall",
+                        "billing retry",
+                        "--budget-chars",
+                        "180",
+                        "--format",
+                        "json",
+                    ],
+                ):
+                    with redirect_stdout(recall_stdout):
+                        recall_exit = cli.main()
+
+        payload = json.loads(recall_stdout.getvalue())
+        self.assertEqual(0, add_exit)
+        self.assertEqual(0, recall_exit)
+        self.assertEqual("billing retry", payload["query"])
+        self.assertEqual(180, payload["budget_chars"])
+        self.assertTrue(payload["selected"])
+        self.assertEqual("attempt-memory:test", payload["selected"][0]["source"])
+        self.assertLessEqual(payload["rendered_chars"], 180)
+
+    def test_memory_recall_auto_outputs_query_sources_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "memory",
+                        "recall",
+                        "Billing retry",
+                        "--auto",
+                        "--agent",
+                        "claude-code:manual",
+                        "--command-text",
+                        "python billing_retry.py",
+                        "--format",
+                        "json",
+                    ],
+                ):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(0, exit_code)
+        self.assertIn("Billing retry", payload["query"])
+        self.assertIn("python billing_retry.py", payload["query"])
+        self.assertTrue(any(item["source"] == "intent_title" for item in payload["query_sources"]))
+        self.assertTrue(any(item["source"] == "command_args" for item in payload["query_sources"]))
+
     def test_memory_import_cli_imports_agent_memory_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

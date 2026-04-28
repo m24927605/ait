@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.30.0 - 2026-04-28
+
+### Added
+
+- Add `ait memory recall <query>` to preview the relevant memory that
+  wrapped agent runs would inject into context.
+- Add `ait memory recall --auto` to generate the same recall query shape
+  used by wrapped agent runs from intent, command, kind, description, and
+  agent inputs.
+- Add recall JSON output with selected memory, skipped candidates, score,
+  query sources, budget, rendered chars, and compacted state.
+- Add relevant-memory metadata to `.ait-context.md`, including selected
+  count and budget chars.
+
 ## 0.29.0 - 2026-04-28
 
 ### Added

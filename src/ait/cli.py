@@ -21,6 +21,7 @@ from ait.adapters import (
     setup_adapter,
 )
 from ait.brain import (
+    build_auto_briefing_query,
     build_auto_repo_brain_briefing,
     build_repo_brain_briefing,
     build_repo_brain,
@@ -50,12 +51,14 @@ from ait.db import connect_db
 from ait.memory import (
     add_memory_note,
     agent_memory_status,
+    build_relevant_memory_recall,
     build_repo_memory,
     ensure_agent_memory_imported,
     import_agent_memory,
     list_memory_notes,
     remove_memory_note,
     render_repo_memory_text,
+    render_relevant_memory_recall,
     render_memory_search_results,
     search_repo_memory,
 )
@@ -208,6 +211,16 @@ def build_parser() -> argparse.ArgumentParser:
     memory_search.add_argument("--limit", type=int, default=8)
     memory_search.add_argument("--ranker", choices=("vector", "lexical"), default="vector")
     memory_search.add_argument("--format", choices=("text", "json"), default="text")
+    memory_recall = memory_subparsers.add_parser("recall")
+    memory_recall.add_argument("query", nargs="?")
+    memory_recall.add_argument("--auto", action="store_true")
+    memory_recall.add_argument("--agent")
+    memory_recall.add_argument("--kind")
+    memory_recall.add_argument("--description")
+    memory_recall.add_argument("--command-text")
+    memory_recall.add_argument("--limit", type=int, default=6)
+    memory_recall.add_argument("--budget-chars", type=int, default=4000)
+    memory_recall.add_argument("--format", choices=("text", "json"), default="text")
     memory_import = memory_subparsers.add_parser("import")
     memory_import.add_argument("--source", default="auto")
     memory_import.add_argument("--path", action="append", dest="import_paths")
@@ -602,6 +615,37 @@ def main() -> int:
                 print(json.dumps([asdict(result) for result in results], indent=2))
             else:
                 print(render_memory_search_results(results), end="")
+            return 0
+        if args.memory_command == "recall":
+            if args.auto:
+                auto_query = build_auto_briefing_query(
+                    repo_root,
+                    intent_title=args.query or "",
+                    description=args.description,
+                    kind=args.kind,
+                    command=tuple(args.command_text.split()) if args.command_text else (),
+                    agent_id=args.agent,
+                )
+                query = auto_query.query
+                sources = [asdict(source) for source in auto_query.sources]
+            elif args.query:
+                query = args.query
+                sources = ["manual query input"]
+            else:
+                print("error: memory recall requires a query or --auto", file=sys.stderr)
+                return 2
+            recall = build_relevant_memory_recall(
+                repo_root,
+                query,
+                limit=args.limit,
+                budget_chars=args.budget_chars,
+            )
+            payload = recall.to_dict()
+            payload["query_sources"] = sources
+            if args.format == "json":
+                print(json.dumps(payload, indent=2))
+            else:
+                print(render_relevant_memory_recall(recall), end="")
             return 0
         if args.memory_command == "import":
             result = import_agent_memory(

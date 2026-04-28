@@ -55,6 +55,40 @@ class MemorySearchResult:
 
 
 @dataclass(frozen=True, slots=True)
+class RelevantMemoryItem:
+    kind: str
+    id: str
+    source: str
+    topic: str
+    score: float
+    text: str
+    metadata: dict[str, object]
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
+@dataclass(frozen=True, slots=True)
+class RelevantMemoryRecall:
+    query: str
+    selected: tuple[RelevantMemoryItem, ...]
+    skipped: tuple[dict[str, object], ...]
+    budget_chars: int
+    rendered_chars: int
+    compacted: bool
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "query": self.query,
+            "selected": [item.to_dict() for item in self.selected],
+            "skipped": list(self.skipped),
+            "budget_chars": self.budget_chars,
+            "rendered_chars": self.rendered_chars,
+            "compacted": self.compacted,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class RepoMemory:
     repo_root: str
     recent_attempts: tuple[MemoryAttempt, ...]
@@ -805,6 +839,91 @@ def render_memory_search_results(results: tuple[MemorySearchResult, ...]) -> str
             fields = ", ".join(f"{key}={value}" for key, value in result.metadata.items())
             lines.append(f"  metadata: {fields}")
     return "\n".join(lines) + "\n"
+
+
+def build_relevant_memory_recall(
+    repo_root: str | Path,
+    query: str,
+    *,
+    limit: int = 6,
+    budget_chars: int = 4000,
+) -> RelevantMemoryRecall:
+    candidates = search_repo_memory(repo_root, query, limit=max(limit * 3, 12))
+    selected: list[RelevantMemoryItem] = []
+    skipped: list[dict[str, object]] = []
+    for result in candidates:
+        source = str(result.metadata.get("source", ""))
+        if result.kind != "note":
+            skipped.append({"kind": result.kind, "id": result.id, "reason": "not a memory note"})
+            continue
+        if not source.startswith(("attempt-memory:", "agent-memory:")):
+            skipped.append({"kind": result.kind, "id": result.id, "source": source, "reason": "source not relevant"})
+            continue
+        if len(selected) >= limit:
+            skipped.append({"kind": result.kind, "id": result.id, "source": source, "reason": "over selection limit"})
+            continue
+        selected.append(
+            RelevantMemoryItem(
+                kind=result.kind,
+                id=result.id,
+                source=source,
+                topic=result.title,
+                score=result.score,
+                text=result.text,
+                metadata=result.metadata,
+            )
+        )
+
+    rendered, compacted = _render_relevant_memory_text(
+        query=query,
+        selected=tuple(selected),
+        budget_chars=budget_chars,
+    )
+    return RelevantMemoryRecall(
+        query=query,
+        selected=tuple(selected),
+        skipped=tuple(skipped),
+        budget_chars=budget_chars,
+        rendered_chars=len(rendered),
+        compacted=compacted,
+    )
+
+
+def render_relevant_memory_recall(recall: RelevantMemoryRecall) -> str:
+    rendered, _ = _render_relevant_memory_text(
+        query=recall.query,
+        selected=recall.selected,
+        budget_chars=recall.budget_chars,
+    )
+    return rendered
+
+
+def _render_relevant_memory_text(
+    *,
+    query: str,
+    selected: tuple[RelevantMemoryItem, ...],
+    budget_chars: int,
+) -> tuple[str, bool]:
+    lines = [
+        "AIT Relevant Memory",
+        f"Query: {query}",
+        f"Selected: {len(selected)}",
+        f"Budget chars: {budget_chars}",
+        "",
+    ]
+    if not selected:
+        lines.append("- none")
+    for item in selected:
+        text = " ".join(item.text.split())
+        lines.append(f"- {item.source} score={item.score:.2f} topic={item.topic}")
+        if text:
+            lines.append(f"  {text[:800]}")
+    text = "\n".join(lines) + "\n"
+    if budget_chars <= 0 or len(text) <= budget_chars:
+        return text, False
+    marker = "\n[ait relevant memory compacted to configured budget]\n"
+    keep = max(0, budget_chars - len(marker))
+    return text[:keep].rstrip() + marker, True
 
 
 def _recent_attempts(
