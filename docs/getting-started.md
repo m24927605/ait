@@ -40,6 +40,8 @@ allow` is only needed when prompted. Detected wrappers include:
 .ait/bin/claude
 .ait/bin/codex
 .ait/bin/aider
+.ait/bin/gemini
+.ait/bin/cursor
 ```
 
 After that, detected agent commands in this repository run through `ait`.

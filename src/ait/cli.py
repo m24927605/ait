@@ -1144,7 +1144,7 @@ def _format_init(payload: dict[str, object]) -> str:
             [
                 "Current shell: no supported agent CLI found on PATH",
                 "Next:",
-                "- install claude, codex, or aider, then run ait init",
+                "- install claude, codex, aider, gemini, or cursor, then run ait init",
             ]
         )
     return "\n".join(lines)
@@ -1499,7 +1499,7 @@ def _maybe_emit_status_all_hint(args, repo_root: Path, results) -> None:
         and not _status_payload(result)["real_agent_binary"]
     ]
     if missing_real and len(missing_real) == len(results):
-        hint = "ait hint: install an agent CLI such as claude, codex, or aider first."
+        hint = "ait hint: install an agent CLI such as claude, codex, aider, gemini, or cursor first."
     else:
         hint = "ait hint: run ait init once to enable detected agent automation in this repo."
     print(hint, file=sys.stderr)

@@ -9,7 +9,7 @@ work in an attempt branch that can be reviewed and promoted later.
 
 Install the PyPI package, enter a Git repository, let `ait` install
 repo-local wrappers for the agent CLIs it can find, then keep using
-`claude`, `codex`, or `aider`:
+`claude`, `codex`, `aider`, `gemini`, or `cursor`:
 
 ```bash
 pipx install ait-vcs
@@ -32,7 +32,8 @@ Existing agent memory files such as `CLAUDE.md` and `AGENTS.md` are
 imported automatically during regular `ait init` and again on first
 wrapped agent run when needed. Wrapped runs also recreate the default
 memory policy if it is missing, so repo memory governance remains in
-place behind normal `claude`, `codex`, or `aider` usage. After each
+place behind normal `claude`, `codex`, `aider`, `gemini`, or `cursor`
+usage. After each
 wrapped run, `ait` also writes a compact attempt memory note with status,
 changed files, commits, and confidence so future agents can reuse what
 happened.
@@ -40,8 +41,8 @@ When a new wrapped run starts, `ait` retrieves the most relevant
 agent/attempt memory into a compact `AIT Relevant Memory` context
 section, skipping notes with lint errors by default so suspected secrets
 or duplicate bad memory are not injected back into the agent. This is a
-zero-touch path: day to day, users keep using `claude`, `codex`, or
-`aider` and do not need to run memory commands. Repo-local policy lets a
+zero-touch path: day to day, users keep using `claude`, `codex`,
+`aider`, `gemini`, or `cursor` and do not need to run memory commands. Repo-local policy lets a
 project owner tighten automatic recall by source pattern or lint
 severity for teams that need stricter governance. Those settings are
 guardrails for ait's background automation, not a daily workflow for
@@ -73,7 +74,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.40.0` alpha quality for local dogfood use. It is
+This repository is at `0.41.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -106,14 +107,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.40.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.41.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.40.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.41.0"
 .venv/bin/ait --help
 ```
 
@@ -426,8 +427,8 @@ direnv allow   # only if prompted
 
 This initializes `.ait/`, installs wrappers for detected agent CLIs,
 writes `.envrc`, imports detected agent memory, and creates the default
-memory policy. After that, invoking `claude ...`, `codex ...`, or
-`aider ...` from the repository will hit `.ait/bin/*`, which runs the
+memory policy. After that, invoking `claude ...`, `codex ...`,
+`aider ...`, `gemini ...`, or `cursor ...` from the repository will hit `.ait/bin/*`, which runs the
 agent through `ait run` in an isolated attempt worktree. The wrapper
 passes through all agent arguments. It uses `AIT_INTENT` and
 `AIT_COMMIT_MESSAGE` when set, otherwise it falls back to conservative
@@ -575,11 +576,13 @@ edits, and shell commands. It is optional: `ait run --adapter
 claude-code` is the simpler first integration, while hooks add richer
 provenance for teams that want tool-level evidence.
 
-Use the Codex and Aider adapters the same way:
+Use the Codex, Aider, Gemini, and Cursor adapters the same way:
 
 ```bash
 ait run --adapter codex --intent "Implement parser edge cases" -- codex
 ait run --adapter aider --intent "Fix auth expiry" -- aider src/auth.py
+ait run --adapter gemini --intent "Review API client" -- gemini
+ait run --adapter cursor --intent "Update dashboard copy" -- cursor
 ```
 
 These adapters provide worktree isolation, context handoff, command
@@ -589,17 +592,21 @@ repo-local wrappers just like Claude Code:
 ```bash
 eval "$(ait bootstrap codex --shell)"
 eval "$(ait bootstrap aider --shell)"
+eval "$(ait bootstrap gemini --shell)"
+eval "$(ait bootstrap cursor --shell)"
 ait status codex
 ait status aider
+ait status gemini
+ait status cursor
 ```
 
-After bootstrap, invoking `codex ...` or `aider ...` from that
-repository routes through `ait run --adapter codex` or
-`ait run --adapter aider`, so `AIT_CONTEXT_FILE` carries the same
+After bootstrap, invoking `codex ...`, `aider ...`, `gemini ...`, or
+`cursor ...` from that repository routes through the matching
+`ait run --adapter <name>` command, so `AIT_CONTEXT_FILE` carries the same
 long-term memory handoff. Their stdout/stderr transcripts are captured
 under `.ait/traces/` and become searchable memory evidence. Common
 secrets are redacted before transcripts are written. Native tool-level
-hooks for Codex and Aider are not implemented yet.
+hooks for these adapters are not implemented yet.
 
 For a custom workflow, either wrap the command with `ait run` or call
 the Python harness API directly from your agent runner:
@@ -741,7 +748,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.40.0
+git checkout v0.41.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

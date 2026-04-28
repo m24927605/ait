@@ -40,8 +40,8 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual("claude-code", adapter.env["AIT_ADAPTER"])
         self.assertIn("Claude Code", adapter.description)
 
-    def test_aider_and_codex_adapters_have_context_hints(self) -> None:
-        for name in ("aider", "codex"):
+    def test_fixed_binary_adapters_have_context_hints(self) -> None:
+        for name in ("aider", "codex", "cursor", "gemini"):
             adapter = get_adapter(name)
             self.assertEqual(name, adapter.command_name)
             self.assertTrue(adapter.default_with_context)
@@ -51,7 +51,10 @@ class AdapterTests(unittest.TestCase):
     def test_list_adapters_returns_sorted_adapters(self) -> None:
         adapters = list_adapters()
 
-        self.assertEqual(["aider", "claude-code", "codex", "shell"], [item.name for item in adapters])
+        self.assertEqual(
+            ["aider", "claude-code", "codex", "cursor", "gemini", "shell"],
+            [item.name for item in adapters],
+        )
         self.assertIn("default_agent_id", asdict(adapters[0]))
 
     def test_unknown_adapter_raises_clear_error(self) -> None:

@@ -374,6 +374,78 @@ class CliAdapterTests(unittest.TestCase):
             self.assertIn("agent-memory:claude:CLAUDE.md", sources)
             self.assertTrue(any(source.startswith("attempt-memory:") for source in sources))
 
+    def test_path_fixed_binary_invocations_hit_wrappers_and_self_repair_memory(self) -> None:
+        for adapter_name, command_name in (
+            ("codex", "codex"),
+            ("aider", "aider"),
+            ("gemini", "gemini"),
+            ("cursor", "cursor"),
+        ):
+            with self.subTest(adapter=adapter_name):
+                with tempfile.TemporaryDirectory() as tmp:
+                    repo_root = Path(tmp) / "repo"
+                    repo_root.mkdir()
+                    _git_init(repo_root)
+                    _git_commit_initial(repo_root)
+                    bin_dir = Path(tmp) / "bin"
+                    bin_dir.mkdir()
+                    real_agent = bin_dir / command_name
+                    real_agent.write_text(
+                        "#!/bin/sh\n"
+                        f"printf 'real {command_name} reached\\n'\n"
+                        f"printf 'agent wrote through PATH {command_name}\\n' > path-{command_name}-output.txt\n",
+                        encoding="utf-8",
+                    )
+                    real_agent.chmod(0o755)
+                    old_path = os.environ.get("PATH", "")
+                    init_stdout = io.StringIO()
+                    os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+                    try:
+                        with chdir(repo_root):
+                            with patch("sys.argv", ["ait", "init", "--adapter", adapter_name, "--format", "json"]):
+                                with redirect_stdout(init_stdout):
+                                    init_exit_code = cli.main()
+                            (repo_root / ".ait" / "memory-policy.json").unlink()
+                            (repo_root / "AGENTS.md").write_text(
+                                f"Prefer direct PATH {command_name} use.\n",
+                                encoding="utf-8",
+                            )
+                            env = {
+                                **os.environ,
+                                "PATH": (
+                                    str(repo_root / ".ait" / "bin")
+                                    + os.pathsep
+                                    + str(bin_dir)
+                                    + os.pathsep
+                                    + old_path
+                                ),
+                            }
+                            completed = subprocess.run(
+                                [command_name, "--fake-prompt"],
+                                cwd=repo_root,
+                                env=env,
+                                capture_output=True,
+                                text=True,
+                                check=False,
+                            )
+                    finally:
+                        os.environ["PATH"] = old_path
+
+                    init_payload = json.loads(init_stdout.getvalue())
+                    wrapper_payload = json.loads(completed.stdout)
+                    notes = list_memory_notes(repo_root)
+
+                    self.assertEqual(0, init_exit_code)
+                    self.assertEqual([adapter_name], init_payload["installed_adapters"])
+                    self.assertEqual(0, completed.returncode)
+                    self.assertEqual(0, wrapper_payload["exit_code"])
+                    self.assertTrue((repo_root / ".ait" / "memory-policy.json").exists())
+                    self.assertTrue(Path(wrapper_payload["workspace_ref"], f"path-{command_name}-output.txt").exists())
+                    self.assertTrue(wrapper_payload["attempt"]["commits"])
+                    sources = {note.source for note in notes}
+                    self.assertIn("agent-memory:codex:AGENTS.md", sources)
+                    self.assertTrue(any(source.startswith("attempt-memory:") for source in sources))
+
     def test_init_shell_outputs_eval_safe_snippet(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp) / "repo"
@@ -753,7 +825,7 @@ class CliAdapterTests(unittest.TestCase):
             by_adapter = {item["adapter"]: item for item in payload}
 
             self.assertEqual(0, exit_code)
-            self.assertEqual({"aider", "claude-code", "codex"}, set(by_adapter))
+            self.assertEqual({"aider", "claude-code", "codex", "cursor", "gemini"}, set(by_adapter))
             self.assertTrue(by_adapter["codex"]["real_agent_binary"])
             self.assertFalse(by_adapter["codex"]["wrapper_installed"])
             self.assertIn("ait init --adapter codex", by_adapter["codex"]["next_steps"])

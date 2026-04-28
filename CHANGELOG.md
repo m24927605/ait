@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.41.0 - 2026-04-28
+
+### Added
+
+- Add `gemini` and `cursor` as context-enabled fixed-binary agent CLI
+  adapters alongside Claude Code, Codex, and Aider.
+- Add automated PATH wrapper integration coverage for `codex ...`,
+  `aider ...`, `gemini ...`, and `cursor ...`, matching the existing
+  `claude ...` regression path.
+- Verify Codex, Aider, Gemini, and Cursor wrappers hit the repo-local
+  wrapper, recreate the default memory policy, import `AGENTS.md`,
+  create attempt memory, and create attempt commits.
+
 ## 0.40.0 - 2026-04-28
 
 ### Added

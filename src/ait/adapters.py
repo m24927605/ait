@@ -149,6 +149,30 @@ ADAPTERS: dict[str, AgentAdapter] = {
         description="Codex CLI wrapper with context enabled by default.",
         setup_hint="Use ait bootstrap codex to install a repo-local wrapper.",
     ),
+    "cursor": AgentAdapter(
+        name="cursor",
+        default_agent_id="cursor:main",
+        default_with_context=True,
+        command_name="cursor",
+        env={
+            "AIT_ADAPTER": "cursor",
+            "AIT_CONTEXT_HINT": "Read AIT_CONTEXT_FILE before starting work.",
+        },
+        description="Cursor CLI wrapper with context enabled by default.",
+        setup_hint="Use ait bootstrap cursor to install a repo-local wrapper.",
+    ),
+    "gemini": AgentAdapter(
+        name="gemini",
+        default_agent_id="gemini:main",
+        default_with_context=True,
+        command_name="gemini",
+        env={
+            "AIT_ADAPTER": "gemini",
+            "AIT_CONTEXT_HINT": "Read AIT_CONTEXT_FILE before starting work.",
+        },
+        description="Gemini CLI wrapper with context enabled by default.",
+        setup_hint="Use ait bootstrap gemini to install a repo-local wrapper.",
+    ),
 }
 
 

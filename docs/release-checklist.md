@@ -13,20 +13,23 @@ Before tagging:
 7. Build with `.venv/bin/python -m build`.
 8. Check artifacts with `.venv/bin/python -m twine check dist/*`.
 9. Run a fresh venv smoke test from `dist/*.whl`, including the
-   PATH-based `claude ...` wrapper smoke below.
+   PATH-based agent wrapper smoke below.
 10. Tag with the intended `vX.Y.Z`.
 11. Push `main` and `vX.Y.Z` to GitHub.
 12. Create a GitHub release with the built wheel and sdist.
 13. Confirm GitHub Actions CI and Publish pass.
 14. Confirm PyPI lists the new version.
 15. Run a fresh venv smoke test from PyPI, including the PATH-based
-    `claude ...` wrapper smoke below.
+    agent wrapper smoke below.
 
-## PATH Claude Wrapper Smoke
+## PATH Agent Wrapper Smoke
 
 Run this once against the local wheel and once against the just-published
-PyPI version. The important detail is that the smoke invokes `claude`
-through `PATH`; it should not call `.ait/bin/claude` directly.
+PyPI version. The important detail is that the smoke invokes the agent
+command through `PATH`; it should not call `.ait/bin/<command>` directly.
+Use `claude` for the default release smoke, and use the automated test
+suite for adapter parity across `codex`, `aider`, `gemini`, and
+`cursor`.
 
 For a local wheel:
 
