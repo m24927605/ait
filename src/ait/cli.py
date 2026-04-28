@@ -50,6 +50,7 @@ from ait.db import connect_db
 from ait.memory import (
     add_memory_note,
     build_repo_memory,
+    import_agent_memory,
     list_memory_notes,
     remove_memory_note,
     render_repo_memory_text,
@@ -205,6 +206,12 @@ def build_parser() -> argparse.ArgumentParser:
     memory_search.add_argument("--limit", type=int, default=8)
     memory_search.add_argument("--ranker", choices=("vector", "lexical"), default="vector")
     memory_search.add_argument("--format", choices=("text", "json"), default="text")
+    memory_import = memory_subparsers.add_parser("import")
+    memory_import.add_argument("--source", default="auto")
+    memory_import.add_argument("--path", action="append", dest="import_paths")
+    memory_import.add_argument("--topic", default="agent-memory")
+    memory_import.add_argument("--max-chars", type=int, default=6000)
+    memory_import.add_argument("--format", choices=("text", "json"), default="text")
     memory_graph = memory_subparsers.add_parser("graph")
     memory_graph_subparsers = memory_graph.add_subparsers(dest="memory_graph_command")
     memory_graph_build = memory_graph_subparsers.add_parser("build")
@@ -593,6 +600,19 @@ def main() -> int:
             else:
                 print(render_memory_search_results(results), end="")
             return 0
+        if args.memory_command == "import":
+            result = import_agent_memory(
+                repo_root,
+                source=args.source,
+                paths=tuple(args.import_paths) if args.import_paths else (),
+                topic=args.topic,
+                max_chars=args.max_chars,
+            )
+            if args.format == "json":
+                print(json.dumps(result.to_dict(), indent=2))
+            else:
+                print(_format_memory_import(result))
+            return 0 if result.imported else 2
         if args.memory_command == "policy":
             if args.memory_policy_command == "init":
                 result = init_memory_policy(repo_root, overwrite=args.force)
@@ -909,6 +929,21 @@ def _format_auto_enable(result) -> str:
             command = item.adapter.command_name
             if command:
                 lines.append(f"- {command} ...")
+    return "\n".join(lines)
+
+
+def _format_memory_import(result) -> str:
+    lines = ["AIT memory import"]
+    if result.imported:
+        lines.append("Imported:")
+        for note in result.imported:
+            lines.append(f"- {note.id} topic={note.topic or 'general'} source={note.source}")
+    else:
+        lines.append("Imported: none")
+    if result.skipped:
+        lines.append("Skipped:")
+        for item in result.skipped:
+            lines.append(f"- {item.get('path')}: {item.get('reason')} ({item.get('source')})")
     return "\n".join(lines)
 
 

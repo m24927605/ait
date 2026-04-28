@@ -134,6 +134,41 @@ class CliRunTests(unittest.TestCase):
         self.assertIn("Run tests before release.", payload[0]["text"])
         self.assertEqual("vector", payload[0]["metadata"]["ranker"])
 
+    def test_memory_import_cli_imports_agent_memory_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            (repo_root / "CLAUDE.md").write_text("Use ait repair if wrappers drift.\n", encoding="utf-8")
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "memory", "import", "--source", "claude", "--format", "json"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(0, exit_code)
+        self.assertEqual(1, len(payload["imported"]))
+        self.assertEqual("agent-memory:claude:CLAUDE.md", payload["imported"][0]["source"])
+        self.assertIn("Use ait repair", payload["imported"][0]["body"])
+
+    def test_memory_import_cli_custom_path_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            (repo_root / ".cursorrules").write_text("Prefer small scoped patches.\n", encoding="utf-8")
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "memory", "import", "--path", ".cursorrules"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+        self.assertEqual(0, exit_code)
+        self.assertIn("AIT memory import", stdout.getvalue())
+        self.assertIn("Imported:", stdout.getvalue())
+        self.assertIn("agent-memory:custom:.cursorrules", stdout.getvalue())
+
     def test_memory_graph_cli_builds_shows_and_queries_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

@@ -11,6 +11,7 @@ from ait.db import connect_db, run_migrations
 from ait.memory import (
     add_memory_note,
     build_repo_memory,
+    import_agent_memory,
     list_memory_notes,
     remove_memory_note,
     render_repo_memory_text,
@@ -63,6 +64,60 @@ class MemoryTests(unittest.TestCase):
 
             self.assertTrue(remove_memory_note(repo_root, note_id=note.id))
             self.assertEqual((), list_memory_notes(repo_root))
+
+    def test_import_agent_memory_detects_common_agent_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            (repo_root / "CLAUDE.md").write_text("Use pytest before release.\n", encoding="utf-8")
+            (repo_root / "AGENTS.md").write_text("Keep CLI output parseable.\n", encoding="utf-8")
+
+            result = import_agent_memory(repo_root)
+            notes = list_memory_notes(repo_root, topic="agent-memory")
+
+            self.assertEqual(2, len(result.imported))
+            self.assertEqual(2, len(notes))
+            self.assertTrue(all(note.topic == "agent-memory" for note in notes))
+            self.assertTrue(any(note.source == "agent-memory:claude:CLAUDE.md" for note in notes))
+            self.assertTrue(any(note.source == "agent-memory:codex:AGENTS.md" for note in notes))
+            self.assertIn("confidence=advisory", notes[0].body)
+            self.assertIn("Use pytest before release.", "\n".join(note.body for note in notes))
+
+    def test_import_agent_memory_custom_path_redacts_and_deduplicates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            memory_path = repo_root / "docs" / "agent-memory.md"
+            memory_path.parent.mkdir()
+            memory_path.write_text(
+                "Release with token GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz123456\n",
+                encoding="utf-8",
+            )
+
+            first = import_agent_memory(repo_root, source="custom", paths=("docs/agent-memory.md",))
+            second = import_agent_memory(repo_root, source="custom", paths=("docs/agent-memory.md",))
+
+            self.assertEqual(1, len(first.imported))
+            self.assertEqual(0, len(second.imported))
+            self.assertEqual("already imported", second.skipped[0]["reason"])
+            self.assertIn("[REDACTED]", first.imported[0].body)
+            self.assertNotIn("ghp_abcdefghijklmnopqrstuvwxyz123456", first.imported[0].body)
+
+    def test_import_agent_memory_respects_memory_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            init_memory_policy(repo_root)
+            (repo_root / ".ait" / "memory-policy.json").write_text(
+                json.dumps({"exclude_paths": ["CLAUDE.md"], "exclude_transcript_patterns": []}),
+                encoding="utf-8",
+            )
+            (repo_root / "CLAUDE.md").write_text("Do not import this.\n", encoding="utf-8")
+
+            result = import_agent_memory(repo_root, source="claude")
+
+            self.assertEqual(0, len(result.imported))
+            self.assertEqual("excluded by memory policy", result.skipped[0]["reason"])
 
     def test_memory_filters_attempts_by_path_and_promoted_status(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.25.0 - 2026-04-28
+
+### Added
+
+- Add `ait memory import` to convert existing agent memory files into
+  ait memory notes.
+- Auto-detect common memory files such as `CLAUDE.md`, `AGENTS.md`,
+  `.claude/memory.md`, `.codex/memory.md`, and Cursor rules files.
+- Add `ait memory import --path <file>` for custom memory file imports.
+- Add source, path, confidence, redaction, deduplication, and memory
+  policy handling for imported agent memory.
+
 ## 0.24.0 - 2026-04-28
 
 ### Added

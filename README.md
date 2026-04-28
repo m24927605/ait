@@ -48,7 +48,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.24.0` alpha quality for local dogfood use. It is
+This repository is at `0.25.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -81,14 +81,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.24.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.25.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.24.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.25.0"
 .venv/bin/ait --help
 ```
 
@@ -429,6 +429,16 @@ ait repair codex
 ait repair --format json
 ```
 
+If the project already has agent memory files from earlier AI work, import
+them into ait long-term memory:
+
+```bash
+ait memory import
+ait memory import --source claude
+ait memory import --path .cursor/rules
+ait memory import --format json
+```
+
 To set up direnv instead of changing the current shell directly:
 
 ```bash
@@ -607,6 +617,9 @@ ait init --adapter codex --format json
 ait repair
 ait repair codex
 ait repair --format json
+ait memory import
+ait memory import --source claude
+ait memory import --path .cursor/rules
 ait enable
 ait enable --shell
 ait shell show --shell zsh
@@ -665,7 +678,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.24.0
+git checkout v0.25.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q
