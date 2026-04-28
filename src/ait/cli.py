@@ -57,6 +57,7 @@ from ait.memory import (
     import_agent_memory,
     lint_memory_notes,
     list_memory_notes,
+    memory_health_from_lint,
     remove_memory_note,
     render_repo_memory_text,
     render_relevant_memory_recall,
@@ -222,6 +223,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory_recall.add_argument("--command-text")
     memory_recall.add_argument("--limit", type=int, default=6)
     memory_recall.add_argument("--budget-chars", type=int, default=4000)
+    memory_recall.add_argument("--include-unhealthy", action="store_true")
     memory_recall.add_argument("--format", choices=("text", "json"), default="text")
     memory_lint = memory_subparsers.add_parser("lint")
     memory_lint.add_argument("--fix", action="store_true")
@@ -645,6 +647,7 @@ def main() -> int:
                 query,
                 limit=args.limit,
                 budget_chars=args.budget_chars,
+                include_unhealthy=args.include_unhealthy,
             )
             payload = recall.to_dict()
             payload["query_sources"] = sources
@@ -782,16 +785,18 @@ def main() -> int:
             init_result = init_repo(repo_root)
             result = enable_available_adapters(init_result.repo_root, names=names)
             memory_import = ensure_agent_memory_imported(init_result.repo_root)
+            memory_lint = lint_memory_notes(init_result.repo_root, fix=True)
+            memory_health_lint = lint_memory_notes(init_result.repo_root)
         except AdapterError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
         after = tuple(doctor_automation(name, init_result.repo_root) for name in names)
-        payload = _repair_payload(before, result, after, memory_import)
+        payload = _repair_payload(before, result, after, memory_import, memory_lint, memory_health_lint)
         if args.format == "json":
             print(json.dumps(payload, indent=2))
         else:
             print(_format_repair(payload))
-        return 0 if result.installed else 2
+        return 0 if result.installed or memory_lint.fixes else 2
     if args.command == "enable":
         try:
             result = enable_available_adapters(
@@ -1085,7 +1090,14 @@ def _format_init(payload: dict[str, object]) -> str:
     return "\n".join(lines)
 
 
-def _repair_payload(before, result, after, memory_import=None) -> dict[str, object]:
+def _repair_payload(
+    before,
+    result,
+    after,
+    memory_import=None,
+    memory_lint=None,
+    memory_health_lint=None,
+) -> dict[str, object]:
     before_payload = [_status_payload(item) for item in before]
     after_payload = [_status_payload(item) for item in after]
     before_by_adapter = {str(item["adapter"]): item for item in before_payload}
@@ -1115,6 +1127,9 @@ def _repair_payload(before, result, after, memory_import=None) -> dict[str, obje
     }
     if memory_import is not None:
         payload["memory_import"] = memory_import.to_dict()
+    if memory_lint is not None:
+        payload["memory_lint"] = memory_lint.to_dict()
+        payload["memory_health"] = memory_health_from_lint(memory_health_lint or memory_lint).to_dict()
     return payload
 
 
@@ -1142,6 +1157,21 @@ def _format_repair(payload: dict[str, object]) -> str:
                     lines.append(f"- {item.get('source')}")
         else:
             lines.append("Imported memory: already current")
+    memory_lint = payload.get("memory_lint")
+    memory_health = payload.get("memory_health")
+    if isinstance(memory_lint, dict):
+        health_status = memory_health.get("status") if isinstance(memory_health, dict) else "unknown"
+        lines.append(f"Memory health: {health_status}")
+        lines.append(
+            "Memory lint: "
+            f"issues={memory_lint.get('issue_count', 0)} fixes={memory_lint.get('fix_count', 0)}"
+        )
+        fixes = memory_lint.get("fixes", [])
+        if fixes:
+            lines.append("Memory lint fixes:")
+            for item in fixes:
+                if isinstance(item, dict):
+                    lines.append(f"- {item.get('action')} note={item.get('note_id')}: {item.get('detail')}")
     changes = payload.get("changes", [])
     if changes:
         lines.append("Status changes:")
@@ -1208,7 +1238,34 @@ def _doctor_next_steps(result) -> list[str]:
 
 def _memory_status_payload(repo_root: Path) -> dict[str, object]:
     try:
-        return agent_memory_status(repo_root).to_dict()
+        status = agent_memory_status(repo_root).to_dict()
+        state_db_path = repo_root / ".ait" / "state.sqlite3"
+        if state_db_path.exists():
+            lint_result = lint_memory_notes(repo_root)
+            health = memory_health_from_lint(lint_result)
+            status.update(
+                {
+                    "health": health.status,
+                    "lint_checked": health.checked,
+                    "lint_issue_count": health.issue_count,
+                    "lint_error_count": health.error_count,
+                    "lint_warning_count": health.warning_count,
+                    "lint_info_count": health.info_count,
+                }
+            )
+        else:
+            health = "ok" if status.get("initialized") else "uninitialized"
+            status.update(
+                {
+                    "health": health,
+                    "lint_checked": 0,
+                    "lint_issue_count": 0,
+                    "lint_error_count": 0,
+                    "lint_warning_count": 0,
+                    "lint_info_count": 0,
+                }
+            )
+        return status
     except ValueError:
         return {
             "initialized": False,
@@ -1216,6 +1273,12 @@ def _memory_status_payload(repo_root: Path) -> dict[str, object]:
             "candidate_paths": [],
             "pending_paths": [],
             "state_path": "",
+            "health": "unavailable",
+            "lint_checked": 0,
+            "lint_issue_count": 0,
+            "lint_error_count": 0,
+            "lint_warning_count": 0,
+            "lint_info_count": 0,
         }
 
 
@@ -1253,6 +1316,14 @@ def _format_status(payload: dict[str, object]) -> str:
         imported = memory.get("imported_sources", [])
         pending = memory.get("pending_paths", [])
         lines.append(f"Memory initialized: {memory.get('initialized', False)}")
+        lines.append(f"Memory health: {memory.get('health', 'unknown')}")
+        lines.append(
+            "Memory lint issues: "
+            f"{memory.get('lint_issue_count', 0)} "
+            f"(errors={memory.get('lint_error_count', 0)}, "
+            f"warnings={memory.get('lint_warning_count', 0)}, "
+            f"info={memory.get('lint_info_count', 0)})"
+        )
         lines.append(f"Memory imported sources: {len(imported) if isinstance(imported, list) else 0}")
         if pending:
             lines.append("Memory pending:")
@@ -1273,7 +1344,8 @@ def _format_status_all(payload: list[dict[str, object]]) -> str:
             f"wrapper={item['wrapper_installed']} "
             f"path={item['path_wrapper_active']} "
             f"real_binary={item['real_agent_binary']} "
-            f"memory={item.get('memory', {}).get('initialized', False) if isinstance(item.get('memory'), dict) else False}"
+            f"memory={item.get('memory', {}).get('initialized', False) if isinstance(item.get('memory'), dict) else False} "
+            f"memory_health={item.get('memory', {}).get('health', 'unknown') if isinstance(item.get('memory'), dict) else 'unknown'}"
         )
         next_steps = item.get("next_steps", [])
         if next_steps:

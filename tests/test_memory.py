@@ -12,6 +12,7 @@ from ait.memory import (
     add_memory_note,
     add_attempt_memory_note,
     agent_memory_status,
+    build_relevant_memory_recall,
     build_repo_memory,
     ensure_agent_memory_imported,
     import_agent_memory,
@@ -115,6 +116,34 @@ class MemoryTests(unittest.TestCase):
             self.assertLess(len([issue for issue in after.issues if issue.fixable]), len([issue for issue in before.issues if issue.fixable]))
             self.assertNotIn("ghp_abcdefghijklmnopqrstuvwxyz123456", notes_text)
             self.assertEqual(3, len(list_memory_notes(repo_root, limit=20)))
+
+    def test_relevant_memory_recall_skips_lint_error_notes_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            healthy = add_memory_note(
+                repo_root,
+                topic="attempt-memory",
+                source="attempt-memory:healthy",
+                body="Billing retry path changed_files=billing_retry.py confidence=high",
+            )
+            unhealthy = add_memory_note(
+                repo_root,
+                topic="attempt-memory",
+                source="attempt-memory:secret",
+                body="Billing retry path stores GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz123456 confidence=high",
+            )
+
+            recall = build_relevant_memory_recall(repo_root, "billing retry")
+            selected_ids = {item.id for item in recall.selected}
+            skipped = {str(item["id"]): item for item in recall.skipped}
+            include_all = build_relevant_memory_recall(repo_root, "billing retry", include_unhealthy=True)
+
+            self.assertIn(healthy.id, selected_ids)
+            self.assertNotIn(unhealthy.id, selected_ids)
+            self.assertEqual("lint error", skipped[unhealthy.id]["reason"])
+            self.assertIn("possible_secret", skipped[unhealthy.id]["lint_codes"])
+            self.assertIn(unhealthy.id, {item.id for item in include_all.selected})
 
     def test_import_agent_memory_detects_common_agent_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

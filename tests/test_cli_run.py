@@ -183,6 +183,72 @@ class CliRunTests(unittest.TestCase):
         self.assertEqual("attempt-memory:test", payload["selected"][0]["source"])
         self.assertLessEqual(payload["rendered_chars"], 180)
 
+    def test_memory_recall_cli_skips_unhealthy_memory_unless_requested(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            recall_stdout = io.StringIO()
+            include_stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "memory",
+                        "note",
+                        "add",
+                        "--topic",
+                        "attempt-memory",
+                        "--source",
+                        "attempt-memory:healthy",
+                        "Billing retry path changed_files=billing_retry.py confidence=high",
+                    ],
+                ):
+                    with redirect_stdout(io.StringIO()):
+                        self.assertEqual(0, cli.main())
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "memory",
+                        "note",
+                        "add",
+                        "--topic",
+                        "attempt-memory",
+                        "--source",
+                        "attempt-memory:secret",
+                        "Billing retry path stores GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz123456 confidence=high",
+                    ],
+                ):
+                    with redirect_stdout(io.StringIO()):
+                        self.assertEqual(0, cli.main())
+                with patch(
+                    "sys.argv",
+                    ["ait", "memory", "recall", "billing retry", "--format", "json"],
+                ):
+                    with redirect_stdout(recall_stdout):
+                        recall_exit = cli.main()
+                with patch(
+                    "sys.argv",
+                    ["ait", "memory", "recall", "billing retry", "--include-unhealthy", "--format", "json"],
+                ):
+                    with redirect_stdout(include_stdout):
+                        include_exit = cli.main()
+
+        payload = json.loads(recall_stdout.getvalue())
+        include_payload = json.loads(include_stdout.getvalue())
+        selected_sources = {item["source"] for item in payload["selected"]}
+        skipped_secret = [item for item in payload["skipped"] if item.get("source") == "attempt-memory:secret"]
+
+        self.assertEqual(0, recall_exit)
+        self.assertEqual(0, include_exit)
+        self.assertIn("attempt-memory:healthy", selected_sources)
+        self.assertNotIn("attempt-memory:secret", selected_sources)
+        self.assertEqual("lint error", skipped_secret[0]["reason"])
+        self.assertIn("possible_secret", skipped_secret[0]["lint_codes"])
+        self.assertIn("attempt-memory:secret", {item["source"] for item in include_payload["selected"]})
+
     def test_memory_recall_auto_outputs_query_sources_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

@@ -177,6 +177,19 @@ class MemoryLintResult:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class MemoryHealth:
+    status: str
+    checked: int
+    issue_count: int
+    error_count: int
+    warning_count: int
+    info_count: int
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
 AGENT_MEMORY_CANDIDATES: dict[str, tuple[str, ...]] = {
     "claude": (
         "CLAUDE.md",
@@ -654,6 +667,28 @@ def lint_memory_notes(
         conn.close()
 
 
+def memory_health_from_lint(result: MemoryLintResult) -> MemoryHealth:
+    error_count = len([issue for issue in result.issues if issue.severity == "error"])
+    warning_count = len([issue for issue in result.issues if issue.severity == "warning"])
+    info_count = len([issue for issue in result.issues if issue.severity == "info"])
+    if error_count:
+        status = "error"
+    elif warning_count:
+        status = "warning"
+    elif info_count:
+        status = "info"
+    else:
+        status = "ok"
+    return MemoryHealth(
+        status=status,
+        checked=result.checked,
+        issue_count=len(result.issues),
+        error_count=error_count,
+        warning_count=warning_count,
+        info_count=info_count,
+    )
+
+
 def render_memory_lint_result(result: MemoryLintResult) -> str:
     lines = [
         "AIT memory lint",
@@ -1082,8 +1117,10 @@ def build_relevant_memory_recall(
     *,
     limit: int = 6,
     budget_chars: int = 4000,
+    include_unhealthy: bool = False,
 ) -> RelevantMemoryRecall:
     candidates = search_repo_memory(repo_root, query, limit=max(limit * 3, 12))
+    blocked_notes = _lint_error_note_codes(repo_root) if not include_unhealthy else {}
     selected: list[RelevantMemoryItem] = []
     skipped: list[dict[str, object]] = []
     for result in candidates:
@@ -1093,6 +1130,17 @@ def build_relevant_memory_recall(
             continue
         if not source.startswith(("attempt-memory:", "agent-memory:")):
             skipped.append({"kind": result.kind, "id": result.id, "source": source, "reason": "source not relevant"})
+            continue
+        if result.id in blocked_notes:
+            skipped.append(
+                {
+                    "kind": result.kind,
+                    "id": result.id,
+                    "source": source,
+                    "reason": "lint error",
+                    "lint_codes": blocked_notes[result.id],
+                }
+            )
             continue
         if len(selected) >= limit:
             skipped.append({"kind": result.kind, "id": result.id, "source": source, "reason": "over selection limit"})
@@ -1122,6 +1170,16 @@ def build_relevant_memory_recall(
         rendered_chars=len(rendered),
         compacted=compacted,
     )
+
+
+def _lint_error_note_codes(repo_root: str | Path) -> dict[str, list[str]]:
+    result = lint_memory_notes(repo_root)
+    blocked: dict[str, list[str]] = {}
+    for issue in result.issues:
+        if issue.severity != "error":
+            continue
+        blocked.setdefault(issue.note_id, []).append(issue.code)
+    return blocked
 
 
 def render_relevant_memory_recall(recall: RelevantMemoryRecall) -> str:

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.32.0 - 2026-04-28
+
+### Added
+
+- Add memory health reporting to `ait status`, including lint issue
+  counts by severity without writing `.ait/` during status-only checks.
+- Add default governance gates to relevant-memory recall so notes with
+  lint errors are skipped before wrapped agent context injection.
+- Add `ait memory recall --include-unhealthy` for explicit diagnostics
+  when inspecting blocked memory notes.
+- Make `ait repair` run conservative memory lint fixes and report memory
+  health alongside wrapper and agent-memory repair results.
+
 ## 0.31.0 - 2026-04-28
 
 ### Added

@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from ait import cli
-from ait.memory import list_memory_notes
+from ait.memory import add_memory_note, list_memory_notes
 
 
 class CliAdapterTests(unittest.TestCase):
@@ -553,9 +553,35 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual("claude-code", payload["adapter"])
             self.assertFalse(payload["wrapper_installed"])
             self.assertFalse(payload["memory"]["initialized"])
+            self.assertEqual("uninitialized", payload["memory"]["health"])
             self.assertEqual(["CLAUDE.md"], payload["memory"]["pending_paths"])
             self.assertIn("ait init --adapter claude-code", payload["next_steps"])
             self.assertFalse((repo_root / ".ait").exists())
+
+    def test_status_json_reports_memory_health_when_state_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            add_memory_note(
+                repo_root,
+                topic="attempt-memory",
+                source="attempt-memory:secret",
+                body="Billing retry path stores GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz123456 confidence=high",
+            )
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "status", "--format", "json"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+            payload = json.loads(stdout.getvalue())
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual("error", payload["memory"]["health"])
+            self.assertEqual(1, payload["memory"]["lint_error_count"])
+            self.assertGreaterEqual(payload["memory"]["lint_issue_count"], 1)
 
     def test_status_text_emits_one_time_automation_hint_to_stderr(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -752,6 +778,40 @@ class CliAdapterTests(unittest.TestCase):
             )
             self.assertFalse((repo_root / ".ait" / "bin" / "codex").exists())
             self.assertFalse((repo_root / ".envrc").exists())
+
+    def test_repair_json_runs_memory_lint_fix_even_without_agent_binary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            _git_commit_initial(repo_root)
+            add_memory_note(repo_root, topic="release", source="manual", body="Run tests before release.")
+            add_memory_note(repo_root, topic="release", source="manual", body="Run tests before release.")
+            add_memory_note(
+                repo_root,
+                topic="attempt-memory",
+                source="attempt-memory:secret",
+                body="Do not keep GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz123456 confidence=high",
+            )
+            stdout = io.StringIO()
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = "/usr/bin:/bin"
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "repair", "codex", "--format", "json"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            payload = json.loads(stdout.getvalue())
+            notes_text = "\n".join(note.body for note in list_memory_notes(repo_root, limit=20))
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual([], payload["installed_adapters"])
+            self.assertGreaterEqual(payload["memory_lint"]["fix_count"], 2)
+            self.assertEqual(0, payload["memory_health"]["error_count"])
+            self.assertNotIn("ghp_abcdefghijklmnopqrstuvwxyz123456", notes_text)
 
     def test_enable_json_installs_all_detected_agent_wrappers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
