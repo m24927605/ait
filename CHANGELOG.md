@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.44.0 - 2026-04-29
+
+### Added
+
+- Add an npm `ait-vcs` installer package that exposes the same `ait`
+  command for `npm install -g ait-vcs`.
+- Make the npm package create a private Python virtual environment and
+  install the matching PyPI `ait-vcs` release during npm postinstall, so
+  npm users do not need to manage pip or venv setup manually.
+- Add Node-based regression coverage for the npm package path and
+  Python-version handling.
+
 ## 0.43.0 - 2026-04-29
 
 ### Changed

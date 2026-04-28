@@ -12,15 +12,20 @@ Before tagging:
 6. Confirm README install and quickstart are current.
 7. Build with `.venv/bin/python -m build`.
 8. Check artifacts with `.venv/bin/python -m twine check dist/*`.
-9. Run a fresh venv smoke test from `dist/*.whl`, including the
+9. Run `npm --prefix npm/ait-vcs test`.
+10. Run `(cd npm/ait-vcs && npm pack --dry-run)`.
+11. Run a fresh venv smoke test from `dist/*.whl`, including the
    PATH-based agent wrapper smoke below.
-10. Tag with the intended `vX.Y.Z`.
-11. Push `main` and `vX.Y.Z` to GitHub.
-12. Create a GitHub release with the built wheel and sdist.
-13. Confirm GitHub Actions CI and Publish pass.
-14. Confirm PyPI lists the new version.
-15. Run a fresh venv smoke test from PyPI, including the PATH-based
+12. Tag with the intended `vX.Y.Z`.
+13. Push `main` and `vX.Y.Z` to GitHub.
+14. Create a GitHub release with the built wheel and sdist.
+15. Confirm GitHub Actions CI and Publish pass.
+16. Confirm PyPI lists the new version.
+17. Run a fresh venv smoke test from PyPI, including the PATH-based
     agent wrapper smoke below.
+18. Publish the npm package from `npm/ait-vcs` after PyPI lists the same
+    version.
+19. Run a fresh global npm smoke test with `npm install -g ait-vcs`.
 
 ## PATH Agent Wrapper Smoke
 
@@ -108,3 +113,19 @@ Environment: pypi
 ```
 
 Then publish a GitHub release or run the workflow manually.
+
+## npm Release
+
+The npm distribution is `ait-vcs`; the `ait` name is already owned by
+another project on npm. The npm package exports the `ait` command and
+installs the matching PyPI release into a package-private virtual
+environment during postinstall.
+
+Before publishing npm:
+
+1. Confirm `npm/ait-vcs/package.json` version matches `pyproject.toml`.
+2. Confirm the matching PyPI version is already available.
+3. Run `npm --prefix npm/ait-vcs test`.
+4. Run `(cd npm/ait-vcs && npm pack --dry-run)`.
+5. From `npm/ait-vcs`, run `npm publish --access public`.
+6. Smoke test with `npm install -g ait-vcs`.

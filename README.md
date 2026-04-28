@@ -7,15 +7,25 @@ work in an attempt branch that can be reviewed and promoted later.
 
 ## 30 Second Quickstart
 
-Install the PyPI package, enter a Git repository, let `ait` install
-repo-local wrappers for the agent CLIs it can find, then keep using
-`claude`, `codex`, `aider`, `gemini`, or `cursor`:
+Install the package, enter a Git repository, let `ait` install repo-local
+wrappers for the agent CLIs it can find, then keep using `claude`,
+`codex`, `aider`, `gemini`, or `cursor`:
 
 ```bash
 pipx install ait-vcs
 cd your-repo
 ait init
 direnv allow   # only if prompted
+claude ...
+```
+
+For npm-based environments, install the npm package instead. The package
+name is `ait-vcs`, but the installed command is still `ait`:
+
+```bash
+npm install -g ait-vcs
+cd your-repo
+ait init
 claude ...
 ```
 
@@ -75,7 +85,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.43.0` alpha quality for local dogfood use. It is
+This repository is at `0.44.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -108,14 +118,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.43.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.44.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.43.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.44.0"
 .venv/bin/ait --help
 ```
 
@@ -139,6 +149,22 @@ python3.14 -m venv .venv
 .venv/bin/ait --version
 .venv/bin/ait --help
 ```
+
+## Install From npm
+
+The npm package name is also `ait-vcs` because the shorter `ait` name is
+already owned by another project on npm. The installed command is still
+`ait`.
+
+```bash
+npm install -g ait-vcs
+ait --version
+ait --help
+```
+
+The npm installer requires Python 3.14+ on `PATH` and creates a private
+virtual environment inside the npm package, then installs the matching
+PyPI `ait-vcs` package into that environment.
 
 ## Manual Intent/Attempt Flow
 
@@ -758,7 +784,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.43.0
+git checkout v0.44.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

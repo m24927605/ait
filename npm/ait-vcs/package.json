@@ -1,0 +1,42 @@
+{
+  "name": "ait-vcs",
+  "version": "0.44.0",
+  "description": "npm installer for the ait AI-agent Git workflow CLI",
+  "license": "MIT",
+  "author": "sin-chengchen",
+  "homepage": "https://github.com/m24927605/ait#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/m24927605/ait.git",
+    "directory": "npm/ait-vcs"
+  },
+  "bugs": {
+    "url": "https://github.com/m24927605/ait/issues"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "git",
+    "vcs",
+    "provenance",
+    "claude",
+    "codex",
+    "gemini",
+    "cursor"
+  ],
+  "bin": {
+    "ait": "bin/ait.js"
+  },
+  "files": [
+    "bin/",
+    "scripts/",
+    "README.md"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/install-python.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
