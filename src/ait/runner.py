@@ -21,7 +21,7 @@ from ait.memory import (
     render_relevant_memory_recall,
     render_repo_memory_text,
 )
-from ait.memory_policy import EXCLUDED_MARKER, load_memory_policy, transcript_excluded
+from ait.memory_policy import EXCLUDED_MARKER, init_memory_policy, load_memory_policy, transcript_excluded
 from ait.redaction import redact_text
 from ait.workspace import WorkspaceError, create_attempt_commit
 
@@ -60,6 +60,7 @@ def run_agent_command(
     resolved_agent_id = agent_id or adapter.default_agent_id
     resolved_with_context = with_context or adapter.default_with_context
     root = Path(repo_root).resolve()
+    init_memory_policy(root)
     ensure_agent_memory_imported(root)
     daemon = start_daemon(root)
     if not daemon.running:

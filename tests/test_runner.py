@@ -36,6 +36,27 @@ class RunnerTests(unittest.TestCase):
             self.assertTrue((Path(result.workspace_ref) / "agent.txt").exists())
             self.assertEqual(1, len(result.attempt.commits))
             self.assertFalse(_git_stdout(Path(result.workspace_ref), "status", "--short"))
+            self.assertTrue((repo_root / ".ait" / "memory-policy.json").exists())
+
+    def test_run_agent_command_self_repairs_memory_policy_and_imports_agent_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            (repo_root / "CLAUDE.md").write_text("Prefer direct wrapped agent CLI use.\n", encoding="utf-8")
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="Self repair memory",
+                command=[sys.executable, "-c", "print('ok')"],
+                capture_command_output=True,
+            )
+
+            notes = list_memory_notes(repo_root, topic="agent-memory")
+
+            self.assertEqual(0, result.exit_code)
+            self.assertTrue((repo_root / ".ait" / "memory-policy.json").exists())
+            self.assertEqual(1, len(notes))
+            self.assertEqual("agent-memory:claude:CLAUDE.md", notes[0].source)
 
     def test_run_agent_command_returns_process_exit_code(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

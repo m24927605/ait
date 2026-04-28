@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.37.0 - 2026-04-28
+
+### Added
+
+- Make wrapped agent runs self-repair the default memory policy before
+  importing agent memory or building context, so direct `claude`,
+  `codex`, and `aider` invocations keep repo memory governance in place
+  even if `.ait/memory-policy.json` was removed.
+- Add runner coverage for wrapper-path self repair: `ait run` now
+  verifies that agent memory is imported and the memory policy exists as
+  part of normal agent execution.
+
 ## 0.36.0 - 2026-04-28
 
 ### Added
