@@ -615,6 +615,102 @@ class CliAdapterTests(unittest.TestCase):
             self.assertIn("aider:", stdout.getvalue())
             self.assertIn('eval "$(ait init --shell)"', stderr.getvalue())
 
+    def test_repair_named_adapter_rebuilds_damaged_wrapper_and_envrc(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            _git_commit_initial(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_codex = bin_dir / "codex"
+            real_codex.write_text("#!/bin/sh\nprintf 'real codex\\n'\n", encoding="utf-8")
+            real_codex.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "init", "--adapter", "codex", "--format", "json"]):
+                        with redirect_stdout(io.StringIO()):
+                            self.assertEqual(0, cli.main())
+                    wrapper_path = repo_root / ".ait" / "bin" / "codex"
+                    wrapper_path.write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
+                    wrapper_path.chmod(0o755)
+                    (repo_root / ".envrc").unlink()
+                    stdout = io.StringIO()
+                    with patch("sys.argv", ["ait", "repair", "codex", "--format", "json"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            payload = json.loads(stdout.getvalue())
+            repaired_wrapper = (repo_root / ".ait" / "bin" / "codex").read_text(encoding="utf-8")
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual(["codex"], payload["installed_adapters"])
+            self.assertIn("run --adapter codex --format json", repaired_wrapper)
+            self.assertIn(str(real_codex.resolve()), repaired_wrapper)
+            self.assertIn("PATH_add .ait/bin", (repo_root / ".envrc").read_text(encoding="utf-8"))
+
+    def test_repair_all_text_reports_before_after_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            _git_commit_initial(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_aider = bin_dir / "aider"
+            real_aider.write_text("#!/bin/sh\nprintf 'real aider\\n'\n", encoding="utf-8")
+            real_aider.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "repair"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            text = stdout.getvalue()
+
+            self.assertEqual(0, exit_code)
+            self.assertIn("AIT repair", text)
+            self.assertIn("Repaired:", text)
+            self.assertIn("- aider", text)
+            self.assertIn("Status changes:", text)
+            self.assertIn("wrapper_installed: False -> True", text)
+            self.assertIn("Current shell:", text)
+            self.assertTrue((repo_root / ".ait" / "bin" / "aider").exists())
+
+    def test_repair_without_real_binary_reports_skipped_without_wrapper(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            _git_commit_initial(repo_root)
+            stdout = io.StringIO()
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = "/usr/bin:/bin"
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "repair", "codex", "--format", "json"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            payload = json.loads(stdout.getvalue())
+
+            self.assertEqual(2, exit_code)
+            self.assertEqual([], payload["installed_adapters"])
+            self.assertEqual(["codex"], [item["name"] for item in payload["skipped_adapters"]])
+            self.assertFalse((repo_root / ".ait" / "bin" / "codex").exists())
+            self.assertFalse((repo_root / ".envrc").exists())
+
     def test_enable_json_installs_all_detected_agent_wrappers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp) / "repo"

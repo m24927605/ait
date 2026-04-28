@@ -48,7 +48,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.23.0` alpha quality for local dogfood use. It is
+This repository is at `0.24.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -81,14 +81,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.23.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.24.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.23.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.24.0"
 .venv/bin/ait --help
 ```
 
@@ -420,6 +420,15 @@ If a repo-local wrapper cannot find the real agent binary, it prints a
 diagnostic with the adapter, repo, wrapper path, real binary path, and a
 next step such as `ait status codex`.
 
+If a wrapper or `.envrc` is damaged after setup, repair the repo-local
+automation without learning the lower-level setup commands:
+
+```bash
+ait repair
+ait repair codex
+ait repair --format json
+```
+
 To set up direnv instead of changing the current shell directly:
 
 ```bash
@@ -595,6 +604,9 @@ ait adapter setup claude-code --install-wrapper --install-direnv
 ait init
 ait init --shell
 ait init --adapter codex --format json
+ait repair
+ait repair codex
+ait repair --format json
 ait enable
 ait enable --shell
 ait shell show --shell zsh
@@ -653,7 +665,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.23.0
+git checkout v0.24.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

@@ -251,6 +251,14 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser.add_argument("--format", choices=("text", "json"), default="text")
     status_parser.add_argument("--all", action="store_true", dest="all_adapters")
 
+    repair_parser = subparsers.add_parser("repair")
+    repair_parser.add_argument(
+        "name",
+        choices=tuple(name for name in sorted(ADAPTERS) if name != "shell"),
+        nargs="?",
+    )
+    repair_parser.add_argument("--format", choices=("text", "json"), default="text")
+
     enable_parser = subparsers.add_parser("enable")
     enable_parser.add_argument(
         "--adapter",
@@ -682,6 +690,22 @@ def main() -> int:
             print(_format_status(payload))
             _maybe_emit_automation_hint(args, repo_root, result)
         return 0
+    if args.command == "repair":
+        names = (args.name,) if args.name else tuple(name for name in sorted(ADAPTERS) if name != "shell")
+        before = tuple(doctor_automation(name, repo_root) for name in names)
+        try:
+            init_result = init_repo(repo_root)
+            result = enable_available_adapters(init_result.repo_root, names=names)
+        except AdapterError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        after = tuple(doctor_automation(name, init_result.repo_root) for name in names)
+        payload = _repair_payload(before, result, after)
+        if args.format == "json":
+            print(json.dumps(payload, indent=2))
+        else:
+            print(_format_repair(payload))
+        return 0 if result.installed else 2
     if args.command == "enable":
         try:
             result = enable_available_adapters(
@@ -941,6 +965,76 @@ def _format_init(payload: dict[str, object]) -> str:
                 "Current shell: no supported agent CLI found on PATH",
                 "Next:",
                 "- install claude, codex, or aider, then run ait init",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def _repair_payload(before, result, after) -> dict[str, object]:
+    before_payload = [_status_payload(item) for item in before]
+    after_payload = [_status_payload(item) for item in after]
+    before_by_adapter = {str(item["adapter"]): item for item in before_payload}
+    changes: list[dict[str, object]] = []
+    for item in after_payload:
+        adapter = str(item["adapter"])
+        previous = before_by_adapter.get(adapter, {})
+        changed_fields = {
+            key: {"before": previous.get(key), "after": item.get(key)}
+            for key in (
+                "ok",
+                "wrapper_installed",
+                "path_wrapper_active",
+                "real_agent_binary",
+                "direnv_loaded",
+            )
+            if previous.get(key) != item.get(key)
+        }
+        changes.append({"adapter": adapter, "changed": changed_fields})
+    return {
+        "before": before_payload,
+        "after": after_payload,
+        "installed_adapters": [item.adapter.name for item in result.installed],
+        "skipped_adapters": [asdict(item) for item in result.skipped],
+        "shell_snippet": result.shell_snippet,
+        "changes": changes,
+    }
+
+
+def _format_repair(payload: dict[str, object]) -> str:
+    lines = ["AIT repair"]
+    installed = [str(item) for item in payload.get("installed_adapters", [])]
+    if installed:
+        lines.append("Repaired:")
+        lines.extend(f"- {name}" for name in installed)
+    else:
+        lines.append("Repaired: none")
+    skipped = payload.get("skipped_adapters", [])
+    if skipped:
+        lines.append("Skipped:")
+        for item in skipped:
+            if isinstance(item, dict):
+                lines.append(f"- {item.get('name')}: {item.get('detail')}")
+    changes = payload.get("changes", [])
+    if changes:
+        lines.append("Status changes:")
+        for item in changes:
+            if not isinstance(item, dict):
+                continue
+            changed = item.get("changed", {})
+            if not changed:
+                lines.append(f"- {item.get('adapter')}: no status change")
+                continue
+            parts = []
+            if isinstance(changed, dict):
+                for key, values in changed.items():
+                    if isinstance(values, dict):
+                        parts.append(f"{key}: {values.get('before')} -> {values.get('after')}")
+            lines.append(f"- {item.get('adapter')}: " + ", ".join(parts))
+    if payload.get("shell_snippet"):
+        lines.extend(
+            [
+                "Current shell:",
+                '- eval "$(ait init --shell)"',
             ]
         )
     return "\n".join(lines)

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.24.0 - 2026-04-28
+
+### Added
+
+- Add `ait repair` to rebuild detected agent wrappers, restore `.envrc`
+  wrapper activation, and report before/after automation status.
+- Add `ait repair <adapter>` for scoped wrapper repair, such as
+  `ait repair codex`.
+- Add JSON and text repair output with installed adapters, skipped
+  adapters, shell activation hints, and status changes.
+- Keep repair conservative when no real agent binary is found: skip the
+  adapter and avoid creating wrapper or `.envrc` files for it.
+
 ## 0.23.0 - 2026-04-28
 
 ### Added
