@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.46.0 - 2026-04-29
+
+### Changed
+
+- Put install-version conflicts at the top of text `ait status` and
+  `ait status --all`, before agent-wrapper details, so users see the
+  shortest repair path first when an older pipx command shadows an npm
+  install.
+- Move regular `ait init` text output to a low-friction layout:
+  `AIT initialized`, installed wrappers, `Next:`, then detailed repo,
+  state, memory, and policy information.
+- Keep install-conflict repair steps in one top-level `Next:` block and
+  leave the detailed install inventory under `AIT install`.
+
 ## 0.45.0 - 2026-04-29
 
 ### Added

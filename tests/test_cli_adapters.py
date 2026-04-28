@@ -94,7 +94,7 @@ class CliAdapterTests(unittest.TestCase):
             real_claude.chmod(0o755)
             old_path = os.environ.get("PATH", "")
             stdout = io.StringIO()
-            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + "/usr/bin:/bin"
             try:
                 with chdir(repo_root):
                     with patch(
@@ -124,7 +124,7 @@ class CliAdapterTests(unittest.TestCase):
             real_claude.chmod(0o755)
             old_path = os.environ.get("PATH", "")
             stdout = io.StringIO()
-            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + "/usr/bin:/bin"
             try:
                 with chdir(repo_root):
                     with patch(
@@ -164,7 +164,7 @@ class CliAdapterTests(unittest.TestCase):
             real_claude.chmod(0o755)
             old_path = os.environ.get("PATH", "")
             stdout = io.StringIO()
-            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + "/usr/bin:/bin"
             try:
                 with chdir(repo_root):
                     with patch("sys.argv", ["ait", "bootstrap", "claude-code"]):
@@ -224,7 +224,7 @@ class CliAdapterTests(unittest.TestCase):
             real_codex.chmod(0o755)
             old_path = os.environ.get("PATH", "")
             stdout = io.StringIO()
-            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + "/usr/bin:/bin"
             try:
                 with chdir(repo_root):
                     with patch("sys.argv", ["ait", "init"]):
@@ -236,9 +236,8 @@ class CliAdapterTests(unittest.TestCase):
             text = stdout.getvalue()
 
             self.assertEqual(0, exit_code)
-            self.assertIn("AIT initialized", text)
-            self.assertIn("Agent wrappers: claude, codex", text)
-            self.assertIn("Current shell:", text)
+            self.assertTrue(text.startswith("AIT initialized\nAgent wrappers: claude, codex\nNext:\n"))
+            self.assertIn("Details:\nRepo:", text)
             self.assertTrue("direnv allow" in text or 'eval "$(ait init --shell)"' in text)
             self.assertTrue((repo_root / ".ait" / "config.json").exists())
             self.assertTrue((repo_root / ".ait" / "bin" / "claude").exists())
@@ -273,9 +272,11 @@ class CliAdapterTests(unittest.TestCase):
 
             self.assertEqual(0, exit_code)
             self.assertIn("Agent wrappers: aider, claude, codex, cursor, gemini", text)
+            self.assertIn("Next:", text)
+            self.assertIn("Details:", text)
             for command in ("claude", "codex", "aider", "gemini", "cursor"):
                 self.assertTrue((repo_root / ".ait" / "bin" / command).exists())
-                self.assertIn(f"- {command} ...", text)
+                self.assertIn(f"- then run {command} ...", text)
             self.assertIn("PATH_add .ait/bin", (repo_root / ".envrc").read_text(encoding="utf-8"))
 
     def test_init_json_can_limit_adapter_scope(self) -> None:
@@ -807,6 +808,38 @@ class CliAdapterTests(unittest.TestCase):
         self.assertIn("pipx uninstall ait-vcs", payload["next_steps"])
         self.assertIn("ait --version", payload["next_steps"])
 
+    def test_status_text_puts_install_conflict_before_agent_detail(self) -> None:
+        payload = {
+            "adapter": "claude-code",
+            "ok": False,
+            "git_repo": True,
+            "wrapper_installed": False,
+            "path_wrapper_active": False,
+            "real_agent_binary": True,
+            "direnv_available": True,
+            "direnv_loaded": False,
+            "agent_cli_ready": False,
+            "agent_cli_message": "not ready: run ait init --adapter claude-code",
+            "next_steps": ["ait init --adapter claude-code"],
+            "memory": {},
+            "installation": {
+                "current_version": "0.46.0",
+                "source": "npm",
+                "active_path": "/opt/homebrew/bin/ait",
+                "executable_path": "/opt/homebrew/lib/node_modules/ait-vcs/bin/ait.js",
+                "path_entries": [],
+                "conflict": True,
+                "next_steps": ["pipx uninstall ait-vcs", "rehash", "ait --version"],
+            },
+        }
+
+        text = cli._format_status(payload)
+
+        self.assertTrue(text.startswith("AIT install conflict: your shell has multiple ait commands or versions\n"))
+        self.assertIn("Next:\n- pipx uninstall ait-vcs\n- rehash\n- ait --version", text)
+        self.assertLess(text.index("AIT install conflict:"), text.index("Agent CLI:"))
+        self.assertNotIn("AIT install next steps:", text)
+
     def test_installation_source_classifies_npm_and_pipx_paths(self) -> None:
         self.assertEqual(
             "npm",
@@ -873,12 +906,16 @@ class CliAdapterTests(unittest.TestCase):
             os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
             try:
                 with chdir(repo_root):
-                    with patch("sys.argv", ["ait", "status"]):
-                        with redirect_stdout(stdout), redirect_stderr(stderr):
-                            exit_code = cli.main()
-                    with patch("sys.argv", ["ait", "status"]):
-                        with redirect_stdout(io.StringIO()), redirect_stderr(second_stderr):
-                            second_exit_code = cli.main()
+                    with patch(
+                        "ait.cli._installation_payload",
+                        return_value={"conflict": False, "path_entries": []},
+                    ):
+                        with patch("sys.argv", ["ait", "status"]):
+                            with redirect_stdout(stdout), redirect_stderr(stderr):
+                                exit_code = cli.main()
+                        with patch("sys.argv", ["ait", "status"]):
+                            with redirect_stdout(io.StringIO()), redirect_stderr(second_stderr):
+                                second_exit_code = cli.main()
             finally:
                 os.environ["PATH"] = old_path
 

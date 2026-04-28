@@ -1104,15 +1104,29 @@ def _format_init(payload: dict[str, object]) -> str:
     skipped = payload.get("skipped_adapters", [])
     ready = [str(item) for item in payload.get("ready_adapters", [])]
     statuses = [item for item in payload.get("status", []) if isinstance(item, dict)]
+    next_lines: list[str]
+    if ready:
+        next_lines = [f"- run {_agent_command_name(ready[0])} ..."]
+    elif payload.get("shell_snippet"):
+        if any(item.get("direnv_available") and not item.get("direnv_loaded") for item in statuses):
+            next_lines = ["- direnv allow"]
+        else:
+            next_lines = ['- eval "$(ait init --shell)"']
+        next_lines.extend(f"- then run {_agent_command_name(name)} ..." for name in installed)
+    else:
+        next_lines = ["- install claude, codex, aider, gemini, or cursor, then run ait init"]
     lines = [
         "AIT initialized",
-        f"Repo: {payload['repo_root']}",
-        f"State: {payload['ait_dir']}",
     ]
     if installed:
         lines.append("Agent wrappers: " + ", ".join(_agent_command_name(name) for name in installed))
     else:
         lines.append("Agent wrappers: none")
+    lines.append("Next:")
+    lines.extend(next_lines)
+    lines.append("Details:")
+    lines.append(f"Repo: {payload['repo_root']}")
+    lines.append(f"State: {payload['ait_dir']}")
     if skipped:
         lines.append("Skipped:")
         for item in skipped:
@@ -1136,32 +1150,8 @@ def _format_init(payload: dict[str, object]) -> str:
     if ready:
         lines.append("Ready now:")
         lines.extend(f"- {_agent_command_name(name)}" for name in ready)
-    elif payload.get("shell_snippet"):
-        if any(item.get("direnv_available") and not item.get("direnv_loaded") for item in statuses):
-            lines.extend(
-                [
-                    "Current shell:",
-                    "- direnv allow",
-                    "After that:",
-                ]
-            )
-        else:
-            lines.extend(
-                [
-                    "Current shell:",
-                    '- eval "$(ait init --shell)"',
-                    "After that:",
-                ]
-            )
-        lines.extend(f"- {_agent_command_name(name)} ..." for name in installed)
-    else:
-        lines.extend(
-            [
-                "Current shell: no supported agent CLI found on PATH",
-                "Next:",
-                "- install claude, codex, aider, gemini, or cursor, then run ait init",
-            ]
-        )
+    elif not payload.get("shell_snippet"):
+        lines.append("Current shell: no supported agent CLI found on PATH")
     return "\n".join(lines)
 
 
@@ -1520,7 +1510,22 @@ def _installation_next_steps(payload: dict[str, object]) -> list[str]:
     ]
 
 
-def _format_installation_lines(installation: dict[str, object]) -> list[str]:
+def _format_installation_alert_lines(installation: dict[str, object]) -> list[str]:
+    if not installation.get("conflict"):
+        return []
+    lines = ["AIT install conflict: your shell has multiple ait commands or versions"]
+    next_steps = installation.get("next_steps", [])
+    if next_steps:
+        lines.append("Next:")
+        lines.extend(f"- {step}" for step in next_steps)
+    return lines
+
+
+def _format_installation_lines(
+    installation: dict[str, object],
+    *,
+    include_next_steps: bool = True,
+) -> list[str]:
     lines = [
         "AIT install:",
         f"- version: {installation.get('current_version', 'unknown')}",
@@ -1542,7 +1547,7 @@ def _format_installation_lines(installation: dict[str, object]) -> list[str]:
             )
     if installation.get("conflict"):
         lines.append("AIT install conflict: True")
-    next_steps = installation.get("next_steps", [])
+    next_steps = installation.get("next_steps", []) if include_next_steps else []
     if next_steps:
         lines.append("AIT install next steps:")
         lines.extend(f"- {step}" for step in next_steps)
@@ -1591,7 +1596,11 @@ def _status_payload(
 
 def _format_status(payload: dict[str, object]) -> str:
     binary_label = "Real Claude binary" if payload["adapter"] == "claude-code" else "Real agent binary"
-    lines = [
+    installation = payload.get("installation")
+    lines = []
+    if isinstance(installation, dict):
+        lines.extend(_format_installation_alert_lines(installation))
+    lines.extend([
         f"Agent CLI: {_agent_cli_summary(payload)}",
         f"Adapter: {payload['adapter']}",
         f"OK: {payload['ok']}",
@@ -1603,10 +1612,9 @@ def _format_status(payload: dict[str, object]) -> str:
         f"direnv loaded: {payload['direnv_loaded']}",
         f"Agent CLI ready: {payload['agent_cli_ready']}",
         f"Agent CLI detail: {payload['agent_cli_message']}",
-    ]
-    installation = payload.get("installation")
+    ])
     if isinstance(installation, dict):
-        lines.extend(_format_installation_lines(installation))
+        lines.extend(_format_installation_lines(installation, include_next_steps=False))
     memory = payload.get("memory", {})
     if isinstance(memory, dict):
         imported = memory.get("imported_sources", [])
@@ -1648,11 +1656,16 @@ def _agent_cli_summary(payload: dict[str, object]) -> str:
 
 
 def _format_status_all(payload: list[dict[str, object]]) -> str:
-    lines = ["AIT Agent CLI Readiness"]
+    lines = []
     if payload:
         installation = payload[0].get("installation")
         if isinstance(installation, dict):
-            lines.extend(_format_installation_lines(installation))
+            lines.extend(_format_installation_alert_lines(installation))
+    lines.append("AIT Agent CLI Readiness")
+    if payload:
+        installation = payload[0].get("installation")
+        if isinstance(installation, dict):
+            lines.extend(_format_installation_lines(installation, include_next_steps=False))
     for item in payload:
         command = _agent_command_name(str(item["adapter"]))
         lines.append(
