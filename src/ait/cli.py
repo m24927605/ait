@@ -338,11 +338,12 @@ def main() -> int:
                 return 0
             print("error: no supported agent binaries found on PATH", file=sys.stderr)
             return 2
+        memory_import = import_agent_memory(result.repo_root)
         statuses = tuple(
             doctor_automation(item.adapter.name, result.repo_root)
             for item in automation.installed
         )
-        payload = _init_payload(result, automation, statuses)
+        payload = _init_payload(result, automation, statuses, memory_import)
         if args.format == "json":
             print(json.dumps(payload, indent=2))
         else:
@@ -947,9 +948,9 @@ def _format_memory_import(result) -> str:
     return "\n".join(lines)
 
 
-def _init_payload(init_result, automation, statuses) -> dict[str, object]:
+def _init_payload(init_result, automation, statuses, memory_import=None) -> dict[str, object]:
     status_payloads = [_status_payload(status) for status in statuses]
-    return {
+    payload = {
         "repo_root": str(init_result.repo_root),
         "ait_dir": str(init_result.ait_dir),
         "db_path": str(init_result.db_path),
@@ -961,6 +962,9 @@ def _init_payload(init_result, automation, statuses) -> dict[str, object]:
         "ready_adapters": [item["adapter"] for item in status_payloads if item["ok"]],
         "status": status_payloads,
     }
+    if memory_import is not None:
+        payload["memory_import"] = memory_import.to_dict()
+    return payload
 
 
 def _format_init(payload: dict[str, object]) -> str:
@@ -982,6 +986,17 @@ def _format_init(payload: dict[str, object]) -> str:
         for item in skipped:
             if isinstance(item, dict):
                 lines.append(f"- {item.get('name')}: {item.get('detail')}")
+    memory_import = payload.get("memory_import")
+    if isinstance(memory_import, dict):
+        imported = memory_import.get("imported", [])
+        memory_skipped = memory_import.get("skipped", [])
+        if imported:
+            lines.append("Imported memory:")
+            for item in imported:
+                if isinstance(item, dict):
+                    lines.append(f"- {item.get('source')}")
+        elif memory_skipped:
+            lines.append("Imported memory: none")
     if ready:
         lines.append("Ready now:")
         lines.extend(f"- {name}" for name in ready)

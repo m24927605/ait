@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from ait import cli
+from ait.memory import list_memory_notes
 
 
 class CliAdapterTests(unittest.TestCase):
@@ -276,12 +277,41 @@ class CliAdapterTests(unittest.TestCase):
             self.assertTrue((repo_root / ".ait" / "bin" / "codex").exists())
             self.assertFalse((repo_root / ".ait" / "bin" / "claude").exists())
 
+    def test_init_imports_detected_agent_memory_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            _git_commit_initial(repo_root)
+            (repo_root / "CLAUDE.md").write_text("Run repair before release.\n", encoding="utf-8")
+            stdout = io.StringIO()
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = "/usr/bin:/bin"
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "init", "--format", "json"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            payload = json.loads(stdout.getvalue())
+            notes = list_memory_notes(repo_root, topic="agent-memory")
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual(["agent-memory:claude:CLAUDE.md"], [
+                item["source"] for item in payload["memory_import"]["imported"]
+            ])
+            self.assertEqual(1, len(notes))
+            self.assertIn("Run repair before release.", notes[0].body)
+
     def test_init_shell_outputs_eval_safe_snippet(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp) / "repo"
             repo_root.mkdir()
             _git_init(repo_root)
             _git_commit_initial(repo_root)
+            (repo_root / "CLAUDE.md").write_text("Do not import from shell mode.\n", encoding="utf-8")
             bin_dir = Path(tmp) / "bin"
             bin_dir.mkdir()
             real_codex = bin_dir / "codex"
@@ -303,6 +333,7 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertEqual(f'export PATH={wrapper_dir}:"$PATH"\n', stdout.getvalue())
             self.assertTrue((wrapper_dir / "codex").exists())
+            self.assertEqual((), list_memory_notes(repo_root, topic="agent-memory"))
 
     def test_doctor_claude_code_json_reports_automation_checks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

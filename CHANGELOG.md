@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.26.0 - 2026-04-28
+
+### Added
+
+- Make `ait init` safely import detected agent memory files into ait
+  memory notes during repository initialization.
+- Add `memory_import` details to `ait init --format json` so scripts can
+  inspect imported and skipped memory sources.
+
+### Changed
+
+- Keep `ait init --shell` shell-only and eval-safe: it installs wrappers
+  and prints only the PATH export for the current terminal.
+
 ## 0.25.0 - 2026-04-28
 
 ### Added

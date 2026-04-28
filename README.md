@@ -20,10 +20,11 @@ claude ...
 
 `ait init --shell` initializes `.ait/`, installs repo-local wrappers for
 detected agent CLIs, and prints a shell export for the current terminal.
-After that, detected agent commands resolve to `.ait/bin/*`
-inside that repository. The wrappers run agents through `ait run`, so
-the agent edits an isolated attempt worktree and `ait` records the
-result as an attempt-linked commit.
+After that, detected agent commands resolve to `.ait/bin/*` inside that
+repository. The wrappers run agents through `ait run`, so the agent edits
+an isolated attempt worktree and `ait` records the result as an
+attempt-linked commit. A regular `ait init` also imports existing agent
+memory files such as `CLAUDE.md` and `AGENTS.md` into ait memory notes.
 
 If you do not use `pipx`, install in a virtual environment:
 
@@ -48,7 +49,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.25.0` alpha quality for local dogfood use. It is
+This repository is at `0.26.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -81,14 +82,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.25.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.26.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.25.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.26.0"
 .venv/bin/ait --help
 ```
 
@@ -678,7 +679,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.25.0
+git checkout v0.26.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q
