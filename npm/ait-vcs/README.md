@@ -21,3 +21,8 @@ Requirements:
 
 The npm package name is `ait-vcs` because `ait` is already owned by
 another project on npm.
+
+If npm installation succeeds but `ait --version` still shows an older
+version, run `ait status`. The status output reports which `ait`
+executable your shell is using and suggests cleanup steps for common
+PATH conflicts, including older pipx installs.

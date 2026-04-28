@@ -765,8 +765,71 @@ class CliAdapterTests(unittest.TestCase):
             self.assertFalse(payload["memory"]["initialized"])
             self.assertEqual("uninitialized", payload["memory"]["health"])
             self.assertEqual(["CLAUDE.md"], payload["memory"]["pending_paths"])
+            self.assertEqual(cli.package_version(), payload["installation"]["current_version"])
+            self.assertIn("path_entries", payload["installation"])
             self.assertIn("ait init --adapter claude-code", payload["next_steps"])
             self.assertFalse((repo_root / ".ait").exists())
+
+    def test_installation_payload_detects_npm_pipx_version_conflict(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            npm_bin = Path(tmp) / "homebrew" / "bin"
+            pipx_bin = Path(tmp) / ".local" / "bin"
+            npm_pkg_bin = Path(tmp) / "homebrew" / "lib" / "node_modules" / "ait-vcs" / "bin"
+            pipx_venv_bin = Path(tmp) / ".local" / "pipx" / "venvs" / "ait-vcs" / "bin"
+            npm_bin.mkdir(parents=True)
+            pipx_bin.mkdir(parents=True)
+            npm_pkg_bin.mkdir(parents=True)
+            pipx_venv_bin.mkdir(parents=True)
+            npm_real = npm_pkg_bin / "ait.js"
+            pipx_real = pipx_venv_bin / "ait"
+            npm_real.write_text("#!/bin/sh\nprintf 'ait 0.45.0\\n'\n", encoding="utf-8")
+            pipx_real.write_text("#!/bin/sh\nprintf 'ait 0.6.7\\n'\n", encoding="utf-8")
+            npm_real.chmod(0o755)
+            pipx_real.chmod(0o755)
+            npm_ait = npm_bin / "ait"
+            pipx_ait = pipx_bin / "ait"
+            npm_ait.symlink_to(npm_real)
+            pipx_ait.symlink_to(pipx_real)
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = str(pipx_bin) + os.pathsep + str(npm_bin) + os.pathsep + old_path
+            try:
+                payload = cli._installation_payload()
+            finally:
+                os.environ["PATH"] = old_path
+
+        self.assertEqual(str(pipx_ait), payload["active_path"])
+        self.assertTrue(payload["conflict"])
+        by_path = {item["path"]: item for item in payload["path_entries"]}
+        self.assertEqual("0.6.7", by_path[str(pipx_ait)]["version"])
+        self.assertEqual("0.45.0", by_path[str(npm_ait)]["version"])
+        self.assertEqual("pipx", by_path[str(pipx_ait)]["source"])
+        self.assertEqual("npm", by_path[str(npm_ait)]["source"])
+        self.assertIn("pipx uninstall ait-vcs", payload["next_steps"])
+        self.assertIn("ait --version", payload["next_steps"])
+
+    def test_installation_source_classifies_npm_and_pipx_paths(self) -> None:
+        self.assertEqual(
+            "npm",
+            cli._classify_ait_source("/opt/homebrew/lib/node_modules/ait-vcs/bin/ait.js"),
+        )
+        self.assertEqual(
+            "pipx",
+            cli._classify_ait_source("/Users/me/.local/pipx/venvs/ait-vcs/bin/ait"),
+        )
+
+    def test_installation_source_classifies_local_npm_package_venv(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package_root = Path(tmp) / "ait-vcs"
+            bin_dir = package_root / "bin"
+            venv_bin = package_root / "libexec" / "venv" / "bin"
+            bin_dir.mkdir(parents=True)
+            venv_bin.mkdir(parents=True)
+            (package_root / "package.json").write_text('{"name":"ait-vcs"}\n', encoding="utf-8")
+            (bin_dir / "ait.js").write_text("#!/usr/bin/env node\n", encoding="utf-8")
+            ait_path = venv_bin / "ait"
+            ait_path.write_text("#!/bin/sh\n", encoding="utf-8")
+
+            self.assertEqual("npm", cli._classify_ait_source(str(ait_path)))
 
     def test_status_json_reports_memory_health_when_state_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

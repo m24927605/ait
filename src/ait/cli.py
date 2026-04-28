@@ -4,7 +4,11 @@ import argparse
 from dataclasses import asdict
 from importlib import metadata
 import json
+import os
 from pathlib import Path
+import re
+import shutil
+import subprocess
 import sys
 import tomllib
 
@@ -794,10 +798,12 @@ def main() -> int:
             print("error: no supported agent binaries found on PATH", file=sys.stderr)
             return 2
         result = doctor_automation(args.name or "claude-code", repo_root)
+        payload = asdict(result)
+        payload["installation"] = _installation_payload()
         if args.format == "json":
-            print(json.dumps(asdict(result), indent=2))
+            print(json.dumps(payload, indent=2))
         else:
-            print(_format_adapter_doctor(result))
+            print(_format_adapter_doctor(result, installation=payload["installation"]))
         return 0 if result.ok else 2
     if args.command == "status":
         if args.all_adapters:
@@ -807,7 +813,11 @@ def main() -> int:
                 if name != "shell"
             )
             memory_status = _memory_status_payload(repo_root)
-            payload = [_status_payload(result, memory_status=memory_status) for result in results]
+            installation = _installation_payload()
+            payload = [
+                _status_payload(result, memory_status=memory_status, installation=installation)
+                for result in results
+            ]
             if args.format == "json":
                 print(json.dumps(payload, indent=2))
             else:
@@ -815,7 +825,11 @@ def main() -> int:
                 _maybe_emit_status_all_hint(args, repo_root, results)
             return 0
         result = doctor_automation(args.name, repo_root)
-        payload = _status_payload(result, memory_status=_memory_status_payload(repo_root))
+        payload = _status_payload(
+            result,
+            memory_status=_memory_status_payload(repo_root),
+            installation=_installation_payload(),
+        )
         if args.format == "json":
             print(json.dumps(payload, indent=2))
         else:
@@ -1007,7 +1021,7 @@ def _format_adapter(adapter) -> str:
     return "\n".join(lines)
 
 
-def _format_adapter_doctor(result) -> str:
+def _format_adapter_doctor(result, *, installation: dict[str, object] | None = None) -> str:
     lines = [
         f"Adapter: {result.adapter.name}",
         f"OK: {result.ok}",
@@ -1020,6 +1034,8 @@ def _format_adapter_doctor(result) -> str:
     if next_steps:
         lines.append("Next steps:")
         lines.extend(f"- {step}" for step in next_steps)
+    if installation is not None:
+        lines.extend(_format_installation_lines(installation))
     return "\n".join(lines)
 
 
@@ -1357,7 +1373,201 @@ def _memory_status_payload(repo_root: Path) -> dict[str, object]:
         }
 
 
-def _status_payload(result, *, memory_status: dict[str, object] | None = None) -> dict[str, object]:
+def _installation_payload() -> dict[str, object]:
+    current_version = package_version()
+    active_path = shutil.which("ait") or ""
+    executable_path = _resolve_existing_path(sys.argv[0]) if sys.argv and sys.argv[0] else ""
+    candidates = _ait_path_candidates(os.environ.get("PATH", ""))
+    candidate_payloads = [
+        _ait_binary_payload(path, active_path=active_path, executable_path=executable_path)
+        for path in candidates
+    ]
+    versions = {
+        str(item.get("version"))
+        for item in candidate_payloads
+        if item.get("version") and item.get("version") != "unknown"
+    }
+    active = next((item for item in candidate_payloads if item.get("active")), None)
+    conflicts = len(versions) > 1
+    if active and active.get("version") not in ("", "unknown", current_version):
+        conflicts = True
+    payload = {
+        "current_version": current_version,
+        "active_path": active_path,
+        "executable_path": executable_path,
+        "python_executable": sys.executable,
+        "source": _classify_ait_source(executable_path or active_path),
+        "path_entries": candidate_payloads,
+        "conflict": conflicts,
+    }
+    payload["next_steps"] = _installation_next_steps(payload)
+    return payload
+
+
+def _ait_path_candidates(path_value: str) -> list[str]:
+    candidates: list[str] = []
+    seen: set[str] = set()
+    executable = "ait.exe" if os.name == "nt" else "ait"
+    for entry in path_value.split(os.pathsep):
+        if not entry:
+            continue
+        candidate = Path(entry) / executable
+        if not candidate.is_file() or not os.access(candidate, os.X_OK):
+            continue
+        resolved = _resolve_existing_path(str(candidate))
+        key = resolved or str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        candidates.append(str(candidate))
+    return candidates
+
+
+def _ait_binary_payload(path: str, *, active_path: str, executable_path: str) -> dict[str, object]:
+    resolved = _resolve_existing_path(path)
+    return {
+        "path": path,
+        "resolved_path": resolved,
+        "source": _classify_ait_source(resolved or path),
+        "version": _ait_binary_version(path),
+        "active": _same_path(path, active_path),
+        "current_executable": _same_path(path, executable_path),
+    }
+
+
+def _ait_binary_version(path: str) -> str:
+    try:
+        completed = subprocess.run(
+            [path, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "unknown"
+    text = (completed.stdout or completed.stderr).strip()
+    match = re.search(r"\bait\s+([^\s]+)", text)
+    return match.group(1) if match else "unknown"
+
+
+def _classify_ait_source(path: str) -> str:
+    normalized = path.replace("\\", "/")
+    if "/node_modules/ait-vcs/" in normalized or normalized.endswith("/node_modules/ait-vcs/bin/ait.js"):
+        return "npm"
+    if _inside_npm_package(path):
+        return "npm"
+    if "/pipx/venvs/ait-vcs/" in normalized:
+        return "pipx"
+    if "/.venv/" in normalized or normalized.endswith("/venv/bin/ait"):
+        return "venv"
+    if "/site-packages/" in normalized or "/dist-packages/" in normalized:
+        return "python"
+    if normalized:
+        return "path"
+    return "unknown"
+
+
+def _inside_npm_package(path: str) -> bool:
+    try:
+        current = Path(path).expanduser().resolve()
+    except OSError:
+        return False
+    for parent in current.parents:
+        package_json = parent / "package.json"
+        if not package_json.is_file():
+            continue
+        try:
+            data = json.loads(package_json.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if data.get("name") == "ait-vcs" and (parent / "bin" / "ait.js").is_file():
+            return True
+    return False
+
+
+def _installation_next_steps(payload: dict[str, object]) -> list[str]:
+    if not payload.get("conflict"):
+        return []
+    entries = [item for item in payload.get("path_entries", []) if isinstance(item, dict)]
+    active_path = str(payload.get("active_path") or "")
+    active = next((item for item in entries if item.get("active")), None)
+    npm_entries = [item for item in entries if item.get("source") == "npm"]
+    pipx_entries = [item for item in entries if item.get("source") == "pipx"]
+    if pipx_entries and npm_entries:
+        return [
+            "pipx uninstall ait-vcs",
+            "rehash",
+            "ait --version",
+        ]
+    if active and active.get("source") != "npm" and npm_entries:
+        npm_path = str(npm_entries[0].get("path"))
+        return [
+            f"put {str(Path(npm_path).parent)} before {str(Path(active_path).parent)} in PATH",
+            "rehash",
+            "ait --version",
+        ]
+    if pipx_entries:
+        return [
+            "remove older ait executables from PATH or uninstall the older package",
+            "rehash",
+            "ait --version",
+        ]
+    return [
+        "keep only one ait executable on PATH, or put the preferred one first",
+        "rehash",
+        "ait --version",
+    ]
+
+
+def _format_installation_lines(installation: dict[str, object]) -> list[str]:
+    lines = [
+        "AIT install:",
+        f"- version: {installation.get('current_version', 'unknown')}",
+        f"- source: {installation.get('source', 'unknown')}",
+        f"- active path: {installation.get('active_path') or 'not found on PATH'}",
+        f"- executable: {installation.get('executable_path') or 'unknown'}",
+    ]
+    entries = [item for item in installation.get("path_entries", []) if isinstance(item, dict)]
+    if entries:
+        lines.append("AIT commands on PATH:")
+        for item in entries:
+            marker = " active" if item.get("active") else ""
+            lines.append(
+                "- "
+                f"{item.get('path')} "
+                f"version={item.get('version', 'unknown')} "
+                f"source={item.get('source', 'unknown')}"
+                f"{marker}"
+            )
+    if installation.get("conflict"):
+        lines.append("AIT install conflict: True")
+    next_steps = installation.get("next_steps", [])
+    if next_steps:
+        lines.append("AIT install next steps:")
+        lines.extend(f"- {step}" for step in next_steps)
+    return lines
+
+
+def _resolve_existing_path(path: str) -> str:
+    try:
+        return str(Path(path).expanduser().resolve())
+    except OSError:
+        return path
+
+
+def _same_path(left: str, right: str) -> bool:
+    if not left or not right:
+        return False
+    return _resolve_existing_path(left) == _resolve_existing_path(right)
+
+
+def _status_payload(
+    result,
+    *,
+    memory_status: dict[str, object] | None = None,
+    installation: dict[str, object] | None = None,
+) -> dict[str, object]:
     checks = {check.name: check.ok for check in result.checks}
     payload = {
         "adapter": result.adapter.name,
@@ -1372,6 +1582,8 @@ def _status_payload(result, *, memory_status: dict[str, object] | None = None) -
         "memory": memory_status or {},
         "next_steps": _doctor_next_steps(result),
     }
+    if installation is not None:
+        payload["installation"] = installation
     payload["agent_cli_ready"] = payload["ok"]
     payload["agent_cli_message"] = _agent_cli_message(payload)
     return payload
@@ -1392,6 +1604,9 @@ def _format_status(payload: dict[str, object]) -> str:
         f"Agent CLI ready: {payload['agent_cli_ready']}",
         f"Agent CLI detail: {payload['agent_cli_message']}",
     ]
+    installation = payload.get("installation")
+    if isinstance(installation, dict):
+        lines.extend(_format_installation_lines(installation))
     memory = payload.get("memory", {})
     if isinstance(memory, dict):
         imported = memory.get("imported_sources", [])
@@ -1434,6 +1649,10 @@ def _agent_cli_summary(payload: dict[str, object]) -> str:
 
 def _format_status_all(payload: list[dict[str, object]]) -> str:
     lines = ["AIT Agent CLI Readiness"]
+    if payload:
+        installation = payload[0].get("installation")
+        if isinstance(installation, dict):
+            lines.extend(_format_installation_lines(installation))
     for item in payload:
         command = _agent_command_name(str(item["adapter"]))
         lines.append(

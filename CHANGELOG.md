@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.45.0 - 2026-04-29
+
+### Added
+
+- Add install-source diagnostics to `ait status` and `ait doctor`,
+  including the active `ait` path, current package version, executable
+  path, Python executable, every `ait` command found on `PATH`, and
+  detected source type such as npm, pipx, venv, or generic PATH.
+- Detect multiple `ait` commands with conflicting versions and report
+  low-friction next steps such as `pipx uninstall ait-vcs`, `rehash`,
+  and `ait --version` when an older pipx command shadows the npm
+  install.
+- Add regression coverage for npm/pipx version conflict detection and
+  source classification.
+
 ## 0.44.0 - 2026-04-29
 
 ### Added
