@@ -22,6 +22,12 @@ DEFAULT_EXCLUDE_TRANSCRIPT_PATTERNS = (
     "BEGIN RSA PRIVATE KEY",
     "BEGIN OPENSSH PRIVATE KEY",
 )
+DEFAULT_RECALL_SOURCE_ALLOW = (
+    "attempt-memory:*",
+    "agent-memory:*",
+)
+DEFAULT_RECALL_SOURCE_BLOCK: tuple[str, ...] = ()
+DEFAULT_RECALL_LINT_BLOCK_SEVERITIES = ("error",)
 EXCLUDED_MARKER = "[EXCLUDED BY MEMORY POLICY]"
 
 
@@ -29,11 +35,17 @@ EXCLUDED_MARKER = "[EXCLUDED BY MEMORY POLICY]"
 class MemoryPolicy:
     exclude_paths: tuple[str, ...] = DEFAULT_EXCLUDE_PATHS
     exclude_transcript_patterns: tuple[str, ...] = DEFAULT_EXCLUDE_TRANSCRIPT_PATTERNS
+    recall_source_allow: tuple[str, ...] = DEFAULT_RECALL_SOURCE_ALLOW
+    recall_source_block: tuple[str, ...] = DEFAULT_RECALL_SOURCE_BLOCK
+    recall_lint_block_severities: tuple[str, ...] = DEFAULT_RECALL_LINT_BLOCK_SEVERITIES
 
     def to_dict(self) -> dict[str, object]:
         return {
             "exclude_paths": list(self.exclude_paths),
             "exclude_transcript_patterns": list(self.exclude_transcript_patterns),
+            "recall_source_allow": list(self.recall_source_allow),
+            "recall_source_block": list(self.recall_source_block),
+            "recall_lint_block_severities": list(self.recall_lint_block_severities),
         }
 
 
@@ -108,20 +120,53 @@ def transcript_excluded(text: str, policy: MemoryPolicy) -> bool:
     return any(pattern.casefold() in haystack for pattern in policy.exclude_transcript_patterns if pattern)
 
 
+def recall_source_blocked(source: str, policy: MemoryPolicy) -> bool:
+    return _matches_any(source, policy.recall_source_block)
+
+
+def recall_source_allowed(source: str, policy: MemoryPolicy) -> bool:
+    return _matches_any(source, policy.recall_source_allow)
+
+
 def _policy_from_mapping(data: dict[str, Any], *, path: Path) -> MemoryPolicy:
     exclude_paths = _string_tuple(data.get("exclude_paths", DEFAULT_EXCLUDE_PATHS), path=path)
     patterns = _string_tuple(
         data.get("exclude_transcript_patterns", DEFAULT_EXCLUDE_TRANSCRIPT_PATTERNS),
         path=path,
     )
+    recall_source_allow = _string_tuple(
+        data.get("recall_source_allow", DEFAULT_RECALL_SOURCE_ALLOW),
+        path=path,
+    )
+    recall_source_block = _string_tuple(
+        data.get("recall_source_block", DEFAULT_RECALL_SOURCE_BLOCK),
+        path=path,
+    )
+    recall_lint_block_severities = _string_tuple(
+        data.get("recall_lint_block_severities", DEFAULT_RECALL_LINT_BLOCK_SEVERITIES),
+        path=path,
+    )
+    invalid_severities = sorted(
+        severity
+        for severity in recall_lint_block_severities
+        if severity not in {"error", "warning", "info"}
+    )
+    if invalid_severities:
+        raise ValueError(
+            f"invalid memory policy JSON at {path}: invalid recall lint severities "
+            + ", ".join(invalid_severities)
+        )
     return MemoryPolicy(
         exclude_paths=exclude_paths,
         exclude_transcript_patterns=patterns,
+        recall_source_allow=recall_source_allow,
+        recall_source_block=recall_source_block,
+        recall_lint_block_severities=recall_lint_block_severities,
     )
 
 
 def _string_tuple(value: object, *, path: Path) -> tuple[str, ...]:
-    if not isinstance(value, list):
+    if not isinstance(value, (list, tuple)):
         raise ValueError(f"invalid memory policy JSON at {path}: expected list")
     result = tuple(str(item) for item in value if str(item).strip())
     if len(result) != len(value):
@@ -134,3 +179,7 @@ def _normalize_path(path: str | Path) -> str:
     while normalized.startswith("./"):
         normalized = normalized[2:]
     return normalized
+
+
+def _matches_any(value: str, patterns: tuple[str, ...]) -> bool:
+    return any(fnmatch.fnmatch(value, pattern) for pattern in patterns)

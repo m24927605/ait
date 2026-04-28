@@ -73,6 +73,10 @@ Claude Code receives the same memory automatically through the
 repo-local wrapper because the Claude Code adapter enables context by
 default. The wrapper calls `ait run --adapter claude-code`, which writes
 `.ait-context.md` into the attempt worktree before launching Claude.
+This should remain a low-interruption workflow: users keep invoking their
+agent CLI, while ait applies memory import, recall, and governance in the
+background. Memory policy commands are diagnostics and repo-level
+guardrails, not required daily steps.
 
 ## Injection Contract
 

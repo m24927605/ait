@@ -245,7 +245,7 @@ class CliRunTests(unittest.TestCase):
         self.assertEqual(0, include_exit)
         self.assertIn("attempt-memory:healthy", selected_sources)
         self.assertNotIn("attempt-memory:secret", selected_sources)
-        self.assertEqual("lint error", skipped_secret[0]["reason"])
+        self.assertEqual("lint issue", skipped_secret[0]["reason"])
         self.assertIn("possible_secret", skipped_secret[0]["lint_codes"])
         self.assertIn("attempt-memory:secret", {item["source"] for item in include_payload["selected"]})
 
@@ -478,6 +478,9 @@ class CliRunTests(unittest.TestCase):
         self.assertTrue(init_payload["path"].endswith(".ait/memory-policy.json"))
         self.assertIn(".env", show_payload["exclude_paths"])
         self.assertIn("BEGIN PRIVATE KEY", show_payload["exclude_transcript_patterns"])
+        self.assertEqual(["attempt-memory:*", "agent-memory:*"], show_payload["recall_source_allow"])
+        self.assertEqual([], show_payload["recall_source_block"])
+        self.assertEqual(["error"], show_payload["recall_lint_block_severities"])
 
 
 def _init_git_repo(repo_root: Path) -> None:

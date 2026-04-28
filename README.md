@@ -31,14 +31,15 @@ files, commits, and confidence so future agents can reuse what happened.
 When a new wrapped run starts, `ait` retrieves the most relevant
 agent/attempt memory into a compact `AIT Relevant Memory` context
 section, skipping notes with lint errors by default so suspected secrets
-or duplicate bad memory are not injected back into the agent. Use
-`ait memory recall <query>` or `ait memory recall --auto` to inspect what
-memory would be selected before a run, and
-`ait memory recall --include-unhealthy` when diagnosing blocked notes.
-Use `ait memory lint` to audit memory quality and `ait memory lint --fix`
-for conservative duplicate, secret, and overlong-note repairs. `ait
-status` reports memory health, and `ait repair` runs the conservative
-memory fixes as part of repo repair.
+or duplicate bad memory are not injected back into the agent. This is a
+zero-touch path: day to day, users keep using `claude`, `codex`, or
+`aider` and do not need to run memory commands. Repo-local policy lets a
+project owner tighten automatic recall by source pattern or lint
+severity for teams that need stricter governance. Those settings are
+guardrails for ait's background automation, not a daily workflow for
+every user. Diagnostic commands such as `ait memory recall`,
+`ait memory lint`, and `ait status` remain available when someone wants
+to inspect what ait did.
 
 If you do not use `pipx`, install in a virtual environment:
 
@@ -63,7 +64,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.32.0` alpha quality for local dogfood use. It is
+This repository is at `0.33.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -96,14 +97,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.32.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.33.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.32.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.33.0"
 .venv/bin/ait --help
 ```
 
@@ -352,7 +353,11 @@ Use `ait memory policy init` to create `.ait/memory-policy.json`.
 The policy excludes sensitive changed paths such as `.env`, `*.pem`,
 and `secrets/` from memory summaries/search metadata, and excludes
 transcripts matching private-key markers from durable transcript
-contents before they can become searchable memory.
+contents before they can become searchable memory. The same policy also
+governs background relevant-memory recall with `recall_source_allow`,
+`recall_source_block`, and `recall_lint_block_severities`. Most users do
+not need to edit this file; it is a repo-level guardrail for ait's
+automatic memory selection.
 
 `ait memory graph build` materializes a derived repo brain under
 `.ait/brain/graph.json` and `.ait/brain/REPORT.md`. The graph connects
@@ -455,7 +460,9 @@ ait memory import --path .cursor/rules
 ait memory import --format json
 ```
 
-To inspect or govern memory before it reaches an agent context:
+Daily agent use does not require these commands. They are available for
+diagnostics, CI, and team-level governance when someone needs to inspect
+or repair the background memory system:
 
 ```bash
 ait status
@@ -709,7 +716,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.32.0
+git checkout v0.33.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

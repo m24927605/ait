@@ -58,9 +58,14 @@ memory slice.
     rendered memory, hot files, or memory search metadata.
 25. Policy-excluded transcript content is replaced before durable
     storage and cannot be found through `ait memory search`.
-26. `ait memory graph build/show/query` can build and inspect a
+26. Recall governance policy can allow or block memory sources and can
+    block selected lint severities from automatic agent context.
+27. Default wrapped-agent use remains low-interruption: users can keep
+    invoking the agent CLI while ait applies memory governance in the
+    background.
+28. `ait memory graph build/show/query` can build and inspect a
     derived repo brain from local memory evidence.
-27. Wrapped agent context includes both `AIT Long-Term Repo Memory` and
+29. Wrapped agent context includes both `AIT Long-Term Repo Memory` and
     `AIT Repo Brain Briefing`.
 
 ## Manual Smoke

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.33.0 - 2026-04-28
+
+### Added
+
+- Add policy-driven relevant-memory governance while keeping the default
+  agent workflow zero-touch for users.
+- Add repo-local recall source allow and block patterns to
+  `.ait/memory-policy.json`.
+- Add repo-local recall lint severity gates so teams can choose whether
+  warnings or info-level memory issues are blocked from automatic agent
+  context injection.
+- Render the active recall governance policy from `ait memory policy
+  show`.
+
 ## 0.32.0 - 2026-04-28
 
 ### Added

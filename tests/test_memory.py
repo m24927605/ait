@@ -141,9 +141,84 @@ class MemoryTests(unittest.TestCase):
 
             self.assertIn(healthy.id, selected_ids)
             self.assertNotIn(unhealthy.id, selected_ids)
-            self.assertEqual("lint error", skipped[unhealthy.id]["reason"])
+            self.assertEqual("lint issue", skipped[unhealthy.id]["reason"])
             self.assertIn("possible_secret", skipped[unhealthy.id]["lint_codes"])
             self.assertIn(unhealthy.id, {item.id for item in include_all.selected})
+
+    def test_relevant_memory_recall_respects_policy_source_allow_and_block(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            init_memory_policy(repo_root)
+            policy_path = repo_root / ".ait" / "memory-policy.json"
+            policy_path.write_text(
+                json.dumps(
+                    {
+                        "recall_source_allow": ["attempt-memory:*"],
+                        "recall_source_block": ["attempt-memory:blocked"],
+                        "recall_lint_block_severities": ["error"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            allowed = add_memory_note(
+                repo_root,
+                topic="attempt-memory",
+                source="attempt-memory:allowed",
+                body="Billing retry path changed_files=billing_retry.py confidence=high",
+            )
+            blocked = add_memory_note(
+                repo_root,
+                topic="attempt-memory",
+                source="attempt-memory:blocked",
+                body="Billing retry blocked path changed_files=billing_retry.py confidence=high",
+            )
+            agent = add_memory_note(
+                repo_root,
+                topic="agent-memory",
+                source="agent-memory:claude:CLAUDE.md",
+                body="Billing retry agent guidance confidence=advisory",
+            )
+
+            recall = build_relevant_memory_recall(repo_root, "billing retry")
+            selected_ids = {item.id for item in recall.selected}
+            skipped = {str(item["id"]): item for item in recall.skipped}
+
+            self.assertIn(allowed.id, selected_ids)
+            self.assertNotIn(blocked.id, selected_ids)
+            self.assertNotIn(agent.id, selected_ids)
+            self.assertEqual("source blocked by memory policy", skipped[blocked.id]["reason"])
+            self.assertEqual("source not allowed by memory policy", skipped[agent.id]["reason"])
+
+    def test_relevant_memory_recall_policy_can_block_warning_severities(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            init_memory_policy(repo_root)
+            policy_path = repo_root / ".ait" / "memory-policy.json"
+            policy_path.write_text(
+                json.dumps(
+                    {
+                        "recall_source_allow": ["attempt-memory:*"],
+                        "recall_lint_block_severities": ["error", "warning"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            warning = add_memory_note(
+                repo_root,
+                topic="attempt-memory",
+                source="attempt-memory:missing-confidence",
+                body="Billing retry path changed_files=billing_retry.py",
+            )
+
+            recall = build_relevant_memory_recall(repo_root, "billing retry")
+            selected_ids = {item.id for item in recall.selected}
+            skipped = {str(item["id"]): item for item in recall.skipped}
+
+            self.assertNotIn(warning.id, selected_ids)
+            self.assertEqual("lint issue", skipped[warning.id]["reason"])
+            self.assertIn("missing_confidence", skipped[warning.id]["lint_codes"])
 
     def test_import_agent_memory_detects_common_agent_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

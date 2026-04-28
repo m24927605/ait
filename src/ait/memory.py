@@ -15,6 +15,8 @@ from ait.memory_policy import (
     default_memory_policy,
     load_memory_policy,
     path_excluded,
+    recall_source_allowed,
+    recall_source_blocked,
     transcript_excluded,
 )
 from ait.redaction import has_redactions, redact_text
@@ -1043,9 +1045,10 @@ def search_repo_memory(
     *,
     limit: int = 8,
     ranker: str = "vector",
+    policy: MemoryPolicy | None = None,
 ) -> tuple[MemorySearchResult, ...]:
     root = resolve_repo_root(repo_root)
-    policy = load_memory_policy(root)
+    resolved_policy = policy or load_memory_policy(root)
     conn = connect_db(root / ".ait" / "state.sqlite3")
     try:
         run_migrations(conn)
@@ -1055,7 +1058,7 @@ def search_repo_memory(
             limit=limit,
             ranker=ranker,
             repo_root=root,
-            policy=policy,
+            policy=resolved_policy,
         )
     finally:
         conn.close()
@@ -1119,8 +1122,14 @@ def build_relevant_memory_recall(
     budget_chars: int = 4000,
     include_unhealthy: bool = False,
 ) -> RelevantMemoryRecall:
-    candidates = search_repo_memory(repo_root, query, limit=max(limit * 3, 12))
-    blocked_notes = _lint_error_note_codes(repo_root) if not include_unhealthy else {}
+    root = resolve_repo_root(repo_root)
+    policy = load_memory_policy(root)
+    candidates = search_repo_memory(root, query, limit=max(limit * 3, 12), policy=policy)
+    blocked_notes = (
+        _lint_note_codes_by_severity(root, severities=policy.recall_lint_block_severities)
+        if not include_unhealthy
+        else {}
+    )
     selected: list[RelevantMemoryItem] = []
     skipped: list[dict[str, object]] = []
     for result in candidates:
@@ -1128,8 +1137,25 @@ def build_relevant_memory_recall(
         if result.kind != "note":
             skipped.append({"kind": result.kind, "id": result.id, "reason": "not a memory note"})
             continue
-        if not source.startswith(("attempt-memory:", "agent-memory:")):
-            skipped.append({"kind": result.kind, "id": result.id, "source": source, "reason": "source not relevant"})
+        if recall_source_blocked(source, policy):
+            skipped.append(
+                {
+                    "kind": result.kind,
+                    "id": result.id,
+                    "source": source,
+                    "reason": "source blocked by memory policy",
+                }
+            )
+            continue
+        if not recall_source_allowed(source, policy):
+            skipped.append(
+                {
+                    "kind": result.kind,
+                    "id": result.id,
+                    "source": source,
+                    "reason": "source not allowed by memory policy",
+                }
+            )
             continue
         if result.id in blocked_notes:
             skipped.append(
@@ -1137,7 +1163,7 @@ def build_relevant_memory_recall(
                     "kind": result.kind,
                     "id": result.id,
                     "source": source,
-                    "reason": "lint error",
+                    "reason": "lint issue",
                     "lint_codes": blocked_notes[result.id],
                 }
             )
@@ -1172,11 +1198,18 @@ def build_relevant_memory_recall(
     )
 
 
-def _lint_error_note_codes(repo_root: str | Path) -> dict[str, list[str]]:
+def _lint_note_codes_by_severity(
+    repo_root: str | Path,
+    *,
+    severities: tuple[str, ...],
+) -> dict[str, list[str]]:
+    if not severities:
+        return {}
+    blocked_severities = set(severities)
     result = lint_memory_notes(repo_root)
     blocked: dict[str, list[str]] = {}
     for issue in result.issues:
-        if issue.severity != "error":
+        if issue.severity not in blocked_severities:
             continue
         blocked.setdefault(issue.note_id, []).append(issue.code)
     return blocked

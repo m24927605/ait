@@ -700,6 +700,18 @@ def main() -> int:
                     print("Excluded transcript patterns:")
                     for pattern in policy.exclude_transcript_patterns:
                         print(f"- {pattern}")
+                    print("Recall allowed sources:")
+                    for pattern in policy.recall_source_allow:
+                        print(f"- {pattern}")
+                    print("Recall blocked sources:")
+                    if policy.recall_source_block:
+                        for pattern in policy.recall_source_block:
+                            print(f"- {pattern}")
+                    else:
+                        print("- none")
+                    print("Recall blocked lint severities:")
+                    for severity in policy.recall_lint_block_severities:
+                        print(f"- {severity}")
                 return 0
         memory = build_repo_memory(
             repo_root,
