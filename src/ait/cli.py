@@ -1381,6 +1381,7 @@ def _status_payload(result, *, memory_status: dict[str, object] | None = None) -
 def _format_status(payload: dict[str, object]) -> str:
     binary_label = "Real Claude binary" if payload["adapter"] == "claude-code" else "Real agent binary"
     lines = [
+        f"Agent CLI: {_agent_cli_summary(payload)}",
         f"Adapter: {payload['adapter']}",
         f"OK: {payload['ok']}",
         f"Git repo: {payload['git_repo']}",
@@ -1390,7 +1391,7 @@ def _format_status(payload: dict[str, object]) -> str:
         f"direnv available: {payload['direnv_available']}",
         f"direnv loaded: {payload['direnv_loaded']}",
         f"Agent CLI ready: {payload['agent_cli_ready']}",
-        f"Agent CLI: {payload['agent_cli_message']}",
+        f"Agent CLI detail: {payload['agent_cli_message']}",
     ]
     memory = payload.get("memory", {})
     if isinstance(memory, dict):
@@ -1414,6 +1415,22 @@ def _format_status(payload: dict[str, object]) -> str:
         lines.append("Next steps:")
         lines.extend(f"- {step}" for step in next_steps)
     return "\n".join(lines)
+
+
+def _agent_cli_summary(payload: dict[str, object]) -> str:
+    adapter = str(payload["adapter"])
+    command = "claude" if adapter == "claude-code" else adapter
+    if payload["agent_cli_ready"]:
+        return f"ready, run {command} ..."
+    if not payload["wrapper_installed"]:
+        return f"run ait init --adapter {adapter}"
+    if not payload["real_agent_binary"]:
+        return f"install {command}"
+    if not payload["path_wrapper_active"]:
+        if payload["direnv_available"]:
+            return "run direnv allow once"
+        return 'run eval "$(ait init --shell)"'
+    return "not ready, inspect JSON status"
 
 
 def _format_status_all(payload: list[dict[str, object]]) -> str:

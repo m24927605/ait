@@ -15,7 +15,7 @@ repo-local wrappers for the agent CLIs it can find, then keep using
 pipx install ait-vcs
 cd your-repo
 ait init
-direnv allow   # only needed when direnv blocks the new .envrc
+direnv allow   # only if prompted
 claude ...
 ```
 
@@ -73,7 +73,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.37.0` alpha quality for local dogfood use. It is
+This repository is at `0.38.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -106,14 +106,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.37.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.38.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.37.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.38.0"
 .venv/bin/ait --help
 ```
 
@@ -747,7 +747,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.37.0
+git checkout v0.38.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

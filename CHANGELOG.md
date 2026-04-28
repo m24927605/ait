@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.38.0 - 2026-04-28
+
+### Changed
+
+- Put the direct agent CLI readiness answer first in text `ait status`
+  output, so users immediately see whether they can run `claude`,
+  `codex`, or `aider`, or whether they only need `direnv allow`.
+- Rename the detailed text status line to `Agent CLI detail` while
+  keeping JSON `agent_cli_ready` and `agent_cli_message` unchanged for
+  automation.
+- Extend release smoke coverage to invoke the generated wrapper directly
+  and verify policy recreation, agent-memory import, attempt-memory
+  creation, workspace output, and attempt commit creation.
+
 ## 0.37.0 - 2026-04-28
 
 ### Added

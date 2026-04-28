@@ -654,8 +654,10 @@ class CliAdapterTests(unittest.TestCase):
 
             self.assertEqual(0, exit_code)
             self.assertEqual(0, second_exit_code)
+            self.assertTrue(stdout.getvalue().startswith("Agent CLI: run ait init --adapter claude-code\n"))
             self.assertIn("Wrapper installed: False", stdout.getvalue())
             self.assertIn("Agent CLI ready: False", stdout.getvalue())
+            self.assertIn("Agent CLI detail: not ready: run ait init --adapter claude-code", stdout.getvalue())
             self.assertIn("run ait init once", stderr.getvalue())
             self.assertEqual("", second_stderr.getvalue())
             self.assertTrue(hints["claude_code_automation_hint_v1"])
