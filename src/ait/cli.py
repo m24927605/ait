@@ -21,6 +21,7 @@ from ait.adapters import (
     setup_adapter,
 )
 from ait.brain import (
+    build_auto_repo_brain_briefing,
     build_repo_brain_briefing,
     build_repo_brain,
     query_repo_brain,
@@ -208,7 +209,13 @@ def build_parser() -> argparse.ArgumentParser:
     memory_graph_query.add_argument("--limit", type=int, default=8)
     memory_graph_query.add_argument("--format", choices=("text", "json"), default="text")
     memory_graph_brief = memory_graph_subparsers.add_parser("brief")
-    memory_graph_brief.add_argument("query")
+    memory_graph_brief.add_argument("query", nargs="?")
+    memory_graph_brief.add_argument("--auto", action="store_true")
+    memory_graph_brief.add_argument("--explain", action="store_true")
+    memory_graph_brief.add_argument("--agent")
+    memory_graph_brief.add_argument("--kind")
+    memory_graph_brief.add_argument("--description")
+    memory_graph_brief.add_argument("--command-text")
     memory_graph_brief.add_argument("--limit", type=int, default=6)
     memory_graph_brief.add_argument("--budget-chars", type=int, default=5000)
     memory_graph_brief.add_argument("--format", choices=("text", "json"), default="text")
@@ -489,7 +496,21 @@ def main() -> int:
                 return 0
             if args.memory_graph_command == "brief":
                 try:
-                    briefing = build_repo_brain_briefing(repo_root, args.query, limit=args.limit)
+                    if args.auto:
+                        briefing = build_auto_repo_brain_briefing(
+                            repo_root,
+                            intent_title=args.query,
+                            description=args.description,
+                            kind=args.kind,
+                            command=tuple(args.command_text.split()) if args.command_text else (),
+                            agent_id=args.agent,
+                            limit=args.limit,
+                        )
+                    elif args.query:
+                        briefing = build_repo_brain_briefing(repo_root, args.query, limit=args.limit)
+                    else:
+                        print("error: memory graph brief requires a query or --auto", file=sys.stderr)
+                        return 2
                 except ValueError as exc:
                     print(f"error: {exc}", file=sys.stderr)
                     return 2
@@ -497,6 +518,8 @@ def main() -> int:
                     print(json.dumps(briefing.to_dict(), indent=2))
                 else:
                     print(render_repo_brain_briefing(briefing, budget_chars=args.budget_chars), end="")
+                    if args.explain and not args.auto:
+                        print("Briefing query used manual query input.")
                 return 0
             print("error: memory graph requires a subcommand: build, show, query, or brief", file=sys.stderr)
             return 2

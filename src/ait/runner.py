@@ -9,7 +9,7 @@ import time
 
 from ait.adapters import get_adapter
 from ait.app import AttemptShowResult, create_attempt, create_intent, show_attempt, verify_attempt
-from ait.brain import build_repo_brain_briefing_from_graph, render_repo_brain_briefing, write_repo_brain
+from ait.brain import build_auto_briefing_query, build_repo_brain_briefing_from_graph, render_repo_brain_briefing, write_repo_brain
 from ait.context import build_agent_context, render_agent_context_text
 from ait.daemon import start_daemon
 from ait.harness import AitHarness
@@ -64,7 +64,17 @@ def run_agent_command(
     )
     attempt = create_attempt(root, intent_id=intent.intent_id, agent_id=resolved_agent_id)
     workspace = Path(attempt.workspace_ref)
-    context_file = _write_context_file(root, workspace, intent.intent_id) if resolved_with_context else None
+    context_file = (
+        _write_context_file(
+            root,
+            workspace,
+            intent.intent_id,
+            command=tuple(command),
+            agent_id=resolved_agent_id,
+        )
+        if resolved_with_context
+        else None
+    )
 
     started = time.monotonic()
     env = {
@@ -147,13 +157,31 @@ def run_agent_command(
     )
 
 
-def _write_context_file(repo_root: Path, workspace: Path, intent_id: str) -> Path:
+def _write_context_file(
+    repo_root: Path,
+    workspace: Path,
+    intent_id: str,
+    *,
+    command: tuple[str, ...] = (),
+    agent_id: str | None = None,
+) -> Path:
     context = build_agent_context(repo_root, intent_id=intent_id)
     memory = build_repo_memory(repo_root)
     brain = write_repo_brain(repo_root)
     intent = context.intent
-    query = " ".join(str(intent.get(key) or "") for key in ("title", "description", "kind")).strip()
-    briefing = build_repo_brain_briefing_from_graph(brain, query or str(intent.get("title", "")))
+    auto_query = build_auto_briefing_query(
+        repo_root,
+        intent_title=str(intent.get("title") or ""),
+        description=str(intent.get("description") or ""),
+        kind=str(intent.get("kind") or ""),
+        command=command,
+        agent_id=agent_id,
+    )
+    briefing = build_repo_brain_briefing_from_graph(
+        brain,
+        auto_query.query,
+        sources=auto_query.sources,
+    )
     path = workspace / ".ait-context.md"
     path.write_text(
         render_agent_context_text(context)

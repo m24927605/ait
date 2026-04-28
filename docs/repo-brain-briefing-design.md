@@ -42,6 +42,7 @@ The compact briefing is available through:
 
 ```bash
 ait memory graph brief "release process"
+ait memory graph brief "release process" --auto --explain
 ```
 
 ## Context Injection
@@ -60,6 +61,11 @@ Connected Evidence
 The full graph should not be injected by default. The graph files remain
 under `.ait/brain/` for inspection and query.
 
+Wrapped agent runs use automatic query generation. The query includes
+intent text, command args, agent identity, recent failed attempts, hot
+files, and memory note topics. The selected query sources are rendered
+in the briefing so the agent can see why memory was chosen.
+
 ## Safety
 
 Briefing content uses the same redaction and memory policy filters as
@@ -70,6 +76,8 @@ verify current files before editing.
 
 - `ait memory graph brief <query>` renders text.
 - `ait memory graph brief <query> --format json` emits parseable JSON.
+- `ait memory graph brief <query> --auto --explain` shows generated
+  query sources.
 - Wrapped agent context includes `AIT Repo Brain Briefing`.
 - Wrapped agent context does not include the full graph report by
   default.

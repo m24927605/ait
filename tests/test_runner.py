@@ -102,6 +102,9 @@ class RunnerTests(unittest.TestCase):
             self.assertIn("Intent: Context file", copied.read_text(encoding="utf-8"))
             self.assertIn("AIT Long-Term Repo Memory", copied.read_text(encoding="utf-8"))
             self.assertIn("AIT Repo Brain Briefing", copied.read_text(encoding="utf-8"))
+            self.assertIn("Briefing Query Sources:", copied.read_text(encoding="utf-8"))
+            self.assertIn("command_args:", copied.read_text(encoding="utf-8"))
+            self.assertIn("agent:", copied.read_text(encoding="utf-8"))
             self.assertNotIn("Edges:", copied.read_text(encoding="utf-8"))
 
     def test_claude_code_adapter_defaults_to_context_and_env(self) -> None:

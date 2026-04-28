@@ -9,6 +9,8 @@ from pathlib import Path
 
 from ait.app import create_attempt, create_commit_for_attempt, create_intent
 from ait.brain import (
+    build_auto_briefing_query,
+    build_auto_repo_brain_briefing,
     build_repo_brain,
     build_repo_brain_briefing,
     query_repo_brain,
@@ -228,6 +230,47 @@ class BrainTests(unittest.TestCase):
 
             self.assertLessEqual(len(text), 180)
             self.assertIn("briefing compacted", text)
+
+    def test_auto_briefing_query_uses_agent_command_failures_and_hot_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            failed_id = _commit_attempt(repo_root, "Failed release upload", "pyproject.toml")
+            _commit_attempt(repo_root, "Package metadata update", "pyproject.toml")
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            self.addCleanup(conn.close)
+            run_migrations(conn)
+            with conn:
+                conn.execute("UPDATE attempts SET verified_status = 'failed' WHERE id = ?", (failed_id,))
+            add_memory_note(repo_root, topic="release", body="Use twine check before upload.")
+
+            auto_query = build_auto_briefing_query(
+                repo_root,
+                intent_title="Publish package",
+                description="Upload to PyPI",
+                kind="release",
+                command=("twine", "upload", "dist/*"),
+                agent_id="codex:main",
+            )
+            briefing = build_auto_repo_brain_briefing(
+                repo_root,
+                intent_title="Publish package",
+                command=("twine", "upload", "dist/*"),
+                agent_id="codex:main",
+            )
+            text = render_repo_brain_briefing(briefing)
+            source_names = {source.source for source in auto_query.sources}
+
+            self.assertIn("intent_title", source_names)
+            self.assertIn("command_args", source_names)
+            self.assertIn("agent", source_names)
+            self.assertIn("recent_failed_attempt", source_names)
+            self.assertIn("hot_file", source_names)
+            self.assertIn("memory_topic", source_names)
+            self.assertIn("Failed release upload", auto_query.query)
+            self.assertIn("pyproject.toml", auto_query.query)
+            self.assertIn("Briefing Query Sources:", text)
+            self.assertTrue(briefing.results)
 
 
 def _init_git_repo(repo_root: Path) -> None:

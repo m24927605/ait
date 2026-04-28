@@ -174,6 +174,40 @@ class CliRunTests(unittest.TestCase):
         self.assertEqual("hello", brief_payload["query"])
         self.assertTrue(brief_payload["results"])
 
+    def test_memory_graph_brief_auto_outputs_sources_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "memory",
+                        "graph",
+                        "brief",
+                        "Release package",
+                        "--auto",
+                        "--agent",
+                        "codex:main",
+                        "--command-text",
+                        "twine upload dist/*",
+                        "--format",
+                        "json",
+                    ],
+                ):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue())
+        source_names = {source["source"] for source in payload["sources"]}
+        self.assertEqual(0, exit_code)
+        self.assertIn("intent_title", source_names)
+        self.assertIn("agent", source_names)
+        self.assertIn("command_args", source_names)
+
     def test_memory_graph_query_rejects_negative_limit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

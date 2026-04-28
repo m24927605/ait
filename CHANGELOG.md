@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.21.0 - 2026-04-28
+
+### Added
+
+- Add automatic repo brain briefing query generation from intent text,
+  command args, agent identity, recent failed attempts, hot files, and
+  memory note topics.
+- Add `ait memory graph brief --auto` for generated briefing queries.
+- Add query source explanations to repo brain briefing text and JSON.
+- Use automatic query generation for wrapped agent context briefings.
+
 ## 0.20.0 - 2026-04-28
 
 ### Added

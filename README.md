@@ -48,7 +48,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.20.0` alpha quality for local dogfood use. It is
+This repository is at `0.21.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -81,14 +81,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.20.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.21.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.20.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.21.0"
 .venv/bin/ait --help
 ```
 
@@ -174,6 +174,7 @@ ait memory search "auth adapter"
 ait memory graph show
 ait memory graph query "release process"
 ait memory graph brief "release process"
+ait memory graph brief "release process" --auto --agent codex:main --command-text "codex implement release"
 ```
 
 ## Daemon And Harness
@@ -305,6 +306,7 @@ ait memory graph query "release process"
 ait memory graph query "release process" --format json
 ait memory graph brief "release process"
 ait memory graph brief "release process" --format json
+ait memory graph brief "release process" --auto --explain
 ait memory policy init
 ait memory policy show
 ait memory note add --topic architecture "Keep adapter layers thin."
@@ -344,8 +346,10 @@ attempt commits. It is a rebuildable local index, not the source of
 truth. Wrapped Claude Code, Codex, and Aider runs refresh the graph
 automatically before writing `AIT_CONTEXT_FILE`. The injected context
 uses a compact `AIT Repo Brain Briefing` selected from the graph for the
-current intent, so normal agent invocation can receive relevant repo
-memory without a manual workflow command or full graph dump.
+current intent. AIT automatically builds the briefing query from intent
+text, command args, agent identity, recent failed attempts, hot files,
+and memory note topics, so normal agent invocation can receive relevant
+repo memory without a manual workflow command or full graph dump.
 
 See `docs/long-term-memory-design.md` and
 `docs/long-term-memory-acceptance.md` for long-term memory design and
@@ -639,7 +643,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.20.0
+git checkout v0.21.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q
