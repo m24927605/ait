@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.34.0 - 2026-04-28
+
+### Added
+
+- Make successful `ait run` sessions auto-commit changed attempt
+  worktrees by default, even when no explicit commit message is passed.
+- Derive default attempt commit messages from the adapter and intent so
+  direct `ait run` follows the same low-interruption behavior as
+  repo-local agent wrappers.
+- Avoid duplicate commits when the agent already commits its own
+  changes; ait verifies and records the existing attempt commit instead.
+- Add `--no-auto-commit` for diagnostic runs that intentionally leave
+  worktree changes uncommitted.
+
 ## 0.33.0 - 2026-04-28
 
 ### Added

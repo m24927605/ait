@@ -47,6 +47,7 @@ def run_agent_command(
     kind: str | None = None,
     description: str | None = None,
     commit_message: str | None = None,
+    auto_commit: bool = True,
     with_context: bool = False,
     capture_command_output: bool = False,
 ) -> RunResult:
@@ -146,7 +147,19 @@ def run_agent_command(
         )
         harness.finish(exit_code=completed.returncode, raw_trace_ref=raw_trace_ref)
 
-    if commit_message and completed is not None and completed.returncode == 0:
+    resolved_commit_message = _resolve_commit_message(
+        explicit=commit_message,
+        intent_title=intent_title,
+        adapter_name=adapter.name,
+    )
+    explicit_commit = bool(commit_message and commit_message.strip())
+    commit_enabled = (
+        completed is not None
+        and completed.returncode == 0
+        and bool(resolved_commit_message)
+        and (auto_commit or explicit_commit)
+    )
+    if commit_enabled:
         if context_file is not None:
             context_file.unlink(missing_ok=True)
         workspace_path = Path(attempt.workspace_ref)
@@ -154,7 +167,7 @@ def run_agent_command(
         if _has_staged_changes(workspace_path):
             create_attempt_commit(
                 attempt.workspace_ref,
-                message=commit_message,
+                message=resolved_commit_message,
                 intent_id=intent.intent_id,
                 attempt_id=attempt.attempt_id,
             )
@@ -172,6 +185,15 @@ def run_agent_command(
         command_stderr=completed.stderr if completed is not None and capture_command_output else None,
         attempt=shown,
     )
+
+
+def _resolve_commit_message(*, explicit: str | None, intent_title: str, adapter_name: str) -> str:
+    if explicit is not None and explicit.strip():
+        return explicit.strip()
+    cleaned_title = " ".join(intent_title.split()).strip()
+    if cleaned_title:
+        return f"{adapter_name}: {cleaned_title}"
+    return f"{adapter_name}: agent changes"
 
 
 def _write_context_file(

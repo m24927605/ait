@@ -45,6 +45,68 @@ class CliRunTests(unittest.TestCase):
         self.assertEqual("agent out\n", payload["command_stdout"])
         self.assertEqual("agent err\n", payload["command_stderr"])
 
+    def test_run_json_auto_commits_changes_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "run",
+                        "--format",
+                        "json",
+                        "--intent",
+                        "Auto commit generated change",
+                        "--",
+                        sys.executable,
+                        "-c",
+                        "from pathlib import Path; Path('agent.txt').write_text('ok\\n')",
+                    ],
+                ):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(0, exit_code)
+        self.assertEqual(1, len(payload["attempt"]["commits"]))
+        self.assertEqual(["agent.txt"], payload["attempt"]["files"]["changed"])
+
+    def test_run_json_no_auto_commit_leaves_changes_uncommitted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "run",
+                        "--format",
+                        "json",
+                        "--intent",
+                        "Inspect generated change",
+                        "--no-auto-commit",
+                        "--",
+                        sys.executable,
+                        "-c",
+                        "from pathlib import Path; Path('agent.txt').write_text('ok\\n')",
+                    ],
+                ):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+            payload = json.loads(stdout.getvalue())
+            status = _git_stdout(Path(payload["workspace_ref"]), "status", "--short")
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual([], payload["attempt"]["commits"])
+        self.assertEqual("?? agent.txt", status)
+
     def test_memory_text_outputs_repo_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
@@ -500,6 +562,16 @@ def _init_git_repo(repo_root: Path) -> None:
     (repo_root / "README.md").write_text("hello\n", encoding="utf-8")
     subprocess.run(["git", "add", "README.md"], cwd=repo_root, check=True, capture_output=True)
     subprocess.run(["git", "commit", "-m", "init"], cwd=repo_root, check=True, capture_output=True)
+
+
+def _git_stdout(repo_root: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
 
 
 if __name__ == "__main__":

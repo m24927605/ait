@@ -34,6 +34,8 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(1, result.attempt.evidence_summary["observed_tool_calls"])
             self.assertEqual(1, result.attempt.evidence_summary["observed_commands_run"])
             self.assertTrue((Path(result.workspace_ref) / "agent.txt").exists())
+            self.assertEqual(1, len(result.attempt.commits))
+            self.assertFalse(_git_stdout(Path(result.workspace_ref), "status", "--short"))
 
     def test_run_agent_command_returns_process_exit_code(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -115,7 +117,7 @@ class RunnerTests(unittest.TestCase):
 
             copied = Path(result.workspace_ref) / "context-copy.txt"
             self.assertEqual(0, result.exit_code)
-            self.assertTrue((Path(result.workspace_ref) / ".ait-context.md").exists())
+            self.assertFalse((Path(result.workspace_ref) / ".ait-context.md").exists())
             self.assertTrue((repo_root / ".ait" / "brain" / "graph.json").exists())
             self.assertTrue((repo_root / ".ait" / "brain" / "REPORT.md").exists())
             self.assertIn("Intent: Context file", copied.read_text(encoding="utf-8"))
@@ -446,6 +448,54 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual([], result.attempt.commits)
             self.assertEqual({}, result.attempt.files)
             self.assertFalse((Path(result.workspace_ref) / ".ait-context.md").exists())
+            self.assertFalse(_git_stdout(Path(result.workspace_ref), "status", "--short"))
+
+    def test_run_agent_command_can_disable_default_auto_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="Leave generated change uncommitted",
+                adapter_name="claude-code",
+                command=[
+                    sys.executable,
+                    "-c",
+                    "from pathlib import Path; Path('agent.txt').write_text('ok\\n')",
+                ],
+                auto_commit=False,
+            )
+
+            self.assertEqual(0, result.exit_code)
+            self.assertEqual([], result.attempt.commits)
+            self.assertIn("agent.txt", _git_stdout(Path(result.workspace_ref), "status", "--short"))
+
+    def test_run_agent_command_does_not_duplicate_agent_created_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="Agent commits its own change",
+                adapter_name="claude-code",
+                command=[
+                    sys.executable,
+                    "-c",
+                    (
+                        "import subprocess;"
+                        "from pathlib import Path;"
+                        "Path('agent.txt').write_text('ok\\n');"
+                        "subprocess.run(['git','add','agent.txt'], check=True);"
+                        "subprocess.run(['git','commit','-m','agent self commit'], check=True)"
+                    ),
+                ],
+            )
+
+            self.assertEqual(0, result.exit_code)
+            self.assertEqual(1, len(result.attempt.commits))
+            self.assertEqual("agent self commit", _git_stdout(Path(result.workspace_ref), "log", "-1", "--pretty=%s"))
             self.assertFalse(_git_stdout(Path(result.workspace_ref), "status", "--short"))
 
 

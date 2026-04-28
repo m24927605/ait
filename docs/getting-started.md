@@ -103,10 +103,13 @@ claude ...
 
 The repo-local wrapper executes Claude Code through `ait run`, so the
 agent edits an isolated attempt worktree. The root checkout stays
-unchanged until you promote the attempt.
+unchanged until you promote the attempt. Successful runs with changes
+are committed automatically in the attempt worktree; if the agent already
+creates a git commit, ait records that existing commit instead of making
+a duplicate.
 
-Control the generated intent and commit message with environment
-variables:
+Optionally control the generated intent and commit message with
+environment variables:
 
 ```bash
 AIT_INTENT="Update README" \

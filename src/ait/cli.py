@@ -179,6 +179,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--kind")
     run_parser.add_argument("--description")
     run_parser.add_argument("--commit-message")
+    run_parser.add_argument("--no-auto-commit", action="store_true")
     run_parser.add_argument("--with-context", action="store_true")
     run_parser.add_argument("--format", choices=("json", "text"), default="json")
     run_parser.add_argument("run_command", nargs=argparse.REMAINDER)
@@ -509,6 +510,7 @@ def main() -> int:
                 kind=args.kind,
                 description=args.description,
                 commit_message=args.commit_message,
+                auto_commit=not args.no_auto_commit,
                 with_context=args.with_context,
                 capture_command_output=args.format == "json",
             )

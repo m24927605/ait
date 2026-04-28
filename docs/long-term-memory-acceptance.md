@@ -172,3 +172,5 @@ The automated test suite covers:
 - `.ait-context.md` memory injection
 - no-change commit-message runs
 - changed commit-message runs
+- default auto-commit runs
+- agent-created commits are recorded without duplicate ait commits

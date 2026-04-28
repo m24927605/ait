@@ -6,7 +6,7 @@ reviewable isolation, an ait-linked commit, and an explicit promote step.
 
 Validated on 2026-04-27 with:
 
-- `ait-vcs` local build for `0.33.0`
+- `ait-vcs` local build for `0.34.0`
 - Claude Code `2.1.119`
 - Python 3.14
 
@@ -145,6 +145,11 @@ AIT_COMMIT_MESSAGE="update README with Claude" \
 claude -p --permission-mode bypassPermissions \
   'Append one line to README.md'
 ```
+
+If `AIT_COMMIT_MESSAGE` is not set, ait derives a default commit message
+from the adapter and intent. Successful runs with changes are committed
+automatically in the attempt worktree. If Claude already creates a git
+commit, ait records that existing commit and does not create a duplicate.
 
 To set up direnv instead of changing the current shell directly:
 

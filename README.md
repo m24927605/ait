@@ -22,12 +22,15 @@ claude ...
 detected agent CLIs, and prints a shell export for the current terminal.
 After that, detected agent commands resolve to `.ait/bin/*` inside that
 repository. The wrappers run agents through `ait run`, so the agent edits
-an isolated attempt worktree and `ait` records the result as an
-attempt-linked commit. Existing agent memory files such as `CLAUDE.md`
-and `AGENTS.md` are imported automatically during regular `ait init` and
-again on first wrapped agent run when needed. After each wrapped run,
-`ait` also writes a compact attempt memory note with status, changed
-files, commits, and confidence so future agents can reuse what happened.
+an isolated attempt worktree and `ait` automatically records successful
+changes as an attempt-linked commit. If the agent or user already made a
+commit, ait records that existing commit instead of creating a duplicate;
+manual `git commit` remains allowed. Existing agent memory files such as
+`CLAUDE.md` and `AGENTS.md` are imported automatically during regular
+`ait init` and again on first wrapped agent run when needed. After each
+wrapped run, `ait` also writes a compact attempt memory note with status,
+changed files, commits, and confidence so future agents can reuse what
+happened.
 When a new wrapped run starts, `ait` retrieves the most relevant
 agent/attempt memory into a compact `AIT Relevant Memory` context
 section, skipping notes with lint errors by default so suspected secrets
@@ -64,7 +67,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.33.0` alpha quality for local dogfood use. It is
+This repository is at `0.34.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -97,14 +100,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.33.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.34.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.33.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.34.0"
 .venv/bin/ait --help
 ```
 
@@ -427,7 +430,9 @@ After that, invoking `claude ...`, `codex ...`, or `aider ...` from the
 repository will hit `.ait/bin/*`, which runs the agent through `ait run`
 in an isolated attempt worktree. The wrapper passes through all agent
 arguments. It uses `AIT_INTENT` and `AIT_COMMIT_MESSAGE` when set,
-otherwise it falls back to conservative defaults:
+otherwise it falls back to conservative defaults. On successful runs,
+ait auto-commits changed attempt worktrees; if the agent already created
+a commit, ait records that commit and does not create another one:
 
 ```bash
 AIT_INTENT="Update README" \
@@ -516,16 +521,21 @@ checks:
 ait --no-hints status --format json
 ```
 
-To make Claude edit an isolated attempt worktree and commit the result:
+To make Claude edit an isolated attempt worktree and commit the result,
+no commit flag is required. ait derives a default commit message from the
+adapter and intent:
 
 ```bash
 ait run --adapter claude-code \
   --format json \
   --intent "Update README" \
-  --commit-message "update README with Claude" \
   -- claude -p --permission-mode bypassPermissions \
     'Append exactly this line to README.md: ait run worktree smoke ok'
 ```
+
+Use `--commit-message` only when a specific attempt commit message is
+needed. Use `--no-auto-commit` for diagnostic runs that intentionally
+leave attempt worktree changes uncommitted.
 
 The root checkout is unchanged until the attempt is promoted. Promote
 the resulting attempt after reviewing it:
@@ -716,7 +726,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.33.0
+git checkout v0.34.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q
