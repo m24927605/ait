@@ -56,6 +56,7 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(created, loaded)
             self.assertEqual(created.install_nonce, reused.install_nonce)
             self.assertEqual(created.daemon_socket_path, DEFAULT_DAEMON_SOCKET_PATH)
+            self.assertIsNone(created.repo_identity)
 
     def test_ensure_ait_ignored_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -78,6 +79,15 @@ class ConfigTests(unittest.TestCase):
             repo_id = derive_repo_id(repo_root, "nonce-xyz")
 
             self.assertEqual(repo_id, f"{root_commit}:nonce-xyz")
+
+    def test_derive_repo_id_uses_unborn_identity_without_commits(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            subprocess.run(["git", "init"], cwd=repo_root, check=True, capture_output=True)
+
+            repo_id = derive_repo_id(repo_root, "nonce-xyz")
+
+            self.assertRegex(repo_id, r"^unborn:[0-9a-f]{24}:nonce-xyz$")
 
     def _init_git_repo(self, repo_root: Path) -> None:
         subprocess.run(["git", "init"], cwd=repo_root, check=True, capture_output=True)

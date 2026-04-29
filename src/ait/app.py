@@ -8,6 +8,7 @@ from ait.config import (
     bootstrap_ait_dir,
     ensure_ait_ignored,
     ensure_local_config,
+    ensure_repo_identity,
 )
 from ait.db import NewAttempt, NewIntent, connect_db, get_intent, insert_attempt, insert_intent, run_migrations, utc_now
 from ait.db import (
@@ -24,7 +25,12 @@ from ait.hooks import install_post_rewrite_hook
 from ait.ids import new_ulid
 from ait.idresolver import resolve_attempt_id, resolve_intent_id
 from ait.lifecycle import refresh_intent_status
-from ait.repo import derive_repo_id, resolve_repo_root
+from ait.repo import (
+    compose_repo_id,
+    derive_repo_identity,
+    initialize_git_repo,
+    resolve_repo_root,
+)
 from ait.verifier import verify_attempt_with_connection
 from ait.workspace import (
     create_attempt_commit,
@@ -42,6 +48,7 @@ class InitResult:
     db_path: Path
     repo_id: str
     socket_path: Path
+    git_initialized: bool = False
 
 
 @dataclass(slots=True)
@@ -78,10 +85,19 @@ def object_id(repo_id: str) -> str:
     return f"{repo_id}:{new_ulid()}"
 
 
-def init_repo(repo_root: str | Path) -> InitResult:
-    root = resolve_repo_root(repo_root)
+def init_repo(repo_root: str | Path, *, auto_git_init: bool = False) -> InitResult:
+    git_initialized = False
+    try:
+        root = resolve_repo_root(repo_root)
+    except ValueError:
+        if not auto_git_init:
+            raise
+        root = initialize_git_repo(repo_root)
+        git_initialized = True
     ait_dir = bootstrap_ait_dir(root)
     config = ensure_local_config(root)
+    if not config.repo_identity:
+        config = ensure_repo_identity(root, derive_repo_identity(root))
     ensure_ait_ignored(root)
     db_path = ait_dir / "state.sqlite3"
     conn = connect_db(db_path)
@@ -90,7 +106,7 @@ def init_repo(repo_root: str | Path) -> InitResult:
     finally:
         conn.close()
     install_post_rewrite_hook(root)
-    repo_id = derive_repo_id(root, config.install_nonce)
+    repo_id = compose_repo_id(str(config.repo_identity), config.install_nonce)
     socket_path = Path(config.daemon_socket_path)
     if not socket_path.is_absolute():
         socket_path = root / socket_path
@@ -100,6 +116,7 @@ def init_repo(repo_root: str | Path) -> InitResult:
         db_path=db_path,
         repo_id=repo_id,
         socket_path=socket_path,
+        git_initialized=git_initialized,
     )
 
 
@@ -443,4 +460,3 @@ def supersede_intent(
     finally:
         conn.close()
     return show_intent(repo_root, intent_id=intent_id)
-

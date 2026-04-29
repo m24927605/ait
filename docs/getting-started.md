@@ -22,19 +22,21 @@ python3.14 -m venv .venv
 .venv/bin/ait --version
 ```
 
-## Activate In A Repository
+## Activate In A Project
 
-Run this from inside a Git repository:
+Run this from inside a project directory:
 
 ```bash
 ait init
 direnv allow   # only if prompted
 ```
 
-`ait init` initializes `.ait/`, installs repo-local wrappers for
-supported agent CLIs found on `PATH`, writes `.envrc`, imports detected
-agent memory, and creates the default memory policy guardrail. `direnv
-allow` is only needed when prompted. Detected wrappers include:
+`ait init` runs `git init` first when the current directory is not
+already a Git repository, initializes `.ait/`, installs repo-local
+wrappers for supported agent CLIs found on `PATH`, writes `.envrc`,
+imports detected agent memory, and creates the default memory policy
+guardrail. `direnv allow` is only needed when prompted. Detected
+wrappers include:
 
 ```text
 .ait/bin/claude

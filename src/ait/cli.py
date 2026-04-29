@@ -361,7 +361,7 @@ def main() -> int:
     repo_root = Path.cwd()
 
     if args.command == "init":
-        result = init_repo(repo_root)
+        result = init_repo(repo_root, auto_git_init=True)
         try:
             automation = enable_available_adapters(
                 result.repo_root,
@@ -1123,6 +1123,7 @@ def _init_payload(init_result, automation, statuses, memory_import=None, memory_
         "db_path": str(init_result.db_path),
         "repo_id": init_result.repo_id,
         "socket_path": str(init_result.socket_path),
+        "git_initialized": init_result.git_initialized,
         "installed_adapters": [item.adapter.name for item in automation.installed],
         "skipped_adapters": [asdict(item) for item in automation.skipped],
         "shell_snippet": automation.shell_snippet,
@@ -1162,6 +1163,8 @@ def _format_init(payload: dict[str, object]) -> str:
     lines.append("Next:")
     lines.extend(next_lines)
     lines.append("Details:")
+    if payload.get("git_initialized"):
+        lines.append("Git: initialized")
     lines.append(f"Repo: {payload['repo_root']}")
     lines.append(f"State: {payload['ait_dir']}")
     if skipped:

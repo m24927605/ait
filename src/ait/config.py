@@ -10,13 +10,14 @@ OBJECTS_DIRNAME = "objects"
 LOCAL_CONFIG_FILENAME = "config.json"
 DEFAULT_DAEMON_SOCKET_PATH = f"{AIT_DIRNAME}/daemon.sock"
 GITIGNORE_ENTRY = f"{AIT_DIRNAME}/"
-LOCAL_CONFIG_SCHEMA_VERSION = 1
+LOCAL_CONFIG_SCHEMA_VERSION = 2
 
 
 @dataclass
 class LocalConfig:
     schema_version: int = LOCAL_CONFIG_SCHEMA_VERSION
     install_nonce: str = ""
+    repo_identity: str | None = None
     daemon_socket_path: str = DEFAULT_DAEMON_SOCKET_PATH
     reaper_ttl_seconds: int | None = None
 
@@ -41,6 +42,7 @@ def load_local_config(repo_root: str | Path) -> LocalConfig | None:
     return LocalConfig(
         schema_version=int(data.get("schema_version", LOCAL_CONFIG_SCHEMA_VERSION)),
         install_nonce=str(data["install_nonce"]),
+        repo_identity=_coerce_optional_str(data.get("repo_identity")),
         daemon_socket_path=str(
             data.get("daemon_socket_path", DEFAULT_DAEMON_SOCKET_PATH)
         ),
@@ -67,13 +69,33 @@ def ensure_local_config(repo_root: str | Path) -> LocalConfig:
         return config
 
     updated = LocalConfig(
-        schema_version=existing.schema_version or LOCAL_CONFIG_SCHEMA_VERSION,
+        schema_version=LOCAL_CONFIG_SCHEMA_VERSION,
         install_nonce=existing.install_nonce or _generate_install_nonce(),
+        repo_identity=existing.repo_identity,
         daemon_socket_path=existing.daemon_socket_path or DEFAULT_DAEMON_SOCKET_PATH,
         reaper_ttl_seconds=existing.reaper_ttl_seconds,
     )
     if updated != existing:
         save_local_config(repo_root, updated)
+    return updated
+
+
+def ensure_repo_identity(repo_root: str | Path, repo_identity: str) -> LocalConfig:
+    if not repo_identity:
+        raise ValueError("repo_identity is required.")
+    config = ensure_local_config(repo_root)
+    if config.repo_identity == repo_identity:
+        return config
+    if config.repo_identity:
+        return config
+    updated = LocalConfig(
+        schema_version=LOCAL_CONFIG_SCHEMA_VERSION,
+        install_nonce=config.install_nonce,
+        repo_identity=repo_identity,
+        daemon_socket_path=config.daemon_socket_path,
+        reaper_ttl_seconds=config.reaper_ttl_seconds,
+    )
+    save_local_config(repo_root, updated)
     return updated
 
 
@@ -103,3 +125,10 @@ def _coerce_optional_int(value: object) -> int | None:
     if value is None:
         return None
     return int(value)
+
+
+def _coerce_optional_str(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None

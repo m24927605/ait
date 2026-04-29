@@ -15,17 +15,48 @@ Before tagging:
 9. Run `npm --prefix npm/ait-vcs test`.
 10. Run `(cd npm/ait-vcs && npm pack --dry-run)`.
 11. Run a fresh venv smoke test from `dist/*.whl`, including the
-   PATH-based agent wrapper smoke below.
+   plain-directory init smoke and PATH-based agent wrapper smoke below.
 12. Tag with the intended `vX.Y.Z`.
 13. Push `main` and `vX.Y.Z` to GitHub.
 14. Create a GitHub release with the built wheel and sdist.
 15. Confirm GitHub Actions CI and Publish pass.
 16. Confirm PyPI lists the new version.
-17. Run a fresh venv smoke test from PyPI, including the PATH-based
-    agent wrapper smoke below.
+17. Run a fresh venv smoke test from PyPI, including the plain-directory
+    init smoke and PATH-based agent wrapper smoke below.
 18. Publish the npm package from `npm/ait-vcs` after PyPI lists the same
     version.
 19. Run a fresh global npm smoke test with `npm install -g ait-vcs`.
+
+## Plain Directory Init Smoke
+
+Run this once against the local wheel and once against the just-published
+PyPI version:
+
+```bash
+set -e
+tmpdir="$(mktemp -d)"
+python3.14 -m venv "$tmpdir/venv"
+"$tmpdir/venv/bin/pip" install -q dist/ait_vcs-X.Y.Z-py3-none-any.whl
+repo="$tmpdir/repo" && mkdir "$repo" && cd "$repo"
+bin="$tmpdir/bin" && mkdir "$bin"
+cat > "$bin/claude" <<'SH'
+#!/bin/sh
+printf 'real claude reached\n'
+SH
+chmod +x "$bin/claude"
+PATH="$bin:$PATH" "$tmpdir/venv/bin/ait" init --adapter claude-code --format json > init.json
+"$tmpdir/venv/bin/python" - <<'PY'
+import json
+from pathlib import Path
+init = json.loads(Path('init.json').read_text())
+config = json.loads(Path('.ait/config.json').read_text())
+assert Path('.git').exists()
+assert init['git_initialized'] is True, init
+assert init['installed_adapters'] == ['claude-code'], init
+assert config['repo_identity'].startswith('unborn:'), config
+print('plain-directory init smoke ok')
+PY
+```
 
 ## PATH Agent Wrapper Smoke
 

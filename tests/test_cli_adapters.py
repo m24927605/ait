@@ -245,6 +245,35 @@ class CliAdapterTests(unittest.TestCase):
             self.assertTrue((repo_root / ".ait" / "memory-policy.json").exists())
             self.assertIn("PATH_add .ait/bin", (repo_root / ".envrc").read_text(encoding="utf-8"))
 
+    def test_init_auto_initializes_git_repo_in_plain_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + "/usr/bin:/bin"
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "init"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            text = stdout.getvalue()
+            config = json.loads((repo_root / ".ait" / "config.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(0, exit_code)
+            self.assertTrue((repo_root / ".git").exists())
+            self.assertTrue((repo_root / ".ait" / "bin" / "claude").exists())
+            self.assertIn("Git: initialized", text)
+            self.assertTrue(config["repo_identity"].startswith("unborn:"))
+
     def test_init_text_initializes_every_detected_agent_cli_wrapper(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp) / "repo"

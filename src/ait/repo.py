@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import subprocess
 from pathlib import Path
 
@@ -29,6 +30,22 @@ def resolve_repo_root(repo_root: str | Path) -> Path:
     return common_dir.parent
 
 
+def initialize_git_repo(repo_root: str | Path) -> Path:
+    root = Path(repo_root).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    result = subprocess.run(
+        ["git", "init"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        message = result.stderr.strip() or "Unable to initialize git repository."
+        raise ValueError(message)
+    return resolve_repo_root(root)
+
+
 def get_root_commit_oid(repo_root: str | Path) -> str:
     root = resolve_repo_root(repo_root)
     result = subprocess.run(
@@ -40,6 +57,8 @@ def get_root_commit_oid(repo_root: str | Path) -> str:
     )
     if result.returncode != 0:
         message = result.stderr.strip() or "Unable to determine root commit."
+        if "ambiguous argument 'HEAD'" in message or "unknown revision" in message:
+            raise ValueError("Repository has no commits.")
         raise ValueError(message)
 
     root_commits = [line.strip() for line in result.stdout.splitlines() if line.strip()]
@@ -51,4 +70,23 @@ def get_root_commit_oid(repo_root: str | Path) -> str:
 def derive_repo_id(repo_root: str | Path, install_nonce: str) -> str:
     if not install_nonce:
         raise ValueError("install_nonce is required.")
-    return f"{get_root_commit_oid(repo_root)}:{install_nonce}"
+    return f"{derive_repo_identity(repo_root)}:{install_nonce}"
+
+
+def derive_repo_identity(repo_root: str | Path) -> str:
+    try:
+        return get_root_commit_oid(repo_root)
+    except ValueError as exc:
+        if "Repository has no commits." not in str(exc):
+            raise
+    root = resolve_repo_root(repo_root)
+    digest = hashlib.sha256(str(root).encode("utf-8")).hexdigest()[:24]
+    return f"unborn:{digest}"
+
+
+def compose_repo_id(repo_identity: str, install_nonce: str) -> str:
+    if not repo_identity:
+        raise ValueError("repo_identity is required.")
+    if not install_nonce:
+        raise ValueError("install_nonce is required.")
+    return f"{repo_identity}:{install_nonce}"

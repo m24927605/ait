@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.50.0 - 2026-04-29
+
+### Changed
+
+- Make `ait init` automatically run `git init` when invoked from a
+  plain project directory, so first-time setup does not require users to
+  initialize Git by hand.
+- Persist a repo identity in `.ait/config.json`, including an `unborn:*`
+  identity for repositories without a first commit, so local ait object
+  IDs stay stable after the first commit is eventually created.
+- Add regression coverage for zero-touch initialization in a non-Git
+  directory and for deriving repo IDs in repositories with no commits.
+
 ## 0.49.0 - 2026-04-29
 
 ### Added
