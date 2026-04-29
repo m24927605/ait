@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 @dataclass(frozen=True)
@@ -159,6 +159,36 @@ MIGRATIONS: tuple[Migration, ...] = (
 
         CREATE INDEX IF NOT EXISTS idx_memory_notes_active_topic_updated_at
             ON memory_notes(active, topic, updated_at);
+        """,
+    ),
+    Migration(
+        version=5,
+        name="attempt_outcomes",
+        sql="""
+        CREATE TABLE IF NOT EXISTS attempt_outcomes (
+            attempt_id TEXT PRIMARY KEY REFERENCES attempts(id) ON DELETE CASCADE,
+            schema_version INTEGER NOT NULL,
+            outcome_class TEXT NOT NULL CHECK (
+                outcome_class IN (
+                    'pending',
+                    'succeeded',
+                    'succeeded_noop',
+                    'promoted',
+                    'failed',
+                    'failed_with_evidence',
+                    'failed_interrupted',
+                    'failed_infra',
+                    'discarded',
+                    'needs_review'
+                )
+            ),
+            confidence TEXT NOT NULL CHECK (confidence IN ('high', 'medium', 'low')),
+            reasons_json TEXT NOT NULL DEFAULT '[]',
+            classified_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_attempt_outcomes_class_classified_at
+            ON attempt_outcomes(outcome_class, classified_at);
         """,
     ),
 )

@@ -73,6 +73,7 @@ class AitHarness:
     _file: Any | None = field(default=None, repr=False)
     _started: bool = field(default=False, init=False)
     _finished: bool = field(default=False, init=False)
+    _finish_attempted: bool = field(default=False, init=False)
 
     @classmethod
     def open(
@@ -99,7 +100,7 @@ class AitHarness:
 
     def __exit__(self, exc_type, exc, tb) -> None:
         try:
-            if not self._finished:
+            if not self._finished and not self._finish_attempted:
                 self.finish(exit_code=0 if exc is None else 1)
         finally:
             self.close()
@@ -166,6 +167,7 @@ class AitHarness:
             verification["build_passed"] = bool(build_passed)
         if verification:
             payload["verification"] = verification
+        self._finish_attempted = True
         self._send(event_type="attempt_finished", payload=payload)
         self._finished = True
 

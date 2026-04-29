@@ -6,9 +6,10 @@ import tempfile
 import unittest
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 from ait.memory import list_memory_notes, search_repo_memory
-from ait.runner import run_agent_command
+from ait.runner import _run_command_with_pty_transcript, _strip_terminal_control, run_agent_command
 
 
 class RunnerTests(unittest.TestCase):
@@ -30,6 +31,7 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(0, result.exit_code)
             self.assertEqual("finished", result.attempt.attempt["reported_status"])
             self.assertEqual("succeeded", result.attempt.attempt["verified_status"])
+            self.assertEqual("succeeded", result.attempt.outcome["outcome_class"])
             self.assertEqual("shell:local", result.attempt.attempt["agent_id"])
             self.assertEqual(1, result.attempt.evidence_summary["observed_tool_calls"])
             self.assertEqual(1, result.attempt.evidence_summary["observed_commands_run"])
@@ -73,6 +75,7 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(7, result.exit_code)
             self.assertEqual("finished", result.attempt.attempt["reported_status"])
             self.assertEqual("failed", result.attempt.attempt["verified_status"])
+            self.assertEqual("failed_with_evidence", result.attempt.outcome["outcome_class"])
             self.assertEqual(1, result.attempt.evidence_summary["observed_commands_run"])
 
     def test_run_agent_command_records_missing_command_as_failed_attempt(self) -> None:
@@ -92,6 +95,7 @@ class RunnerTests(unittest.TestCase):
             self.assertIn("ait run failed: command not executable", result.command_stderr or "")
             self.assertEqual("finished", result.attempt.attempt["reported_status"])
             self.assertEqual("failed", result.attempt.attempt["verified_status"])
+            self.assertEqual("failed_infra", result.attempt.outcome["outcome_class"])
             self.assertEqual(1, result.attempt.evidence_summary["observed_commands_run"])
 
     def test_run_agent_command_can_capture_command_output(self) -> None:
@@ -113,6 +117,30 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(0, result.exit_code)
             self.assertEqual("out\n", result.command_stdout)
             self.assertEqual("err\n", result.command_stderr)
+
+    def test_run_agent_command_finalizes_locally_if_finish_is_interrupted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            def interrupt_finish(harness, **kwargs):
+                del kwargs
+                harness._finish_attempted = True
+                raise KeyboardInterrupt
+
+            with patch("ait.runner.AitHarness.finish", interrupt_finish):
+                result = run_agent_command(
+                    repo_root,
+                    intent_title="Interrupted finish",
+                    command=[sys.executable, "-c", "print('finished before interrupt')"],
+                    capture_command_output=True,
+                )
+
+            self.assertEqual(0, result.exit_code)
+            self.assertEqual("finished", result.attempt.attempt["reported_status"])
+            self.assertEqual("succeeded", result.attempt.attempt["verified_status"])
+            self.assertEqual(0, result.attempt.attempt["result_exit_code"])
+            self.assertIsNotNone(result.attempt.attempt["raw_trace_ref"])
 
     def test_run_agent_command_can_write_context_file_for_wrapped_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -206,6 +234,7 @@ class RunnerTests(unittest.TestCase):
             self.assertIn("confidence=high", notes[0].body)
             self.assertIn("intent_title=Remember successful attempt", notes[0].body)
             self.assertIn("verified_status=succeeded", notes[0].body)
+            self.assertIn("outcome_class=succeeded", notes[0].body)
             self.assertIn("changed_files=agent.txt", notes[0].body)
             self.assertIn(result.attempt.commits[0]["commit_oid"], notes[0].body)
 
@@ -330,8 +359,15 @@ class RunnerTests(unittest.TestCase):
                     self.assertTrue(output.startswith(f"{adapter_name}\nRead AIT_CONTEXT_FILE"))
                     self.assertIn(f"Intent: {adapter_name} adapter", output)
 
-    def test_aider_and_codex_adapters_capture_transcript_for_memory_search(self) -> None:
-        for adapter_name, expected_token in (("aider", "AIDER_TRANSCRIPT_TOKEN"), ("codex", "CODEX_TRANSCRIPT_TOKEN")):
+    def test_agent_adapters_capture_transcript_for_memory_search(self) -> None:
+        adapters = (
+            ("aider", "AIDER_TRANSCRIPT_TOKEN"),
+            ("claude-code", "CLAUDE_TRANSCRIPT_TOKEN"),
+            ("codex", "CODEX_TRANSCRIPT_TOKEN"),
+            ("cursor", "CURSOR_TRANSCRIPT_TOKEN"),
+            ("gemini", "GEMINI_TRANSCRIPT_TOKEN"),
+        )
+        for adapter_name, expected_token in adapters:
             with self.subTest(adapter=adapter_name):
                 with tempfile.TemporaryDirectory() as tmp:
                     repo_root = Path(tmp)
@@ -449,6 +485,30 @@ class RunnerTests(unittest.TestCase):
             self.assertFalse((Path(result.workspace_ref) / ".ait-context.md").exists())
             self.assertFalse(_git_stdout(Path(result.workspace_ref), "status", "--short"))
 
+    def test_run_agent_command_suppresses_keyboard_interrupt_during_auto_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            with patch("ait.runner._stage_all_changes", side_effect=KeyboardInterrupt):
+                result = run_agent_command(
+                    repo_root,
+                    intent_title="Interrupted auto commit",
+                    adapter_name="claude-code",
+                    command=[
+                        sys.executable,
+                        "-c",
+                        "from pathlib import Path; Path('agent.txt').write_text('ok\\n')",
+                    ],
+                    commit_message="commit generated change",
+                )
+
+            self.assertEqual(130, result.exit_code)
+            self.assertEqual("finished", result.attempt.attempt["reported_status"])
+            self.assertEqual("succeeded", result.attempt.attempt["verified_status"])
+            self.assertEqual(0, result.attempt.attempt["result_exit_code"])
+            self.assertEqual([], result.attempt.commits)
+
     def test_run_agent_command_commit_message_allows_no_change_session(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
@@ -466,10 +526,115 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(0, result.exit_code)
             self.assertEqual("no changes\n", result.command_stdout)
             self.assertEqual("succeeded", result.attempt.attempt["verified_status"])
+            self.assertEqual("succeeded_noop", result.attempt.outcome["outcome_class"])
             self.assertEqual([], result.attempt.commits)
             self.assertEqual({}, result.attempt.files)
             self.assertFalse((Path(result.workspace_ref) / ".ait-context.md").exists())
             self.assertFalse(_git_stdout(Path(result.workspace_ref), "status", "--short"))
+
+    def test_run_agent_command_noop_does_not_create_durable_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            run_agent_command(
+                repo_root,
+                intent_title="Chat only",
+                command=[sys.executable, "-c", "print('hi')"],
+                capture_command_output=True,
+            )
+
+            self.assertEqual((), list_memory_notes(repo_root, topic="durable-memory"))
+
+    def test_run_agent_command_promotes_rule_memory_without_file_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="Rule only",
+                command=[sys.executable, "-c", "print('以後所有 API route 必須使用 zod 驗證。')"],
+                capture_command_output=True,
+            )
+
+            durable_notes = list_memory_notes(repo_root, topic="durable-memory")
+
+            self.assertEqual("succeeded", result.attempt.outcome["outcome_class"])
+            self.assertEqual(1, len(durable_notes))
+            self.assertIn("API route", durable_notes[0].body)
+
+    def test_run_agent_command_marks_refusal_without_changes_as_failed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="Refused generated change",
+                adapter_name="claude-code",
+                command=[
+                    sys.executable,
+                    "-c",
+                    "print(\"I don't have permission to write files in this mode\")",
+                ],
+                commit_message="commit generated change",
+                capture_command_output=True,
+            )
+
+            self.assertEqual(3, result.exit_code)
+            self.assertEqual("failed", result.attempt.attempt["verified_status"])
+            self.assertEqual([], result.attempt.commits)
+
+    def test_pty_runner_tees_interactive_output_for_transcript(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+
+            completed = _run_command_with_pty_transcript(
+                [
+                    sys.executable,
+                    "-c",
+                    "print('AIT_PTY_TRANSCRIPT_TOKEN')",
+                ],
+                cwd=repo_root,
+                env={},
+            )
+
+            self.assertEqual(0, completed.returncode)
+            self.assertIn("AIT_PTY_TRANSCRIPT_TOKEN", completed.stdout)
+
+    def test_run_agent_command_writes_normalized_transcript_sidecar(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="Normalize transcript",
+                adapter_name="codex",
+                command=[
+                    sys.executable,
+                    "-c",
+                    "print('WorkingWorkingWorking'); print('你是誰?'); print('我是 Codex')",
+                ],
+                capture_command_output=True,
+            )
+
+            raw_trace = repo_root / result.attempt.attempt["raw_trace_ref"]
+            normalized_trace = raw_trace.parent / "normalized" / raw_trace.name
+            normalized_text = normalized_trace.read_text(encoding="utf-8")
+
+            self.assertTrue(raw_trace.exists())
+            self.assertTrue(normalized_trace.exists())
+            self.assertIn("WorkingWorkingWorking", raw_trace.read_text(encoding="utf-8"))
+            self.assertNotIn("WorkingWorkingWorking", normalized_text.split("STDOUT:", 1)[1])
+            self.assertIn("你是誰?", normalized_text)
+            self.assertIn("我是 Codex", normalized_text)
+
+    def test_transcript_sanitizer_removes_terminal_control_sequences(self) -> None:
+        text = "\x1b[?25hhello\r\n\x1b]0;title\x07world\x1b[0m"
+
+        self.assertEqual("hello\nworld", _strip_terminal_control(text))
 
     def test_run_agent_command_can_disable_default_auto_commit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

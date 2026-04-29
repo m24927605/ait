@@ -138,6 +138,23 @@ class CliRunTests(unittest.TestCase):
         self.assertIn("AIT run", stderr.getvalue())
         self.assertIn("Exit code: 0", stderr.getvalue())
 
+    def test_query_parse_error_returns_cli_error_without_traceback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "query", "agent.id = 'codex:main'"]):
+                    with redirect_stdout(stdout), redirect_stderr(stderr):
+                        exit_code = cli.main()
+
+        self.assertEqual(2, exit_code)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("error: unexpected character", stderr.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
+
     def test_memory_text_outputs_repo_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
@@ -569,7 +586,7 @@ class CliRunTests(unittest.TestCase):
                         "--",
                         sys.executable,
                         "-c",
-                        "from pathlib import Path; Path('graph.txt').write_text('ok\\n')",
+                        "from pathlib import Path; Path('graph.txt').write_text('ok\\n'); print('AIT_GRAPH_TRANSCRIPT_TOKEN'); print('以後所有 graph report 必須顯示 outcome badge。')",
                     ],
                 ):
                     with redirect_stdout(run_stdout):
@@ -599,10 +616,21 @@ class CliRunTests(unittest.TestCase):
             self.assertIn("wrote", html_stdout.getvalue())
             self.assertIn("AIT Work Graph", html)
             self.assertIn("Attempt Status", html)
+            self.assertIn("Outcomes", html)
             self.assertIn("Hot Files", html)
+            self.assertIn('id="filterText"', html)
+            self.assertIn('data-attempt-node', html)
             self.assertIn("<details", html)
             self.assertIn("Build graph report", html)
             self.assertIn("graph.txt", html)
+            self.assertIn("Outcome Reasons", html)
+            self.assertIn("Memory Candidates", html)
+            self.assertIn("outcome badge", html)
+            self.assertIn("Transcript", html)
+            self.assertIn("mode=<code>normalized</code>", html)
+            self.assertIn("AIT_GRAPH_TRANSCRIPT_TOKEN", html)
+            self.assertNotIn("https://", html)
+            self.assertNotIn("http://", html)
 
     def test_work_graph_json_rejects_negative_limit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

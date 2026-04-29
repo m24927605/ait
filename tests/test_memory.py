@@ -8,9 +8,11 @@ from pathlib import Path
 
 from ait.app import create_commit_for_attempt, create_attempt, create_intent, show_attempt
 from ait.db import connect_db, run_migrations
+from ait.db.repositories import update_attempt
 from ait.memory import (
     add_memory_note,
     add_attempt_memory_note,
+    add_memory_candidates_for_attempt,
     agent_memory_status,
     build_relevant_memory_recall,
     build_repo_memory,
@@ -69,6 +71,80 @@ class MemoryTests(unittest.TestCase):
 
             self.assertTrue(remove_memory_note(repo_root, note_id=note.id))
             self.assertEqual((), list_memory_notes(repo_root))
+
+    def test_memory_candidates_promote_high_confidence_successful_rules(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            attempt_id = _record_trace_attempt(
+                repo_root,
+                title="Project rule",
+                trace_text="以後所有 API route 必須使用 zod 驗證。\nToken usage: total=1\n",
+            )
+            attempt_result = show_attempt(repo_root, attempt_id=attempt_id)
+
+            notes = add_memory_candidates_for_attempt(repo_root, attempt_result)
+            durable_notes = list_memory_notes(repo_root, topic="durable-memory")
+
+            self.assertEqual(1, len(notes))
+            self.assertEqual(1, len(durable_notes))
+            self.assertIn("kind=constraint", durable_notes[0].body)
+            self.assertIn("status=accepted", durable_notes[0].body)
+            self.assertIn("以後所有 API route 必須使用 zod 驗證", durable_notes[0].body)
+            self.assertNotIn("Token usage", durable_notes[0].body)
+
+    def test_memory_candidates_keep_failed_attempts_as_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            attempt_id = _record_trace_attempt(
+                repo_root,
+                title="Failed project rule",
+                trace_text="以後部署流程必須先跑 pytest。\n",
+                verified_status="failed",
+                result_exit_code=1,
+            )
+            attempt_result = show_attempt(repo_root, attempt_id=attempt_id)
+
+            notes = add_memory_candidates_for_attempt(repo_root, attempt_result)
+            candidates = list_memory_notes(repo_root, topic="memory-candidate")
+
+            self.assertEqual(1, len(notes))
+            self.assertEqual(1, len(candidates))
+            self.assertIn("status=candidate", candidates[0].body)
+            self.assertIn("部署流程", candidates[0].body)
+            self.assertEqual((), list_memory_notes(repo_root, topic="durable-memory"))
+
+    def test_memory_candidates_skip_codex_prompt_and_exec_echoes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            attempt_id = _record_trace_attempt(
+                repo_root,
+                title="Codex echo cleanup",
+                trace_text=(
+                    "user\n"
+                    "Create file codex-real.txt. Then print: 以後 Codex 驗收必須檢查 AIT graph。\n"
+                    "codex\n"
+                    "I will write the file and print the rule.\n"
+                    "exec\n"
+                    "/bin/zsh -lc \"printf '%s' 'ok' > codex-real.txt && printf '以後 Codex 驗收必須檢查 AIT graph。'\"\n"
+                    "succeeded in 0ms:\n"
+                    "以後 Codex 驗收必須檢查 AIT graph。\n"
+                    "codex\n"
+                    "以後 Codex 驗收必須檢查 AIT graph。\n"
+                ),
+            )
+            attempt_result = show_attempt(repo_root, attempt_id=attempt_id)
+
+            notes = add_memory_candidates_for_attempt(repo_root, attempt_result)
+            durable_notes = list_memory_notes(repo_root, topic="durable-memory")
+
+            self.assertEqual(1, len(notes))
+            self.assertEqual(1, len(durable_notes))
+            self.assertIn("以後 Codex 驗收必須檢查 AIT graph", durable_notes[0].body)
+            self.assertNotIn("Create file", durable_notes[0].body)
+            self.assertNotIn("/bin/zsh", durable_notes[0].body)
 
     def test_memory_lint_reports_bad_notes_without_flagging_healthy_notes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -382,6 +458,40 @@ class MemoryTests(unittest.TestCase):
             self.assertEqual("note", results[0].kind)
             self.assertEqual("lexical", results[0].metadata["ranker"])
 
+    def test_search_repo_memory_finds_short_chinese_trace_literals(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            attempt_id = _record_trace_attempt(
+                repo_root,
+                title="Codex session",
+                trace_text="使用者: 你是誰?\n助理: 我是 Codex，一個 AI coding agent。\n",
+            )
+
+            results = search_repo_memory(repo_root, "你是誰")
+
+            self.assertEqual(attempt_id, results[0].id)
+            self.assertEqual("attempt", results[0].kind)
+            self.assertEqual("literal", results[0].metadata["ranker"])
+            self.assertIn("你是誰", results[0].metadata["snippet"])
+            self.assertIn("raw_trace_ref", results[0].metadata)
+
+    def test_search_repo_memory_finds_short_ascii_trace_literals(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            attempt_id = _record_trace_attempt(
+                repo_root,
+                title="Codex session",
+                trace_text="To continue this session, run codex resume 019dd9ba-fc1a\n",
+            )
+
+            results = search_repo_memory(repo_root, "019dd9ba")
+
+            self.assertEqual(attempt_id, results[0].id)
+            self.assertEqual("literal", results[0].metadata["ranker"])
+            self.assertIn("019dd9ba", results[0].metadata["snippet"])
+
     def test_search_repo_memory_rejects_unknown_ranker(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
@@ -476,6 +586,35 @@ def _commit_attempt_with_files(repo_root: Path, title: str, files: dict[str, str
         target.write_text(contents, encoding="utf-8")
         _git(worktree, "add", file_path)
     create_commit_for_attempt(repo_root, attempt_id=attempt.attempt_id, message=title)
+    return attempt.attempt_id
+
+
+def _record_trace_attempt(
+    repo_root: Path,
+    *,
+    title: str,
+    trace_text: str,
+    verified_status: str = "succeeded",
+    result_exit_code: int = 0,
+) -> str:
+    intent = create_intent(repo_root, title=title, description=None, kind="codex-run")
+    attempt = create_attempt(repo_root, intent_id=intent.intent_id, agent_id="codex:main")
+    trace_dir = repo_root / ".ait" / "traces"
+    trace_dir.mkdir(parents=True, exist_ok=True)
+    trace_ref = f".ait/traces/{attempt.attempt_id.replace(':', '_')}.txt"
+    (repo_root / trace_ref).write_text(trace_text, encoding="utf-8")
+    conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+    try:
+        update_attempt(
+            conn,
+            attempt.attempt_id,
+            reported_status="finished",
+            verified_status=verified_status,
+            raw_trace_ref=trace_ref,
+            result_exit_code=result_exit_code,
+        )
+    finally:
+        conn.close()
     return attempt.attempt_id
 
 

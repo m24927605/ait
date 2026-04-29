@@ -113,6 +113,39 @@ class DaemonConcurrencyTests(unittest.TestCase):
         self.assertEqual(per_client_events, evidence_a.observed_tool_calls)
         self.assertEqual(per_client_events, evidence_b.observed_tool_calls)
 
+    def test_accept_loop_exits_after_idle_timeout_without_clients(self) -> None:
+        self._stop_event.set()
+        self._accept_thread.join(timeout=2.0)
+        self.assertFalse(self._accept_thread.is_alive())
+        self._server.close()
+        if self._socket_path.exists():
+            remove_socket_file(self._socket_path)
+
+        server = bind_unix_socket(self._socket_path)
+        stop_event = threading.Event()
+        thread = threading.Thread(
+            target=run_accept_loop,
+            kwargs={
+                "server": server,
+                "conn": self.conn,
+                "db_lock": self._db_lock,
+                "repo_root": None,
+                "stop_event": stop_event,
+                "poll_interval_seconds": 0.02,
+                "idle_timeout_seconds": 0.05,
+            },
+            daemon=True,
+        )
+        thread.start()
+        thread.join(timeout=1.0)
+        try:
+            server.close()
+        except Exception:
+            pass
+
+        self.assertFalse(thread.is_alive())
+        self.assertTrue(stop_event.is_set())
+
     def _seed_intent_and_attempts(self) -> None:
         insert_intent(
             self.conn,

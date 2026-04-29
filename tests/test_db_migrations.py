@@ -37,6 +37,7 @@ class MigrationTests(unittest.TestCase):
                     "attempt_commits",
                     "evidence_files",
                     "memory_notes",
+                    "attempt_outcomes",
                 }.issubset(tables)
             )
             self.assertEqual(str(SCHEMA_VERSION), get_meta(conn, "schema_version"))
@@ -99,6 +100,20 @@ class MigrationTests(unittest.TestCase):
             ).fetchall()
         }
         self.assertIn("idx_memory_notes_active_topic_updated_at", indexes)
+
+    def test_attempt_outcomes_has_class_index(self) -> None:
+        conn = connect_db(":memory:")
+        self.addCleanup(conn.close)
+
+        run_migrations(conn)
+
+        indexes = {
+            row["name"]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'attempt_outcomes'"
+            ).fetchall()
+        }
+        self.assertIn("idx_attempt_outcomes_class_classified_at", indexes)
 
     def test_run_migrations_rejects_newer_schema_version(self) -> None:
         conn = sqlite3.connect(":memory:")

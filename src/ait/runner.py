@@ -1,18 +1,26 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import errno
 import os
 from pathlib import Path
+import pty
+import select
 import subprocess
 import sys
+import termios
 import time
+import tty
 
 from ait.adapters import get_adapter
 from ait.app import AttemptShowResult, create_attempt, create_intent, show_attempt, verify_attempt
 from ait.brain import build_auto_briefing_query, build_repo_brain_briefing_from_graph, render_repo_brain_briefing, write_repo_brain
 from ait.context import build_agent_context, render_agent_context_text
 from ait.daemon import start_daemon
-from ait.harness import AitHarness
+from ait.db import connect_db, get_attempt
+from ait.db.core import utc_now
+from ait.events import handle_attempt_finished
+from ait.harness import AitHarness, HarnessError
 from ait.memory import (
     add_attempt_memory_note,
     build_relevant_memory_recall,
@@ -23,6 +31,7 @@ from ait.memory import (
 )
 from ait.memory_policy import EXCLUDED_MARKER, init_memory_policy, load_memory_policy, transcript_excluded
 from ait.redaction import redact_text
+from ait.transcript import normalize_transcript, strip_terminal_control
 from ait.workspace import WorkspaceError, create_attempt_commit
 
 
@@ -35,6 +44,14 @@ class RunResult:
     command_stdout: str | None
     command_stderr: str | None
     attempt: AttemptShowResult
+
+
+@dataclass(frozen=True, slots=True)
+class _PtyCompletedProcess:
+    args: list[str]
+    returncode: int
+    stdout: str
+    stderr: str = ""
 
 
 def run_agent_command(
@@ -97,8 +114,11 @@ def run_agent_command(
     if context_file is not None:
         env["AIT_CONTEXT_FILE"] = str(context_file)
     completed: subprocess.CompletedProcess[str] | None = None
+    effective_exit_code = 1
     should_capture_output = capture_command_output
+    should_capture_tty = not should_capture_output and _stdio_is_tty()
     raw_trace_ref: str | None = None
+    raw_trace_text: str = ""
     with AitHarness.open(
         attempt_id=attempt.attempt_id,
         ownership_token=attempt.ownership_token,
@@ -110,14 +130,20 @@ def run_agent_command(
         },
     ) as harness:
         try:
-            completed = subprocess.run(
-                command,
-                cwd=workspace,
-                env=env,
-                check=False,
-                text=True,
-                capture_output=should_capture_output,
-            )
+            if should_capture_tty:
+                completed = _run_command_with_pty_transcript(command, cwd=workspace, env=env)
+                raw_trace_text = completed.stdout or ""
+            else:
+                completed = subprocess.run(
+                    command,
+                    cwd=workspace,
+                    env=env,
+                    check=False,
+                    text=True,
+                    capture_output=should_capture_output,
+                )
+                if should_capture_output:
+                    raw_trace_text = "\n".join([completed.stdout or "", completed.stderr or ""])
         except OSError as exc:
             completed = subprocess.CompletedProcess(
                 command,
@@ -125,7 +151,8 @@ def run_agent_command(
                 "",
                 f"ait run failed: command not executable: {command[0]} ({exc})\n",
             )
-        if adapter.name in {"aider", "codex"}:
+            raw_trace_text = completed.stderr or ""
+        if should_capture_output:
             raw_trace_ref = _write_command_transcript(
                 root,
                 attempt.attempt_id,
@@ -134,14 +161,37 @@ def run_agent_command(
                 stderr=completed.stderr or "",
                 exit_code=completed.returncode,
             )
-        duration_ms = int((time.monotonic() - started) * 1000)
-        harness.record_tool(
-            tool_name=command[0],
-            category="command",
-            duration_ms=duration_ms,
-            success=completed.returncode == 0,
+        elif should_capture_tty:
+            raw_trace_ref = _write_command_transcript(
+                root,
+                attempt.attempt_id,
+                command=command,
+                stdout=raw_trace_text,
+                stderr="",
+                exit_code=completed.returncode,
+            )
+        effective_exit_code = _semantic_exit_code(
+            completed.returncode,
+            transcript=raw_trace_text,
+            workspace=workspace,
+            context_file=context_file,
         )
-        harness.finish(exit_code=completed.returncode, raw_trace_ref=raw_trace_ref)
+        duration_ms = int((time.monotonic() - started) * 1000)
+        try:
+            harness.record_tool(
+                tool_name=command[0],
+                category="command",
+                duration_ms=duration_ms,
+                success=effective_exit_code == 0,
+            )
+            harness.finish(exit_code=effective_exit_code, raw_trace_ref=raw_trace_ref)
+        except (HarnessError, KeyboardInterrupt):
+            _finish_attempt_locally(
+                root,
+                attempt.attempt_id,
+                exit_code=effective_exit_code,
+                raw_trace_ref=raw_trace_ref,
+            )
 
     resolved_commit_message = _resolve_commit_message(
         explicit=commit_message,
@@ -151,36 +201,194 @@ def run_agent_command(
     explicit_commit = bool(commit_message and commit_message.strip())
     commit_enabled = (
         completed is not None
-        and completed.returncode == 0
+        and effective_exit_code == 0
         and bool(resolved_commit_message)
         and (auto_commit or explicit_commit)
     )
-    if commit_enabled:
-        if context_file is not None:
-            context_file.unlink(missing_ok=True)
-        workspace_path = Path(attempt.workspace_ref)
-        _stage_all_changes(workspace_path)
-        if _has_staged_changes(workspace_path):
-            create_attempt_commit(
-                attempt.workspace_ref,
-                message=resolved_commit_message,
-                intent_id=intent.intent_id,
-                attempt_id=attempt.attempt_id,
-            )
+    try:
+        if commit_enabled:
+            if context_file is not None:
+                context_file.unlink(missing_ok=True)
+            workspace_path = Path(attempt.workspace_ref)
+            _stage_all_changes(workspace_path)
+            if _has_staged_changes(workspace_path):
+                create_attempt_commit(
+                    attempt.workspace_ref,
+                    message=resolved_commit_message,
+                    intent_id=intent.intent_id,
+                    attempt_id=attempt.attempt_id,
+                )
+            shown = verify_attempt(root, attempt_id=attempt.attempt_id)
+        else:
+            shown = verify_attempt(root, attempt_id=attempt.attempt_id)
+        add_attempt_memory_note(root, shown)
+    except KeyboardInterrupt:
+        effective_exit_code = 130
         shown = verify_attempt(root, attempt_id=attempt.attempt_id)
-    else:
-        shown = show_attempt(root, attempt_id=attempt.attempt_id)
-    add_attempt_memory_note(root, shown)
+        try:
+            add_attempt_memory_note(root, shown)
+        except Exception:
+            pass
 
     return RunResult(
         intent_id=intent.intent_id,
         attempt_id=attempt.attempt_id,
         workspace_ref=attempt.workspace_ref,
-        exit_code=completed.returncode if completed is not None else 1,
+        exit_code=effective_exit_code,
         command_stdout=completed.stdout if completed is not None and capture_command_output else None,
         command_stderr=completed.stderr if completed is not None and capture_command_output else None,
         attempt=shown,
     )
+
+
+def _stdio_is_tty() -> bool:
+    return (
+        hasattr(sys.stdin, "isatty")
+        and hasattr(sys.stdout, "isatty")
+        and sys.stdin.isatty()
+        and sys.stdout.isatty()
+    )
+
+
+def _run_command_with_pty_transcript(
+    command: list[str],
+    *,
+    cwd: Path,
+    env: dict[str, str],
+) -> _PtyCompletedProcess:
+    master_fd, slave_fd = pty.openpty()
+    old_stdin_attrs = None
+    output = bytearray()
+    stdout_buffer = getattr(sys.stdout, "buffer", None)
+    stdin_is_tty = sys.stdin.isatty()
+    stdin_fd = sys.stdin.fileno() if stdin_is_tty else None
+    if stdin_is_tty:
+        assert stdin_fd is not None
+        old_stdin_attrs = termios.tcgetattr(stdin_fd)
+        tty.setraw(stdin_fd)
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=cwd,
+            env=env,
+            stdin=slave_fd,
+            stdout=slave_fd,
+            stderr=slave_fd,
+            close_fds=True,
+        )
+    finally:
+        os.close(slave_fd)
+
+    try:
+        while True:
+            read_fds = [master_fd]
+            if stdin_fd is not None and process.poll() is None:
+                read_fds.append(stdin_fd)
+            readable, _, _ = select.select(read_fds, [], [], 0.05)
+            if master_fd in readable:
+                try:
+                    data = os.read(master_fd, 4096)
+                except OSError as exc:
+                    if exc.errno != errno.EIO:
+                        raise
+                    data = b""
+                if data:
+                    output.extend(data)
+                    _write_terminal_bytes(stdout_buffer, data)
+                elif process.poll() is not None:
+                    break
+            if stdin_fd is not None and stdin_fd in readable:
+                data = os.read(stdin_fd, 4096)
+                if data:
+                    os.write(master_fd, data)
+            if process.poll() is not None:
+                try:
+                    while True:
+                        data = os.read(master_fd, 4096)
+                        if not data:
+                            break
+                        output.extend(data)
+                        _write_terminal_bytes(stdout_buffer, data)
+                except OSError as exc:
+                    if exc.errno != errno.EIO:
+                        raise
+                break
+        return _PtyCompletedProcess(
+            args=command,
+            returncode=process.wait(),
+            stdout=output.decode("utf-8", errors="replace"),
+        )
+    finally:
+        if old_stdin_attrs is not None:
+            termios.tcsetattr(stdin_fd, termios.TCSADRAIN, old_stdin_attrs)
+        os.close(master_fd)
+
+
+def _write_terminal_bytes(stdout_buffer: object, data: bytes) -> None:
+    if stdout_buffer is not None:
+        stdout_buffer.write(data)  # type: ignore[attr-defined]
+        stdout_buffer.flush()  # type: ignore[attr-defined]
+        return
+    sys.stdout.write(data.decode("utf-8", errors="replace"))
+    sys.stdout.flush()
+
+
+def _semantic_exit_code(
+    exit_code: int,
+    *,
+    transcript: str,
+    workspace: Path,
+    context_file: Path | None,
+) -> int:
+    if exit_code != 0:
+        return exit_code
+    if not _looks_like_agent_refusal(transcript):
+        return exit_code
+    if _has_workspace_changes(workspace, context_file=context_file):
+        return exit_code
+    return 3
+
+
+def _looks_like_agent_refusal(transcript: str) -> bool:
+    text = transcript.lower()
+    refusal_markers = (
+        "don't have permission",
+        "do not have permission",
+        "cannot make changes",
+        "can't make changes",
+        "cannot edit",
+        "can't edit",
+        "cannot write",
+        "can't write",
+        "permission denied",
+        "operation not permitted",
+        "refusing to",
+        "i won't",
+        "i cannot",
+        "i can't",
+        "unable to modify",
+        "unable to write",
+    )
+    return any(marker in text for marker in refusal_markers)
+
+
+def _has_workspace_changes(workspace: Path, *, context_file: Path | None) -> bool:
+    completed = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=workspace,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return False
+    ignored = str(context_file.relative_to(workspace)) if context_file is not None else None
+    for line in completed.stdout.splitlines():
+        path = line[3:].strip()
+        if ignored is not None and path == ignored:
+            continue
+        return True
+    return False
 
 
 def _resolve_commit_message(*, explicit: str | None, intent_title: str, adapter_name: str) -> str:
@@ -233,6 +441,32 @@ def _write_context_file(
     return path
 
 
+def _finish_attempt_locally(
+    repo_root: Path,
+    attempt_id: str,
+    *,
+    exit_code: int,
+    raw_trace_ref: str | None,
+) -> None:
+    conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+    try:
+        attempt = get_attempt(conn, attempt_id)
+        if attempt is None:
+            return
+        payload: dict[str, object] = {"exit_code": int(exit_code)}
+        if raw_trace_ref is not None:
+            payload["raw_trace_ref"] = raw_trace_ref
+        with conn:
+            handle_attempt_finished(
+                conn,
+                attempt=attempt,
+                sent_at=utc_now(),
+                payload=payload,
+            )
+    finally:
+        conn.close()
+
+
 def _write_command_transcript(
     repo_root: Path,
     attempt_id: str,
@@ -245,6 +479,8 @@ def _write_command_transcript(
     trace_dir = repo_root / ".ait" / "traces"
     trace_dir.mkdir(parents=True, exist_ok=True)
     path = trace_dir / f"{_safe_trace_name(attempt_id)}.txt"
+    stdout = _strip_terminal_control(stdout)
+    stderr = _strip_terminal_control(stderr)
     raw_transcript = "\n".join([" ".join(command), stdout, stderr])
     if transcript_excluded(raw_transcript, load_memory_policy(repo_root)):
         path.write_text(
@@ -283,7 +519,44 @@ def _write_command_transcript(
         ),
         encoding="utf-8",
     )
-    return str(path.relative_to(repo_root))
+    raw_trace_ref = str(path.relative_to(repo_root))
+    _write_normalized_transcript(repo_root, attempt_id, raw_trace_ref=raw_trace_ref)
+    return raw_trace_ref
+
+
+def _strip_terminal_control(text: str) -> str:
+    return strip_terminal_control(text)
+
+
+def _write_normalized_transcript(repo_root: Path, attempt_id: str, *, raw_trace_ref: str) -> str | None:
+    raw_path = repo_root / raw_trace_ref
+    try:
+        raw_text = raw_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    adapter = _adapter_from_trace(raw_text)
+    normalized = normalize_transcript(raw_text, adapter=adapter)
+    if not normalized:
+        return None
+    normalized_dir = repo_root / ".ait" / "traces" / "normalized"
+    normalized_dir.mkdir(parents=True, exist_ok=True)
+    normalized_path = normalized_dir / f"{_safe_trace_name(attempt_id)}.txt"
+    normalized_path.write_text(normalized, encoding="utf-8")
+    return str(normalized_path.relative_to(repo_root))
+
+
+def _adapter_from_trace(trace_text: str) -> str | None:
+    for line in trace_text.splitlines():
+        if line.startswith("Command: "):
+            command = line[len("Command: ") :]
+            if "codex" in command:
+                return "codex"
+            if "claude" in command:
+                return "claude-code"
+            if "gemini" in command:
+                return "gemini"
+            return None
+    return None
 
 
 def _safe_trace_name(attempt_id: str) -> str:

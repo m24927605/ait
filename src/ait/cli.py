@@ -50,7 +50,7 @@ from ait.app import (
     supersede_intent,
     verify_attempt,
 )
-from ait.daemon import daemon_status, serve_daemon, start_daemon, stop_daemon
+from ait.daemon import daemon_status, prune_daemon, serve_daemon, start_daemon, stop_daemon
 from ait.db import connect_db
 from ait.memory import (
     add_memory_note,
@@ -70,7 +70,7 @@ from ait.memory import (
     search_repo_memory,
 )
 from ait.memory_policy import init_memory_policy, load_memory_policy
-from ait.query import blame_path, execute_query, list_shortcut_expression, parse_blame_target
+from ait.query import QueryError, blame_path, execute_query, list_shortcut_expression, parse_blame_target
 from ait.reconcile import reconcile_repo
 from ait.report import build_work_graph, render_work_graph_text, write_work_graph_html
 from ait.repo import resolve_repo_root
@@ -354,6 +354,7 @@ def build_parser() -> argparse.ArgumentParser:
     daemon_subparsers = daemon_parser.add_subparsers(dest="daemon_command")
     daemon_subparsers.add_parser("start")
     daemon_subparsers.add_parser("stop")
+    daemon_subparsers.add_parser("prune")
     daemon_subparsers.add_parser("status")
     daemon_subparsers.add_parser("serve")
     return parser
@@ -1005,6 +1006,10 @@ def main() -> int:
             status = stop_daemon(repo_root)
             print(json.dumps(asdict(status), default=str, indent=2))
             return 0
+        if args.daemon_command == "prune":
+            status = prune_daemon(repo_root)
+            print(json.dumps(asdict(status), default=str, indent=2))
+            return 0
         if args.daemon_command == "status":
             status = daemon_status(repo_root)
             print(json.dumps(asdict(status), default=str, indent=2))
@@ -1028,13 +1033,17 @@ def _run_query_command(
     init_result = init_repo(repo_root)
     conn = connect_db(init_result.db_path)
     try:
-        rows = execute_query(
-            conn,
-            subject,
-            expression,
-            limit=limit,
-            offset=offset,
-        )
+        try:
+            rows = execute_query(
+                conn,
+                subject,
+                expression,
+                limit=limit,
+                offset=offset,
+            )
+        except QueryError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
     finally:
         conn.close()
     print(_format_rows([dict(row) for row in rows], output_format))
@@ -1135,6 +1144,7 @@ def _format_memory_import(result) -> str:
 
 def _format_run_result(result) -> str:
     attempt = result.attempt.attempt
+    outcome = result.attempt.outcome or {}
     return "\n".join(
         [
             "AIT run",
@@ -1143,6 +1153,7 @@ def _format_run_result(result) -> str:
             f"Workspace: {result.workspace_ref}",
             f"Exit code: {result.exit_code}",
             f"Status: {attempt.get('verified_status')}",
+            f"Outcome: {outcome.get('outcome_class', 'unclassified')}",
         ]
     )
 

@@ -1,6 +1,7 @@
 from ait.db.core import connect_db, get_meta, run_migrations, set_meta, utc_now
 from ait.db.repositories import (
     AttemptCommitRecord,
+    AttemptOutcomeRecord,
     AttemptRecord,
     EvidenceSummaryRecord,
     IntentRecord,
@@ -8,6 +9,7 @@ from ait.db.repositories import (
     NewIntent,
     get_attempt,
     get_attempt_by_workspace_ref,
+    get_attempt_outcome,
     get_evidence_summary,
     get_intent,
     insert_attempt,
@@ -22,12 +24,14 @@ from ait.db.repositories import (
     replace_evidence_files_kind,
     update_attempt,
     update_intent_status,
+    upsert_attempt_outcome,
 )
 from ait.db.schema import MIGRATIONS, SCHEMA_VERSION
 
 __all__ = [
     "AttemptRecord",
     "AttemptCommitRecord",
+    "AttemptOutcomeRecord",
     "EvidenceSummaryRecord",
     "IntentRecord",
     "MIGRATIONS",
@@ -37,6 +41,7 @@ __all__ = [
     "connect_db",
     "get_attempt",
     "get_attempt_by_workspace_ref",
+    "get_attempt_outcome",
     "get_evidence_summary",
     "get_intent",
     "get_meta",
@@ -54,5 +59,6 @@ __all__ = [
     "set_meta",
     "update_attempt",
     "update_intent_status",
+    "upsert_attempt_outcome",
     "utc_now",
 ]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from html import escape
+import json
 from pathlib import Path
 import sqlite3
 
@@ -45,10 +46,11 @@ def build_work_graph(
         intents = _query_intents(conn, limit=limit)
         filtered_intents: list[dict[str, object]] = []
         for intent in intents:
-            attempts = _query_attempts(conn, str(intent["id"]))
+            attempts = _query_attempts(conn, str(intent["id"]), repo_root=root)
             for attempt in attempts:
                 attempt["files"] = _query_files(conn, str(attempt["id"]))
                 attempt["commits"] = _query_commits(conn, str(attempt["id"]))
+                attempt["memory_notes"] = _query_attempt_memory_notes(conn, str(attempt["id"]))
             attempts = [
                 attempt
                 for attempt in attempts
@@ -132,6 +134,7 @@ def render_work_graph_text(graph: dict[str, object]) -> str:
                 + f"Attempt {attempt.get('ordinal')} {attempt.get('short_id')} "
                 + f"agent={attempt.get('agent_id')} "
                 + f"status={attempt.get('verified_status')}/{attempt.get('reported_status')}"
+                + f" outcome={attempt.get('outcome_class') or 'unclassified'}"
             )
             files = attempt.get("files", {})
             changed = files.get("changed", []) if isinstance(files, dict) else []
@@ -196,6 +199,11 @@ def render_work_graph_html(graph: dict[str, object]) -> str:
             )
             + "</div>"
         )
+    outcome_counts = summary.get("outcome_counts", {})
+    outcome_html = _metric_list(outcome_counts if isinstance(outcome_counts, dict) else {})
+    agent_options = _filter_options(agent_counts if isinstance(agent_counts, dict) else {})
+    status_options = _filter_options(status_counts if isinstance(status_counts, dict) else {})
+    outcome_options = _filter_options(outcome_counts if isinstance(outcome_counts, dict) else {})
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -203,45 +211,114 @@ def render_work_graph_html(graph: dict[str, object]) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{title}</title>
   <style>
-    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 32px; color: #1f2937; background: #ffffff; }}
-    h1 {{ font-size: 24px; margin: 0 0 16px; }}
-    h2 {{ font-size: 15px; margin: 0 0 8px; }}
-    .meta {{ color: #4b5563; margin-bottom: 20px; }}
-    .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 0 0 24px; }}
-    .panel {{ border: 1px solid #d1d5db; border-radius: 6px; padding: 12px; background: #f9fafb; }}
+    :root {{ color-scheme: light; --border: #d7dde5; --ink: #1d2733; --muted: #667085; --surface: #f7f9fb; --accent: #166c7d; --ok: #177245; --warn: #8a5a00; --bad: #b42318; }}
+    * {{ box-sizing: border-box; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; color: var(--ink); background: #ffffff; }}
+    main {{ max-width: 1440px; margin: 0 auto; padding: 24px; }}
+    h1 {{ font-size: 24px; margin: 0 0 10px; }}
+    h2 {{ font-size: 14px; margin: 0 0 8px; }}
+    .meta {{ color: var(--muted); margin-bottom: 16px; line-height: 1.45; }}
+    .toolbar {{ display: grid; grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(150px, 220px)); gap: 10px; align-items: end; padding: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); margin: 0 0 16px; }}
+    label {{ display: grid; gap: 4px; font-size: 12px; color: var(--muted); }}
+    input, select {{ width: 100%; height: 34px; border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--ink); padding: 0 10px; font: inherit; }}
+    .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 0 0 18px; }}
+    .panel {{ border: 1px solid var(--border); border-radius: 6px; padding: 12px; background: var(--surface); }}
     .panel ul {{ margin: 0; padding-left: 18px; }}
     .tree, .tree ul {{ list-style: none; margin: 0; padding-left: 22px; }}
     .tree li {{ margin: 8px 0; position: relative; }}
-    .tree li::before {{ content: ""; position: absolute; left: -14px; top: 0; bottom: -8px; border-left: 1px solid #d1d5db; }}
-    .tree li::after {{ content: ""; position: absolute; left: -14px; top: 12px; width: 10px; border-top: 1px solid #d1d5db; }}
+    .tree li::before {{ content: ""; position: absolute; left: -14px; top: 0; bottom: -8px; border-left: 1px solid var(--border); }}
+    .tree li::after {{ content: ""; position: absolute; left: -14px; top: 13px; width: 10px; border-top: 1px solid var(--border); }}
     .tree > li::before, .tree > li::after {{ display: none; }}
     details > summary {{ cursor: pointer; }}
-    .node {{ display: inline-block; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 6px; background: #f9fafb; }}
-    .muted {{ color: #6b7280; }}
+    .node {{ display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }}
+    .intent-title {{ font-weight: 600; }}
+    .attempt-body {{ margin-top: 8px; display: grid; gap: 8px; }}
+    .facts {{ display: flex; flex-wrap: wrap; gap: 6px; }}
+    .badge {{ display: inline-flex; align-items: center; min-height: 22px; border-radius: 999px; border: 1px solid var(--border); padding: 2px 8px; font-size: 12px; background: #fff; color: var(--ink); }}
+    .badge-ok {{ color: var(--ok); border-color: #9bd3b2; background: #f0fbf4; }}
+    .badge-warn {{ color: var(--warn); border-color: #e5c372; background: #fff8e5; }}
+    .badge-bad {{ color: var(--bad); border-color: #f1a7a1; background: #fff1f0; }}
+    .muted {{ color: var(--muted); }}
     code {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }}
+    .mini-list {{ margin: 0; padding-left: 18px; }}
+    .memory-note {{ border: 1px solid var(--border); border-radius: 6px; padding: 8px; background: #fff; }}
+    .memory-note pre {{ margin: 6px 0 0; white-space: pre-wrap; word-break: break-word; font-size: 12px; }}
+    pre.transcript {{ max-height: 420px; overflow: auto; white-space: pre-wrap; word-break: break-word; padding: 10px; border: 1px solid #222b36; border-radius: 6px; background: #111827; color: #f9fafb; font-size: 12px; line-height: 1.45; }}
+    .trace-ref {{ margin: 8px 0; }}
+    .hidden-by-filter {{ display: none !important; }}
+    .empty-state {{ display: none; padding: 18px; border: 1px dashed var(--border); border-radius: 6px; color: var(--muted); }}
+    .empty-state.visible {{ display: block; }}
+    @media (max-width: 780px) {{ main {{ padding: 16px; }} .toolbar {{ grid-template-columns: 1fr; }} .tree, .tree ul {{ padding-left: 14px; }} }}
   </style>
 </head>
 <body>
-  <h1>{title}</h1>
-  <div class="meta">
-    <div>Repo: <code>{escape(str(graph.get("repo_root", "")))}</code></div>
-    <div>Generated: <code>{escape(str(graph.get("generated_at", "")))}</code></div>
-    <div>Summary: intents={graph.get("intent_count", 0)} attempts={graph.get("attempt_count", 0)} matched_intents={graph.get("matched_intent_count", len(graph.get("intents", [])))} matched_attempts={graph.get("matched_attempt_count", 0)} memory_notes={graph.get("memory_note_count", 0)}</div>
-    {filters_html}
-  </div>
-  <section class="summary">
-    <div class="panel"><h2>Attempt Status</h2><ul>{status_html}</ul></div>
-    <div class="panel"><h2>Agents</h2><ul>{agent_html}</ul></div>
-    <div class="panel"><h2>Hot Files</h2><ul>{hot_file_html}</ul></div>
-    <div class="panel"><h2>Memory</h2><ul>{memory_html}</ul></div>
-  </section>
-  <ul class="tree">
-    <li><details open><summary><span class="node">Repo</span></summary>
-      <ul>
-        {intents_html}
-      </ul>
-    </details></li>
-  </ul>
+  <main>
+    <h1>{title}</h1>
+    <div class="meta">
+      <div>Repo: <code>{escape(str(graph.get("repo_root", "")))}</code></div>
+      <div>Generated: <code>{escape(str(graph.get("generated_at", "")))}</code></div>
+      <div>Summary: intents={graph.get("intent_count", 0)} attempts={graph.get("attempt_count", 0)} matched_intents={graph.get("matched_intent_count", len(graph.get("intents", [])))} matched_attempts={graph.get("matched_attempt_count", 0)} memory_notes={graph.get("memory_note_count", 0)}</div>
+      {filters_html}
+    </div>
+    <section class="toolbar" aria-label="Graph filters">
+      <label>Search<input id="filterText" type="search" placeholder="intent, transcript, file, memory"></label>
+      <label>Agent<select id="filterAgent"><option value="">All agents</option>{agent_options}</select></label>
+      <label>Status<select id="filterStatus"><option value="">All statuses</option>{status_options}</select></label>
+      <label>Outcome<select id="filterOutcome"><option value="">All outcomes</option>{outcome_options}</select></label>
+    </section>
+    <section class="summary">
+      <div class="panel"><h2>Attempt Status</h2><ul>{status_html}</ul></div>
+      <div class="panel"><h2>Outcomes</h2><ul>{outcome_html}</ul></div>
+      <div class="panel"><h2>Agents</h2><ul>{agent_html}</ul></div>
+      <div class="panel"><h2>Hot Files</h2><ul>{hot_file_html}</ul></div>
+      <div class="panel"><h2>Memory</h2><ul>{memory_html}</ul></div>
+    </section>
+    <div id="emptyState" class="empty-state">No attempts match the current filters.</div>
+    <ul class="tree" id="workGraph">
+      <li><details open><summary><span class="node">Repo</span></summary>
+        <ul>
+          {intents_html}
+        </ul>
+      </details></li>
+    </ul>
+  </main>
+  <script>
+    const controls = {{
+      text: document.getElementById('filterText'),
+      agent: document.getElementById('filterAgent'),
+      status: document.getElementById('filterStatus'),
+      outcome: document.getElementById('filterOutcome'),
+      empty: document.getElementById('emptyState')
+    }};
+    function applyFilters() {{
+      const query = controls.text.value.trim().toLowerCase();
+      const agent = controls.agent.value;
+      const status = controls.status.value;
+      const outcome = controls.outcome.value;
+      let visibleAttempts = 0;
+      document.querySelectorAll('[data-attempt-node]').forEach((node) => {{
+        const haystack = node.dataset.search || '';
+        const statuses = node.dataset.statuses || '';
+        const visible = (!query || haystack.includes(query))
+          && (!agent || node.dataset.agent === agent)
+          && (!status || statuses.split(' ').includes(status))
+          && (!outcome || node.dataset.outcome === outcome);
+        node.classList.toggle('hidden-by-filter', !visible);
+        if (visible) visibleAttempts += 1;
+      }});
+      document.querySelectorAll('[data-intent-node]').forEach((node) => {{
+        const hasVisibleAttempt = Boolean(node.querySelector('[data-attempt-node]:not(.hidden-by-filter)'));
+        const hasAttempts = Boolean(node.querySelector('[data-attempt-node]'));
+        node.classList.toggle('hidden-by-filter', hasAttempts && !hasVisibleAttempt);
+        const details = node.querySelector(':scope > details');
+        if (details && hasVisibleAttempt && (query || agent || status || outcome)) details.open = true;
+      }});
+      controls.empty.classList.toggle('visible', visibleAttempts === 0);
+    }}
+    Object.values(controls).forEach((control) => {{
+      if (control && control !== controls.empty) control.addEventListener('input', applyFilters);
+    }});
+  </script>
 </body>
 </html>
 """
@@ -255,10 +332,17 @@ def _intent_html(intent: dict[str, object], *, open_by_default: bool) -> str:
     if not attempts:
         attempts = "<li><span class=\"muted\">attempts: none</span></li>"
     open_attr = " open" if open_by_default else ""
+    search_text = _search_blob(
+        str(intent.get("short_id", "")),
+        str(intent.get("title", "")),
+        str(intent.get("status", "")),
+        str(intent.get("kind", "")),
+    )
     return (
-        f"<li><details{open_attr}><summary><span class=\"node\">"
-        f"Intent {escape(str(intent.get('short_id', '')))}: {escape(str(intent.get('title', '')))} "
-        f"[{escape(str(intent.get('status', '')))}]"
+        f"<li data-intent-node data-search=\"{escape(search_text, quote=True)}\"><details{open_attr}>"
+        f"<summary><span class=\"node\">"
+        f"<span class=\"intent-title\">Intent {escape(str(intent.get('short_id', '')))}: {escape(str(intent.get('title', '')))}</span> "
+        f"{_badge(str(intent.get('status', '')), kind='neutral')}"
         "</span></summary><ul>"
         f"{attempts}"
         "</ul></details></li>"
@@ -270,33 +354,159 @@ def _attempt_html(attempt: dict[str, object], *, open_by_default: bool) -> str:
     files = attempt.get("files", {})
     changed = files.get("changed", []) if isinstance(files, dict) else []
     touched = files.get("touched", []) if isinstance(files, dict) else []
-    for file_path in (changed or touched)[:8]:
-        children.append(f"<li><span class=\"muted\">File</span> <code>{escape(str(file_path))}</code></li>")
-    for commit in [item for item in attempt.get("commits", []) if isinstance(item, dict)][:5]:
-        children.append(
-            "<li><span class=\"muted\">Commit</span> "
-            f"<code>{escape(str(commit.get('commit_oid', ''))[:12])}</code></li>"
-        )
-    child_html = "<ul>" + "\n".join(children) + "</ul>" if children else ""
+    file_list = changed or touched
+    if file_list:
+        children.append(_files_html(file_list))
+    commits = [item for item in attempt.get("commits", []) if isinstance(item, dict)]
+    if commits:
+        children.append(_commits_html(commits))
+    outcome_reasons = _json_list(str(attempt.get("outcome_reasons_json") or "[]"))
+    if outcome_reasons:
+        children.append(_reasons_html(outcome_reasons))
+    memory_notes = [item for item in attempt.get("memory_notes", []) if isinstance(item, dict)]
+    if memory_notes:
+        children.append(_memory_notes_html(memory_notes))
+    transcript_html = _transcript_html(attempt)
+    if transcript_html:
+        children.append(transcript_html)
+    child_html = "<div class=\"attempt-body\">" + "\n".join(children) + "</div>" if children else ""
     open_attr = " open" if open_by_default else ""
+    verified_status = str(attempt.get("verified_status", ""))
+    reported_status = str(attempt.get("reported_status", ""))
+    outcome = str(attempt.get("outcome_class") or "unclassified")
+    agent = str(attempt.get("agent_id", ""))
+    search_text = _search_blob(
+        str(attempt.get("short_id", "")),
+        agent,
+        verified_status,
+        reported_status,
+        outcome,
+        str(attempt.get("transcript", "")),
+        *(str(path) for path in file_list),
+        *(str(note.get("body", "")) for note in memory_notes),
+    )
     return (
-        f"<li><details{open_attr}><summary><span class=\"node\">"
-        f"Attempt {attempt.get('ordinal')} {escape(str(attempt.get('short_id', '')))} "
-        f"agent={escape(str(attempt.get('agent_id', '')))} "
-        f"status={escape(str(attempt.get('verified_status', '')))}/{escape(str(attempt.get('reported_status', '')))}"
+        f"<li data-attempt-node data-agent=\"{escape(agent, quote=True)}\" "
+        f"data-statuses=\"{escape(_search_blob(verified_status, reported_status), quote=True)}\" "
+        f"data-outcome=\"{escape(outcome, quote=True)}\" data-search=\"{escape(search_text, quote=True)}\">"
+        f"<details{open_attr}><summary><span class=\"node\">"
+        f"<span>Attempt {attempt.get('ordinal')} {escape(str(attempt.get('short_id', '')))}</span>"
+        f"{_badge(agent, kind='agent')}"
+        f"{_badge(verified_status, kind='status')}"
+        f"{_badge(reported_status, kind='neutral')}"
+        f"{_badge(outcome, kind='outcome')}"
         "</span></summary>"
         f"{child_html}</details></li>"
     )
 
 
+def _transcript_html(attempt: dict[str, object]) -> str:
+    raw_trace_ref = str(attempt.get("raw_trace_ref") or "")
+    if not raw_trace_ref:
+        return ""
+    transcript = str(attempt.get("transcript") or "")
+    transcript_mode = str(attempt.get("transcript_mode") or "raw")
+    if not transcript:
+        return (
+            "<details><summary>Transcript</summary>"
+            f"<div class=\"trace-ref muted\">Trace: <code>{escape(raw_trace_ref)}</code> unavailable</div>"
+            "</details>"
+        )
+    return (
+        "<details><summary>Transcript</summary>"
+        f"<div class=\"trace-ref muted\">Trace: <code>{escape(raw_trace_ref)}</code> mode=<code>{escape(transcript_mode)}</code></div>"
+        f"<pre class=\"transcript\">{escape(transcript)}</pre>"
+        "</details>"
+    )
+
+
+def _files_html(file_paths: list[object]) -> str:
+    items = "\n".join(
+        f"<li><code>{escape(str(file_path))}</code></li>"
+        for file_path in file_paths[:16]
+    )
+    if len(file_paths) > 16:
+        items += f"<li><span class=\"muted\">... {len(file_paths) - 16} more</span></li>"
+    return f"<details open><summary>Files <span class=\"muted\">{len(file_paths)}</span></summary><ul class=\"mini-list\">{items}</ul></details>"
+
+
+def _commits_html(commits: list[dict[str, object]]) -> str:
+    items = "\n".join(
+        "<li>"
+        f"<code>{escape(str(commit.get('commit_oid', ''))[:12])}</code> "
+        f"<span class=\"muted\">+{escape(str(commit.get('insertions') or 0))} -{escape(str(commit.get('deletions') or 0))}</span>"
+        "</li>"
+        for commit in commits[:8]
+    )
+    if len(commits) > 8:
+        items += f"<li><span class=\"muted\">... {len(commits) - 8} more</span></li>"
+    return f"<details><summary>Commits <span class=\"muted\">{len(commits)}</span></summary><ul class=\"mini-list\">{items}</ul></details>"
+
+
+def _reasons_html(reasons: tuple[str, ...]) -> str:
+    items = "\n".join(f"<li>{escape(reason)}</li>" for reason in reasons)
+    return f"<details><summary>Outcome Reasons</summary><ul class=\"mini-list\">{items}</ul></details>"
+
+
+def _memory_notes_html(notes: list[dict[str, object]]) -> str:
+    items = "\n".join(
+        "<div class=\"memory-note\">"
+        f"{_badge(str(note.get('topic') or 'general'), kind='memory')}"
+        f" <code>{escape(str(note.get('source', '')))}</code>"
+        f"<pre>{escape(str(note.get('body', '')))}</pre>"
+        "</div>"
+        for note in notes
+    )
+    return f"<details open><summary>Memory Candidates <span class=\"muted\">{len(notes)}</span></summary>{items}</details>"
+
+
+def _badge(value: str, *, kind: str) -> str:
+    if not value:
+        return ""
+    css = "badge"
+    lowered = value.lower()
+    if kind == "outcome":
+        if lowered in {"succeeded", "promoted"}:
+            css += " badge-ok"
+        elif lowered in {"succeeded_noop", "needs_review", "failed_with_evidence"}:
+            css += " badge-warn"
+        elif lowered.startswith("failed"):
+            css += " badge-bad"
+    elif kind == "status":
+        if lowered in {"succeeded", "promoted"}:
+            css += " badge-ok"
+        elif lowered in {"pending", "discarded"}:
+            css += " badge-warn"
+        elif lowered == "failed":
+            css += " badge-bad"
+    return f"<span class=\"{css}\">{escape(value)}</span>"
+
+
+def _json_list(raw: str) -> tuple[str, ...]:
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError:
+        return ()
+    if not isinstance(value, list):
+        return ()
+    return tuple(str(item) for item in value)
+
+
+def _search_blob(*parts: str) -> str:
+    return " ".join(part for part in parts if part).lower()
+
+
 def _build_summary(intents: list[dict[str, object]]) -> dict[str, object]:
     status_counts: dict[str, int] = {}
+    outcome_counts: dict[str, int] = {}
     agent_counts: dict[str, int] = {}
     file_counts: dict[str, int] = {}
     for intent in intents:
         for attempt in [item for item in intent.get("attempts", []) if isinstance(item, dict)]:
             status = str(attempt.get("verified_status", "unknown"))
             status_counts[status] = status_counts.get(status, 0) + 1
+            outcome = str(attempt.get("outcome_class") or "unclassified")
+            outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
             agent = str(attempt.get("agent_id", "unknown"))
             agent_counts[agent] = agent_counts.get(agent, 0) + 1
             files = attempt.get("files", {})
@@ -311,6 +521,7 @@ def _build_summary(intents: list[dict[str, object]]) -> dict[str, object]:
     ]
     return {
         "status_counts": dict(sorted(status_counts.items())),
+        "outcome_counts": dict(sorted(outcome_counts.items())),
         "agent_counts": dict(sorted(agent_counts.items(), key=lambda item: (-item[1], item[0]))[:8]),
         "hot_files": hot_files,
     }
@@ -329,6 +540,7 @@ def _attempt_matches(
         statuses = {
             str(attempt.get("verified_status", "")),
             str(attempt.get("reported_status", "")),
+            str(attempt.get("outcome_class", "")),
         }
         if status not in statuses:
             return False
@@ -356,6 +568,13 @@ def _metric_list(values: dict[object, object]) -> str:
     )
 
 
+def _filter_options(values: dict[object, object]) -> str:
+    return "".join(
+        f"<option value=\"{escape(str(key), quote=True)}\">{escape(str(key))}</option>"
+        for key in sorted(values, key=lambda item: str(item))
+    )
+
+
 def _query_intents(conn: sqlite3.Connection, *, limit: int) -> list[dict[str, object]]:
     rows = conn.execute(
         """
@@ -379,13 +598,25 @@ def _query_intents(conn: sqlite3.Connection, *, limit: int) -> list[dict[str, ob
     ]
 
 
-def _query_attempts(conn: sqlite3.Connection, intent_id: str) -> list[dict[str, object]]:
+def _query_attempts(conn: sqlite3.Connection, intent_id: str, *, repo_root: Path) -> list[dict[str, object]]:
     rows = conn.execute(
         """
-        SELECT id, ordinal, agent_id, started_at, ended_at, reported_status, verified_status
-        FROM attempts
-        WHERE intent_id = ?
-        ORDER BY ordinal ASC
+        SELECT
+            a.id,
+            a.ordinal,
+            a.agent_id,
+            a.started_at,
+            a.ended_at,
+            a.reported_status,
+            a.verified_status,
+            a.raw_trace_ref,
+            o.outcome_class,
+            o.confidence AS outcome_confidence,
+            o.reasons_json AS outcome_reasons_json
+        FROM attempts a
+        LEFT JOIN attempt_outcomes o ON o.attempt_id = a.id
+        WHERE a.intent_id = ?
+        ORDER BY a.ordinal ASC
         """,
         (intent_id,),
     ).fetchall()
@@ -399,9 +630,36 @@ def _query_attempts(conn: sqlite3.Connection, intent_id: str) -> list[dict[str, 
             "ended_at": row["ended_at"],
             "reported_status": str(row["reported_status"]),
             "verified_status": str(row["verified_status"]),
+            "outcome_class": str(row["outcome_class"] or ""),
+            "outcome_confidence": str(row["outcome_confidence"] or ""),
+            "outcome_reasons_json": str(row["outcome_reasons_json"] or "[]"),
+            "raw_trace_ref": str(row["raw_trace_ref"] or ""),
+            **_read_display_transcript(str(row["raw_trace_ref"] or ""), repo_root=repo_root),
         }
         for row in rows
     ]
+
+
+def _read_display_transcript(raw_trace_ref: str, *, repo_root: Path, limit: int = 20000) -> dict[str, str]:
+    if not raw_trace_ref:
+        return {"transcript": "", "transcript_mode": "none"}
+    path = Path(raw_trace_ref)
+    if not path.is_absolute():
+        path = repo_root / path
+    normalized_path = path.parent / "normalized" / path.name
+    mode = "normalized" if normalized_path.exists() else "raw"
+    if normalized_path.exists():
+        path = normalized_path
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {"transcript": "", "transcript_mode": "missing"}
+    if len(text) <= limit:
+        return {"transcript": text, "transcript_mode": mode}
+    return {
+        "transcript": text[:limit] + f"\n\n[truncated: {len(text) - limit} chars omitted]",
+        "transcript_mode": mode,
+    }
 
 
 def _query_files(conn: sqlite3.Connection, attempt_id: str) -> dict[str, list[str]]:
@@ -436,6 +694,34 @@ def _query_commits(conn: sqlite3.Connection, attempt_id: str) -> list[dict[str, 
             "insertions": row["insertions"],
             "deletions": row["deletions"],
             "touched_files": row["touched_files_json"],
+        }
+        for row in rows
+    ]
+
+
+def _query_attempt_memory_notes(conn: sqlite3.Connection, attempt_id: str) -> list[dict[str, object]]:
+    sources = (
+        f"durable-memory:{attempt_id}",
+        f"memory-candidate:{attempt_id}",
+    )
+    rows = conn.execute(
+        """
+        SELECT id, topic, source, body, created_at, updated_at
+        FROM memory_notes
+        WHERE active = 1
+          AND source IN (?, ?)
+        ORDER BY updated_at DESC, id ASC
+        """,
+        sources,
+    ).fetchall()
+    return [
+        {
+            "id": str(row["id"]),
+            "topic": str(row["topic"] or ""),
+            "source": str(row["source"]),
+            "body": str(row["body"]),
+            "created_at": str(row["created_at"]),
+            "updated_at": str(row["updated_at"]),
         }
         for row in rows
     ]

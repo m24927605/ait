@@ -15,6 +15,7 @@ from ait.db import (
     insert_intent_edge,
     get_attempt,
     get_evidence_summary,
+    get_attempt_outcome,
     list_attempt_commits,
     list_evidence_files,
     list_intent_attempts,
@@ -77,6 +78,7 @@ class IntentShowResult:
 class AttemptShowResult:
     attempt: dict[str, object]
     evidence_summary: dict[str, object] | None
+    outcome: dict[str, object] | None
     files: dict[str, tuple[str, ...]]
     commits: list[dict[str, object]]
 
@@ -259,6 +261,7 @@ def show_attempt(repo_root: str | Path, *, attempt_id: str) -> AttemptShowResult
         if attempt is None:
             raise ValueError(f"Unknown attempt: {attempt_id}")
         evidence = get_evidence_summary(conn, attempt_id)
+        outcome = get_attempt_outcome(conn, attempt_id)
         files = list_evidence_files(conn, attempt_id)
         commits = list_attempt_commits(conn, attempt_id)
     finally:
@@ -266,6 +269,7 @@ def show_attempt(repo_root: str | Path, *, attempt_id: str) -> AttemptShowResult
     return AttemptShowResult(
         attempt=attempt.__dict__,
         evidence_summary=None if evidence is None else evidence.__dict__,
+        outcome=None if outcome is None else outcome.__dict__,
         files=files,
         commits=[commit.__dict__ for commit in commits],
     )

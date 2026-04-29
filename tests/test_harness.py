@@ -147,6 +147,26 @@ class HarnessClientTests(unittest.TestCase):
         finished = self._received[-1]
         self.assertEqual(1, finished["payload"]["exit_code"])
 
+    def test_context_manager_does_not_retry_failed_explicit_finish(self) -> None:
+        self._serve_thread = threading.Thread(
+            target=self._serve_close_on_finish,
+            daemon=True,
+        )
+        self._serve_thread.start()
+
+        with self.assertRaises(HarnessError):
+            with AitHarness.open(
+                attempt_id="repo:nonce:01TESTATTEMPT",
+                ownership_token="test-token",
+                socket_path=self._socket_path,
+                agent={"agent_id": "myhar:worker", "harness": "myhar", "harness_version": "0"},
+            ) as harness:
+                harness.finish(exit_code=1)
+
+        self._serve_thread.join(timeout=2.0)
+        event_types = [evt["event_type"] for evt in self._received]
+        self.assertEqual(["attempt_started", "attempt_finished"], event_types)
+
     def _serve_once(self, ok: bool = True) -> None:
         try:
             client, _ = self._server.accept()
@@ -164,6 +184,26 @@ class HarnessClientTests(unittest.TestCase):
                 if not ok:
                     response["error"] = "forced rejection"
                 file.write((json.dumps(response) + "\n").encode("utf-8"))
+                file.flush()
+        finally:
+            client.close()
+
+    def _serve_close_on_finish(self) -> None:
+        try:
+            client, _ = self._server.accept()
+        except (socket.timeout, OSError):
+            return
+        try:
+            file = client.makefile("rwb")
+            while True:
+                line = file.readline()
+                if not line:
+                    return
+                envelope = json.loads(line.decode("utf-8"))
+                self._received.append(envelope)
+                if envelope["event_type"] == "attempt_finished":
+                    return
+                file.write((json.dumps({"ok": True}) + "\n").encode("utf-8"))
                 file.flush()
         finally:
             client.close()

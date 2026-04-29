@@ -12,7 +12,7 @@ import sys
 import threading
 import time
 
-from ait.config import DEFAULT_DAEMON_SOCKET_PATH, ensure_local_config
+from ait.config import DEFAULT_DAEMON_IDLE_TIMEOUT_SECONDS, DEFAULT_DAEMON_SOCKET_PATH, ensure_local_config
 from ait.daemon_transport import NDJSONSocketStream, bind_unix_socket, remove_socket_file
 from ait.db import connect_db, run_migrations
 from ait.events import EventError, process_event, reap_stale_attempts
@@ -31,6 +31,10 @@ class DaemonStatus:
     pid_file: Path
     running: bool
     pid: int | None
+    pid_running: bool = False
+    pid_matches: bool = False
+    socket_connectable: bool = False
+    stale_reason: str | None = None
 
 
 def start_daemon(repo_root: str | Path) -> DaemonStatus:
@@ -38,6 +42,7 @@ def start_daemon(repo_root: str | Path) -> DaemonStatus:
     status = daemon_status(root)
     if status.running:
         return status
+    _cleanup_stale_daemon_state(status)
     process = subprocess.Popen(
         [sys.executable, "-m", "ait.cli", "daemon", "serve"],
         cwd=root,
@@ -62,7 +67,7 @@ def start_daemon(repo_root: str | Path) -> DaemonStatus:
 def stop_daemon(repo_root: str | Path) -> DaemonStatus:
     root = resolve_repo_root(repo_root)
     status = daemon_status(root)
-    if status.pid is not None:
+    if status.pid is not None and status.pid_matches:
         os.kill(status.pid, signal.SIGTERM)
     if status.socket_path.exists():
         try:
@@ -74,20 +79,49 @@ def stop_daemon(repo_root: str | Path) -> DaemonStatus:
     return daemon_status(root)
 
 
+def prune_daemon(repo_root: str | Path) -> DaemonStatus:
+    root = resolve_repo_root(repo_root)
+    status = daemon_status(root)
+    _cleanup_stale_daemon_state(status)
+    return daemon_status(root)
+
+
 def daemon_status(repo_root: str | Path) -> DaemonStatus:
     root = resolve_repo_root(repo_root)
     socket_path = _socket_path(root)
     pid_file = _pid_file(root)
     pid = None
-    running = False
+    pid_running = False
+    pid_matches = False
     if pid_file.exists():
         try:
             pid = int(pid_file.read_text(encoding="utf-8").strip())
             os.kill(pid, 0)
-            running = True
+            pid_running = True
+            pid_matches = _pid_matches_ait_daemon(pid)
         except Exception:
-            running = False
-    return DaemonStatus(socket_path=socket_path, pid_file=pid_file, running=running and socket_path.exists(), pid=pid)
+            pid_running = False
+            pid_matches = False
+    socket_connectable = _socket_connectable(socket_path)
+    stale_reason = _daemon_stale_reason(
+        socket_path=socket_path,
+        pid_file=pid_file,
+        pid=pid,
+        pid_running=pid_running,
+        pid_matches=pid_matches,
+        socket_connectable=socket_connectable,
+    )
+    running = socket_connectable and (pid is None or not pid_file.exists() or pid_matches)
+    return DaemonStatus(
+        socket_path=socket_path,
+        pid_file=pid_file,
+        running=running,
+        pid=pid if pid_running else None,
+        pid_running=pid_running,
+        pid_matches=pid_matches,
+        socket_connectable=socket_connectable,
+        stale_reason=stale_reason,
+    )
 
 
 def serve_daemon(repo_root: str | Path) -> None:
@@ -126,6 +160,7 @@ def serve_daemon(repo_root: str | Path) -> None:
             db_lock=db_lock,
             repo_root=root,
             stop_event=stop_event,
+            idle_timeout_seconds=_daemon_idle_timeout(root),
         )
     finally:
         stop_event.set()
@@ -182,6 +217,7 @@ def run_accept_loop(
     repo_root: Path | None,
     stop_event: threading.Event | None = None,
     poll_interval_seconds: float = 0.1,
+    idle_timeout_seconds: float | None = None,
 ) -> None:
     """Accept client connections and hand each off to its own worker thread.
 
@@ -197,18 +233,41 @@ def run_accept_loop(
     """
     if stop_event is not None:
         server.settimeout(poll_interval_seconds)
+    last_activity = time.monotonic()
+    active_clients = 0
+    active_clients_lock = threading.Lock()
+
+    def run_client(client: socket.socket) -> None:
+        nonlocal active_clients, last_activity
+        try:
+            _handle_client_safely(conn, db_lock, client, repo_root)
+        finally:
+            with active_clients_lock:
+                active_clients -= 1
+                last_activity = time.monotonic()
+
     while True:
         if stop_event is not None and stop_event.is_set():
             return
         try:
             client, _ = server.accept()
         except socket.timeout:
+            if idle_timeout_seconds is not None and idle_timeout_seconds > 0:
+                with active_clients_lock:
+                    idle = active_clients == 0 and (time.monotonic() - last_activity) >= idle_timeout_seconds
+                if idle:
+                    if stop_event is not None:
+                        stop_event.set()
+                    return
             continue
         except OSError:
             return
+        with active_clients_lock:
+            active_clients += 1
+            last_activity = time.monotonic()
         threading.Thread(
-            target=_handle_client_safely,
-            args=(conn, db_lock, client, repo_root),
+            target=run_client,
+            args=(client,),
             daemon=True,
             name="ait-client",
         ).start()
@@ -258,6 +317,8 @@ def _handle_client(
             _write_response(client, {"ok": True, **result.__dict__})
         except EventError as exc:
             _write_response(client, {"ok": False, "error": str(exc)})
+        except Exception as exc:
+            _write_response(client, {"ok": False, "error": f"internal daemon error: {exc}"})
 
 
 def _write_response(client: socket.socket, payload: dict[str, object]) -> None:
@@ -274,6 +335,99 @@ def _pid_file(repo_root: Path) -> Path:
     return repo_root / ".ait" / "daemon.pid"
 
 
+def _cleanup_stale_daemon_state(status: DaemonStatus) -> None:
+    if status.running:
+        return
+    if status.pid_file.exists() and not status.pid_matches:
+        try:
+            status.pid_file.unlink()
+        except OSError:
+            pass
+    if status.socket_path.exists() and not status.socket_connectable:
+        try:
+            if status.socket_path.is_socket():
+                remove_socket_file(status.socket_path)
+            elif status.socket_path.is_file() or status.socket_path.is_symlink():
+                status.socket_path.unlink()
+        except OSError:
+            pass
+
+
+def _daemon_stale_reason(
+    *,
+    socket_path: Path,
+    pid_file: Path,
+    pid: int | None,
+    pid_running: bool,
+    pid_matches: bool,
+    socket_connectable: bool,
+) -> str | None:
+    if socket_connectable and (pid is None or not pid_file.exists() or pid_matches):
+        return None
+    if pid_file.exists() and pid is None:
+        return "pid_file_invalid"
+    if pid is not None and not pid_running:
+        return "pid_not_running"
+    if pid_running and not pid_matches:
+        return "pid_not_ait_daemon"
+    if socket_path.exists() and not socket_connectable:
+        return "socket_not_connectable"
+    if pid_matches and not socket_connectable:
+        return "socket_missing_or_not_connectable"
+    return None
+
+
+def _socket_connectable(socket_path: Path) -> bool:
+    if not socket_path.exists() or not socket_path.is_socket():
+        return False
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        client.settimeout(0.2)
+        client.connect(str(socket_path))
+        return True
+    except OSError:
+        return False
+    finally:
+        client.close()
+
+
+def _pid_matches_ait_daemon(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if pid == os.getpid():
+        return False
+    command = _pid_command(pid)
+    if not command:
+        return False
+    normalized = " ".join(command.split())
+    return (
+        "daemon serve" in normalized
+        and ("ait.cli" in normalized or "/ait" in normalized or " ait " in f" {normalized} ")
+    )
+
+
+def _pid_command(pid: int) -> str:
+    proc_cmdline = Path("/proc") / str(pid) / "cmdline"
+    try:
+        if proc_cmdline.exists():
+            return proc_cmdline.read_text(encoding="utf-8", errors="replace").replace("\x00", " ")
+    except OSError:
+        pass
+    try:
+        completed = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "command="],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=1.0,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    if completed.returncode != 0:
+        return ""
+    return completed.stdout.strip()
+
+
 def _pythonpath_with_src(repo_root: Path) -> str:
     del repo_root
     src_path = str(Path(__file__).resolve().parents[1])
@@ -284,6 +438,11 @@ def _pythonpath_with_src(repo_root: Path) -> str:
 def _reaper_ttl(repo_root: Path) -> int:
     config = ensure_local_config(repo_root)
     return config.reaper_ttl_seconds or DEFAULT_REAPER_TTL_SECONDS
+
+
+def _daemon_idle_timeout(repo_root: Path) -> int:
+    config = ensure_local_config(repo_root)
+    return config.daemon_idle_timeout_seconds or DEFAULT_DAEMON_IDLE_TIMEOUT_SECONDS
 
 
 def _now() -> str:

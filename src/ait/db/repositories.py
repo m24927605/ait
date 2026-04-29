@@ -122,6 +122,16 @@ class AttemptCommitRecord:
     touched_files: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class AttemptOutcomeRecord:
+    attempt_id: str
+    schema_version: int
+    outcome_class: str
+    confidence: str
+    reasons: tuple[str, ...]
+    classified_at: str
+
+
 def insert_intent(conn: sqlite3.Connection, new_intent: NewIntent) -> IntentRecord:
     root_intent_id = new_intent.root_intent_id or new_intent.id
     with conn:
@@ -286,6 +296,50 @@ def list_attempt_commits(conn: sqlite3.Connection, attempt_id: str) -> list[Atte
         (attempt_id,),
     ).fetchall()
     return [_row_to_attempt_commit(row) for row in rows]
+
+
+def get_attempt_outcome(conn: sqlite3.Connection, attempt_id: str) -> AttemptOutcomeRecord | None:
+    row = conn.execute(
+        "SELECT * FROM attempt_outcomes WHERE attempt_id = ?",
+        (attempt_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return _row_to_attempt_outcome(row)
+
+
+def upsert_attempt_outcome(
+    conn: sqlite3.Connection,
+    *,
+    attempt_id: str,
+    outcome_class: str,
+    confidence: str,
+    reasons: tuple[str, ...],
+    classified_at: str,
+) -> None:
+    with conn:
+        conn.execute(
+            """
+            INSERT INTO attempt_outcomes(
+                attempt_id, schema_version, outcome_class, confidence, reasons_json, classified_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(attempt_id) DO UPDATE SET
+                schema_version = excluded.schema_version,
+                outcome_class = excluded.outcome_class,
+                confidence = excluded.confidence,
+                reasons_json = excluded.reasons_json,
+                classified_at = excluded.classified_at
+            """,
+            (
+                attempt_id,
+                SCHEMA_VERSION,
+                outcome_class,
+                confidence,
+                _json_dump(list(reasons)),
+                classified_at,
+            ),
+        )
 
 
 def insert_attempt_commit(
@@ -534,6 +588,17 @@ def _row_to_attempt_commit(row: sqlite3.Row) -> AttemptCommitRecord:
         insertions=_int_or_none(row["insertions"]),
         deletions=_int_or_none(row["deletions"]),
         touched_files=tuple(_json_load(row["touched_files_json"])),
+    )
+
+
+def _row_to_attempt_outcome(row: sqlite3.Row) -> AttemptOutcomeRecord:
+    return AttemptOutcomeRecord(
+        attempt_id=str(row["attempt_id"]),
+        schema_version=int(row["schema_version"]),
+        outcome_class=str(row["outcome_class"]),
+        confidence=str(row["confidence"]),
+        reasons=tuple(str(item) for item in _json_load(row["reasons_json"])),
+        classified_at=str(row["classified_at"]),
     )
 
 

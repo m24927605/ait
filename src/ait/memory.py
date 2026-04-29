@@ -6,9 +6,11 @@ import math
 from pathlib import Path
 import re
 import sqlite3
+import unicodedata
 import uuid
 
 from ait.db import connect_db, run_migrations, utc_now
+from ait.db.repositories import get_attempt_outcome
 from ait.memory_policy import (
     EXCLUDED_MARKER,
     MemoryPolicy,
@@ -54,6 +56,17 @@ class MemorySearchResult:
     title: str
     text: str
     metadata: dict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryCandidate:
+    kind: str
+    topic: str
+    body: str
+    confidence: str
+    status: str
+    reason: str
+    source_ref: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -374,6 +387,9 @@ def add_attempt_memory_note(repo_root: str | Path, attempt_result) -> MemoryNote
     commits = tuple(str(commit.get("commit_oid")) for commit in getattr(attempt_result, "commits", []) if commit.get("commit_oid"))
     intent = _attempt_memory_intent_fields(root, str(attempt.get("intent_id") or ""))
     verified_status = str(attempt.get("verified_status") or "pending")
+    outcome = getattr(attempt_result, "outcome", None) or {}
+    outcome_class = str(outcome.get("outcome_class") or "unclassified") if isinstance(outcome, dict) else "unclassified"
+    outcome_confidence = str(outcome.get("confidence") or "") if isinstance(outcome, dict) else ""
     exit_code = attempt.get("result_exit_code")
     confidence = "high" if verified_status in {"succeeded", "promoted"} else "advisory"
     body = _attempt_memory_note_body(
@@ -382,14 +398,112 @@ def add_attempt_memory_note(repo_root: str | Path, attempt_result) -> MemoryNote
         changed_files=changed_files,
         commits=commits,
         confidence=confidence,
+        outcome_class=outcome_class,
+        outcome_confidence=outcome_confidence,
         exit_code=exit_code,
     )
-    return add_memory_note(
+    note = add_memory_note(
         root,
         topic="attempt-memory",
         body=body,
         source=source,
     )
+    add_memory_candidates_for_attempt(root, attempt_result)
+    return note
+
+
+def add_memory_candidates_for_attempt(repo_root: str | Path, attempt_result) -> tuple[MemoryNote, ...]:
+    root = resolve_repo_root(repo_root)
+    attempt = dict(attempt_result.attempt)
+    attempt_id = str(attempt.get("id") or "")
+    if not attempt_id:
+        return ()
+    source = f"memory-candidate:{attempt_id}"
+    if _active_memory_source_exists(root, source):
+        return ()
+    if _active_memory_source_exists(root, f"durable-memory:{attempt_id}"):
+        return ()
+    raw_trace_ref = str(attempt.get("raw_trace_ref") or "")
+    policy = load_memory_policy(root)
+    trace_text = _read_trace_text(raw_trace_ref, repo_root=root, limit=12000)
+    if _trace_excluded(trace_text, policy=policy):
+        return ()
+    verified_status = str(attempt.get("verified_status") or "pending")
+    outcome_class = _attempt_result_outcome_class(root, attempt_id)
+    candidates = extract_memory_candidates(
+        trace_text,
+        attempt_id=attempt_id,
+        source_ref=raw_trace_ref,
+        verified_status=verified_status,
+    )
+    notes: list[MemoryNote] = []
+    for candidate in candidates:
+        durable = (
+            verified_status in {"succeeded", "promoted"}
+            and outcome_class in {"succeeded", "promoted"}
+            and candidate.confidence == "high"
+        )
+        notes.append(
+            add_memory_note(
+                root,
+                topic="durable-memory" if durable else "memory-candidate",
+                body=_memory_candidate_note_body(candidate, durable=durable),
+                source=(f"durable-memory:{attempt_id}" if durable else source),
+            )
+        )
+    return tuple(notes)
+
+
+def _attempt_result_outcome_class(repo_root: Path, attempt_id: str) -> str:
+    conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+    try:
+        run_migrations(conn)
+        outcome = get_attempt_outcome(conn, attempt_id)
+    finally:
+        conn.close()
+    if outcome is None:
+        return "succeeded"
+    return outcome.outcome_class
+
+
+def extract_memory_candidates(
+    text: str,
+    *,
+    attempt_id: str,
+    source_ref: str,
+    verified_status: str,
+) -> tuple[MemoryCandidate, ...]:
+    del verified_status
+    candidates: list[MemoryCandidate] = []
+    seen: set[str] = set()
+    skip_next_role_payload = False
+    for line in text.splitlines():
+        raw = line.strip()
+        if raw.lower() in {"user", "exec"}:
+            skip_next_role_payload = True
+            continue
+        if skip_next_role_payload:
+            skip_next_role_payload = False
+            continue
+        cleaned = _candidate_line(line)
+        if not cleaned or cleaned in seen:
+            continue
+        kind = _candidate_kind(cleaned)
+        if kind is None:
+            continue
+        seen.add(cleaned)
+        candidates.append(
+            MemoryCandidate(
+                kind=kind,
+                topic=_candidate_topic(kind),
+                body=cleaned,
+                confidence="high",
+                status="candidate",
+                reason="durable marker in transcript",
+                source_ref=source_ref or attempt_id,
+            )
+        )
+    return tuple(candidates)
 
 
 def import_agent_memory(
@@ -558,6 +672,8 @@ def _attempt_memory_note_body(
     changed_files: tuple[str, ...],
     commits: tuple[str, ...],
     confidence: str,
+    outcome_class: str,
+    outcome_confidence: str,
     exit_code: object,
 ) -> str:
     attempt_id = str(attempt.get("id") or "")
@@ -582,6 +698,8 @@ def _attempt_memory_note_body(
             f"agent_id={agent_id}",
             f"reported_status={reported_status}",
             f"verified_status={verified_status}",
+            f"outcome_class={outcome_class}",
+            f"outcome_confidence={outcome_confidence}",
             f"exit_code={exit_code}",
             f"confidence={confidence}",
             f"changed_files={changed_text}",
@@ -595,6 +713,78 @@ def _attempt_memory_note_body(
             ),
         ]
     )
+
+
+def _memory_candidate_note_body(candidate: MemoryCandidate, *, durable: bool) -> str:
+    status = "accepted" if durable else candidate.status
+    return "\n".join(
+        [
+            "AIT memory candidate",
+            f"kind={candidate.kind}",
+            f"topic={candidate.topic}",
+            f"confidence={candidate.confidence}",
+            f"status={status}",
+            f"reason={candidate.reason}",
+            f"source_ref={candidate.source_ref}",
+            "",
+            candidate.body,
+        ]
+    )
+
+
+def _candidate_line(line: str) -> str:
+    cleaned = " ".join(line.strip().lstrip("-•>› ").split())
+    if not cleaned:
+        return ""
+    lowered = cleaned.lower()
+    if lowered.startswith(
+        (
+            "token usage:",
+            "to continue this session",
+            "ait agent transcript",
+            "attempt-id:",
+            "command:",
+            "exit-code:",
+            "redacted:",
+            "stdout:",
+            "stderr:",
+        )
+    ):
+        return ""
+    if lowered.startswith(("/bin/", "python ", "node ", "npm ", "pnpm ", "yarn ")):
+        return ""
+    if " && " in lowered and (" > " in lowered or "printf " in lowered):
+        return ""
+    if lowered in {"hi", "hello", "你是誰?", "你是誰"}:
+        return ""
+    return cleaned[:600]
+
+
+def _candidate_kind(line: str) -> str | None:
+    lowered = line.lower()
+    markers: tuple[tuple[str, tuple[str, ...]], ...] = (
+        ("decision", ("決定", "decision:", "decide ", "decided ")),
+        ("constraint", ("以後", "規則", "不要", "必須", "不能", "must ", "should ", "do not ", "don't ")),
+        ("workflow", ("流程", "步驟", "workflow", "run ", "使用 ", "use ")),
+        ("test", ("測試", "pytest", "test command", "驗收")),
+        ("failure", ("失敗", "failed because", "root cause", "原因")),
+        ("open-question", ("待確認", "open question", "todo:", "follow up")),
+    )
+    for kind, candidates in markers:
+        if any(marker in lowered or marker in line for marker in candidates):
+            return kind
+    return None
+
+
+def _candidate_topic(kind: str) -> str:
+    return {
+        "decision": "architecture",
+        "constraint": "project-rule",
+        "workflow": "workflow",
+        "test": "testing",
+        "failure": "failure",
+        "open-question": "open-question",
+    }.get(kind, "project-knowledge")
 
 
 def list_memory_notes(
@@ -1073,17 +1263,26 @@ def search_repo_memory_with_connection(
     repo_root: str | Path | None = None,
     policy: MemoryPolicy | None = None,
 ) -> tuple[MemorySearchResult, ...]:
-    query_terms = _terms(query)
-    if not query_terms:
+    normalized_query = _normalize_search_text(query)
+    if not normalized_query:
         return ()
     documents = _search_documents(
         conn,
         repo_root=Path(repo_root).resolve() if repo_root else Path.cwd(),
         policy=policy or default_memory_policy(),
     )
+    literal_results = _score_documents_literal(documents, normalized_query)
     if ranker == "vector":
+        query_terms = _terms(query)
+        if not query_terms:
+            results = literal_results
+            results.sort(key=lambda result: (-result.score, result.kind, result.id))
+            return tuple(results[:limit])
         results = _score_documents_vector(documents, query_terms)
+        if _should_prefer_literal(query) or not results:
+            results = _merge_search_results(literal_results, results)
     elif ranker == "lexical":
+        query_terms = _terms(query)
         results = [
             result
             for result in (
@@ -1092,6 +1291,8 @@ def search_repo_memory_with_connection(
             )
             if result is not None
         ]
+        if _should_prefer_literal(query) or not results:
+            results = _merge_search_results(literal_results, results)
     else:
         raise ValueError("memory search ranker must be 'vector' or 'lexical'")
     results.sort(key=lambda result: (-result.score, result.kind, result.id))
@@ -1505,15 +1706,25 @@ def _trace_excluded(trace_text: str, *, policy: MemoryPolicy) -> bool:
 def _read_trace_text(raw_trace_ref: str, *, repo_root: Path, limit: int = 4000) -> str:
     if not raw_trace_ref:
         return ""
-    path = Path(raw_trace_ref)
-    if not path.is_absolute():
-        path = repo_root / path
+    path = _normalized_trace_path(raw_trace_ref, repo_root=repo_root)
+    if path is None:
+        path = Path(raw_trace_ref)
+        if not path.is_absolute():
+            path = repo_root / path
     if not path.exists():
         return ""
     try:
         return path.read_text(encoding="utf-8", errors="replace")[:limit]
     except OSError:
         return ""
+
+
+def _normalized_trace_path(raw_trace_ref: str, *, repo_root: Path) -> Path | None:
+    path = Path(raw_trace_ref)
+    if not path.is_absolute():
+        path = repo_root / path
+    normalized_path = path.parent / "normalized" / path.name
+    return normalized_path if normalized_path.exists() else None
 
 
 def _score_documents_vector(
@@ -1569,6 +1780,50 @@ def _score_document_lexical(
     return _search_result(document, score, "lexical")
 
 
+def _score_documents_literal(
+    documents: tuple[dict[str, object], ...],
+    normalized_query: str,
+) -> list[MemorySearchResult]:
+    results: list[MemorySearchResult] = []
+    for document in documents:
+        title = str(document["title"])
+        text = str(document["text"])
+        haystack = f"{title} {text}"
+        normalized_haystack = _normalize_search_text(haystack)
+        match_start = normalized_haystack.find(normalized_query)
+        if match_start < 0:
+            continue
+        score = 10.0 + min(5.0, len(normalized_query) / 8.0)
+        result = _search_result(document, score, "literal")
+        metadata = dict(result.metadata)
+        metadata["match_start"] = match_start
+        metadata["match_end"] = match_start + len(normalized_query)
+        metadata["snippet"] = _literal_snippet(haystack, normalized_query)
+        results.append(
+            MemorySearchResult(
+                kind=result.kind,
+                id=result.id,
+                score=result.score,
+                title=result.title,
+                text=result.text,
+                metadata=metadata,
+            )
+        )
+    return results
+
+
+def _merge_search_results(
+    primary: list[MemorySearchResult],
+    secondary: list[MemorySearchResult],
+) -> list[MemorySearchResult]:
+    merged: dict[tuple[str, str], MemorySearchResult] = {}
+    for result in secondary:
+        merged[(result.kind, result.id)] = result
+    for result in primary:
+        merged[(result.kind, result.id)] = result
+    return list(merged.values())
+
+
 def _search_result(document: dict[str, object], score: float, ranker: str) -> MemorySearchResult:
     metadata = dict(document["metadata"])
     metadata["ranker"] = ranker
@@ -1609,6 +1864,38 @@ def _dot(left: dict[str, float], right: dict[str, float]) -> float:
 
 def _terms(text: str) -> tuple[str, ...]:
     return tuple(re.findall(r"[A-Za-z0-9_./:-]+", text.lower()))
+
+
+def _normalize_search_text(text: str) -> str:
+    normalized = unicodedata.normalize("NFKC", text).lower()
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def _contains_cjk(text: str) -> bool:
+    return any(
+        "\u3400" <= char <= "\u9fff"
+        or "\uf900" <= char <= "\ufaff"
+        or "\u3040" <= char <= "\u30ff"
+        or "\uac00" <= char <= "\ud7af"
+        for char in text
+    )
+
+
+def _should_prefer_literal(query: str) -> bool:
+    normalized = _normalize_search_text(query)
+    return _contains_cjk(normalized)
+
+
+def _literal_snippet(text: str, normalized_query: str, *, radius: int = 80) -> str:
+    normalized_text = _normalize_search_text(text)
+    match_start = normalized_text.find(normalized_query)
+    if match_start < 0:
+        return _compact_line(text)
+    start = max(0, match_start - radius)
+    end = min(len(normalized_text), match_start + len(normalized_query) + radius)
+    prefix = "..." if start > 0 else ""
+    suffix = "..." if end < len(normalized_text) else ""
+    return prefix + normalized_text[start:end] + suffix
 
 
 def _compact_line(text: str, *, limit: int = 180) -> str:

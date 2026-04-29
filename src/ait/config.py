@@ -11,6 +11,7 @@ LOCAL_CONFIG_FILENAME = "config.json"
 DEFAULT_DAEMON_SOCKET_PATH = f"{AIT_DIRNAME}/daemon.sock"
 GITIGNORE_ENTRY = f"{AIT_DIRNAME}/"
 LOCAL_CONFIG_SCHEMA_VERSION = 2
+DEFAULT_DAEMON_IDLE_TIMEOUT_SECONDS = 600
 
 
 @dataclass
@@ -20,6 +21,7 @@ class LocalConfig:
     repo_identity: str | None = None
     daemon_socket_path: str = DEFAULT_DAEMON_SOCKET_PATH
     reaper_ttl_seconds: int | None = None
+    daemon_idle_timeout_seconds: int | None = None
 
 
 def bootstrap_ait_dir(repo_root: str | Path) -> Path:
@@ -47,6 +49,7 @@ def load_local_config(repo_root: str | Path) -> LocalConfig | None:
             data.get("daemon_socket_path", DEFAULT_DAEMON_SOCKET_PATH)
         ),
         reaper_ttl_seconds=_coerce_optional_int(data.get("reaper_ttl_seconds")),
+        daemon_idle_timeout_seconds=_coerce_optional_int(data.get("daemon_idle_timeout_seconds")),
     )
 
 
@@ -74,6 +77,7 @@ def ensure_local_config(repo_root: str | Path) -> LocalConfig:
         repo_identity=existing.repo_identity,
         daemon_socket_path=existing.daemon_socket_path or DEFAULT_DAEMON_SOCKET_PATH,
         reaper_ttl_seconds=existing.reaper_ttl_seconds,
+        daemon_idle_timeout_seconds=existing.daemon_idle_timeout_seconds,
     )
     if updated != existing:
         save_local_config(repo_root, updated)
@@ -94,6 +98,7 @@ def ensure_repo_identity(repo_root: str | Path, repo_identity: str) -> LocalConf
         repo_identity=repo_identity,
         daemon_socket_path=config.daemon_socket_path,
         reaper_ttl_seconds=config.reaper_ttl_seconds,
+        daemon_idle_timeout_seconds=config.daemon_idle_timeout_seconds,
     )
     save_local_config(repo_root, updated)
     return updated
