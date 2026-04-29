@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.49.0 - 2026-04-29
+
+### Added
+
+- Add `ait graph --status` to focus the work graph on attempts with a
+  matching verified or reported status, such as `failed`, `succeeded`,
+  or `promoted`.
+- Add `ait graph --agent` to focus the work graph on a specific agent
+  identity or adapter family.
+- Add `ait graph --file` to show only attempts whose recorded evidence
+  includes a matching file path.
+- Include active filters and matched intent/attempt counts in text,
+  JSON, and HTML graph output.
+
 ## 0.48.0 - 2026-04-29
 
 ### Changed

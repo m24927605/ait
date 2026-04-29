@@ -586,6 +586,84 @@ class CliRunTests(unittest.TestCase):
         self.assertEqual(2, exit_code)
         self.assertIn("limit must be non-negative", stderr.getvalue())
 
+    def test_work_graph_filters_by_status_agent_and_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            first_stdout = io.StringIO()
+            second_stdout = io.StringIO()
+            filtered_stdout = io.StringIO()
+            json_stdout = io.StringIO()
+            html_stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "run",
+                        "--format",
+                        "json",
+                        "--agent",
+                        "claude-code:manual",
+                        "--intent",
+                        "Claude graph branch",
+                        "--",
+                        sys.executable,
+                        "-c",
+                        "from pathlib import Path; Path('claude.txt').write_text('ok\\n')",
+                    ],
+                ):
+                    with redirect_stdout(first_stdout):
+                        first_exit = cli.main()
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "run",
+                        "--format",
+                        "json",
+                        "--agent",
+                        "codex:manual",
+                        "--intent",
+                        "Codex graph branch",
+                        "--",
+                        sys.executable,
+                        "-c",
+                        "from pathlib import Path; Path('codex.txt').write_text('ok\\n')",
+                    ],
+                ):
+                    with redirect_stdout(second_stdout):
+                        second_exit = cli.main()
+                with patch("sys.argv", ["ait", "graph", "--agent", "claude-code", "--file", "claude.txt", "--status", "succeeded"]):
+                    with redirect_stdout(filtered_stdout):
+                        filtered_exit = cli.main()
+                with patch("sys.argv", ["ait", "graph", "--agent", "claude-code", "--format", "json"]):
+                    with redirect_stdout(json_stdout):
+                        json_exit = cli.main()
+                with patch("sys.argv", ["ait", "graph", "--file", "claude.txt", "--html"]):
+                    with redirect_stdout(html_stdout):
+                        html_exit = cli.main()
+
+            graph_text = filtered_stdout.getvalue()
+            graph_json = json.loads(json_stdout.getvalue())
+            html = (repo_root / ".ait" / "report" / "graph.html").read_text(encoding="utf-8")
+
+            self.assertEqual(0, first_exit)
+            self.assertEqual(0, second_exit)
+            self.assertEqual(0, filtered_exit)
+            self.assertEqual(0, json_exit)
+            self.assertEqual(0, html_exit)
+            self.assertIn("Filters: agent=claude-code, file=claude.txt, status=succeeded", graph_text)
+            self.assertIn("Claude graph branch", graph_text)
+            self.assertIn("claude.txt", graph_text)
+            self.assertNotIn("Codex graph branch", graph_text)
+            self.assertEqual({"agent": "claude-code"}, graph_json["filters"])
+            self.assertEqual(1, graph_json["matched_attempt_count"])
+            self.assertIn("Filters:", html)
+            self.assertIn("claude.txt", html)
+            self.assertNotIn("codex.txt", html)
+
     def test_memory_policy_cli_initializes_and_shows_policy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

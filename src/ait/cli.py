@@ -292,6 +292,9 @@ def build_parser() -> argparse.ArgumentParser:
     graph_parser.add_argument("--limit", type=int, default=20)
     graph_parser.add_argument("--html", action="store_true")
     graph_parser.add_argument("--output")
+    graph_parser.add_argument("--agent")
+    graph_parser.add_argument("--status")
+    graph_parser.add_argument("--file", dest="file_path")
 
     repair_parser = subparsers.add_parser("repair")
     repair_parser.add_argument(
@@ -845,7 +848,13 @@ def main() -> int:
         return 0
     if args.command == "graph":
         try:
-            graph = build_work_graph(repo_root, limit=args.limit)
+            graph = build_work_graph(
+                repo_root,
+                limit=args.limit,
+                agent=args.agent,
+                status=args.status,
+                file_path=args.file_path,
+            )
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2

@@ -8,9 +8,21 @@ from ait.db import connect_db, utc_now
 from ait.repo import resolve_repo_root
 
 
-def build_work_graph(repo_root: str | Path, *, limit: int = 20) -> dict[str, object]:
+def build_work_graph(
+    repo_root: str | Path,
+    *,
+    limit: int = 20,
+    agent: str | None = None,
+    status: str | None = None,
+    file_path: str | None = None,
+) -> dict[str, object]:
     if limit < 0:
         raise ValueError("limit must be non-negative")
+    filters = {
+        "agent": agent,
+        "status": status,
+        "file": file_path,
+    }
     root = resolve_repo_root(repo_root)
     db_path = root / ".ait" / "state.sqlite3"
     graph: dict[str, object] = {
@@ -22,6 +34,7 @@ def build_work_graph(repo_root: str | Path, *, limit: int = 20) -> dict[str, obj
         "attempt_count": 0,
         "memory_note_count": 0,
         "memory_topics": {},
+        "filters": {key: value for key, value in filters.items() if value},
         "intents": [],
     }
     if not db_path.exists():
@@ -30,22 +43,37 @@ def build_work_graph(repo_root: str | Path, *, limit: int = 20) -> dict[str, obj
     conn = connect_db(db_path)
     try:
         intents = _query_intents(conn, limit=limit)
+        filtered_intents: list[dict[str, object]] = []
         for intent in intents:
             attempts = _query_attempts(conn, str(intent["id"]))
             for attempt in attempts:
                 attempt["files"] = _query_files(conn, str(attempt["id"]))
                 attempt["commits"] = _query_commits(conn, str(attempt["id"]))
+            attempts = [
+                attempt
+                for attempt in attempts
+                if _attempt_matches(attempt, agent=agent, status=status, file_path=file_path)
+            ]
+            if filters["agent"] or filters["status"] or filters["file"]:
+                if not attempts:
+                    continue
             intent["attempts"] = attempts
-        summary = _build_summary(intents)
+            filtered_intents.append(intent)
+        summary = _build_summary(filtered_intents)
         memory_topics = _query_memory_topics(conn)
         graph.update(
             {
                 "intent_count": _count_rows(conn, "intents"),
                 "attempt_count": _count_rows(conn, "attempts"),
+                "matched_intent_count": len(filtered_intents),
+                "matched_attempt_count": sum(
+                    len([item for item in intent.get("attempts", []) if isinstance(item, dict)])
+                    for intent in filtered_intents
+                ),
                 "memory_note_count": sum(memory_topics.values()),
                 "memory_topics": memory_topics,
                 "summary": summary,
-                "intents": intents,
+                "intents": filtered_intents,
             }
         )
     finally:
@@ -62,9 +90,17 @@ def render_work_graph_text(graph: dict[str, object]) -> str:
             "Summary: "
             f"intents={graph.get('intent_count', 0)} "
             f"attempts={graph.get('attempt_count', 0)} "
+            f"matched_intents={graph.get('matched_intent_count', len(graph.get('intents', [])))} "
+            f"matched_attempts={graph.get('matched_attempt_count', 0)} "
             f"memory_notes={graph.get('memory_note_count', 0)}"
         ),
     ]
+    filters = graph.get("filters", {})
+    if isinstance(filters, dict) and filters:
+        lines.append(
+            "Filters: "
+            + ", ".join(f"{key}={value}" for key, value in sorted(filters.items()))
+        )
     memory_topics = graph.get("memory_topics", {})
     if isinstance(memory_topics, dict) and memory_topics:
         topics = ", ".join(f"{topic or 'general'}={count}" for topic, count in sorted(memory_topics.items()))
@@ -149,6 +185,17 @@ def render_work_graph_html(graph: dict[str, object]) -> str:
     ) or "<li><span class=\"muted\">none</span></li>"
     memory_topics = graph.get("memory_topics", {})
     memory_html = _metric_list(memory_topics if isinstance(memory_topics, dict) else {})
+    filters = graph.get("filters", {})
+    filters_html = ""
+    if isinstance(filters, dict) and filters:
+        filters_html = (
+            "<div>Filters: "
+            + ", ".join(
+                f"{escape(str(key))}=<code>{escape(str(value))}</code>"
+                for key, value in sorted(filters.items())
+            )
+            + "</div>"
+        )
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -179,7 +226,8 @@ def render_work_graph_html(graph: dict[str, object]) -> str:
   <div class="meta">
     <div>Repo: <code>{escape(str(graph.get("repo_root", "")))}</code></div>
     <div>Generated: <code>{escape(str(graph.get("generated_at", "")))}</code></div>
-    <div>Summary: intents={graph.get("intent_count", 0)} attempts={graph.get("attempt_count", 0)} memory_notes={graph.get("memory_note_count", 0)}</div>
+    <div>Summary: intents={graph.get("intent_count", 0)} attempts={graph.get("attempt_count", 0)} matched_intents={graph.get("matched_intent_count", len(graph.get("intents", [])))} matched_attempts={graph.get("matched_attempt_count", 0)} memory_notes={graph.get("memory_note_count", 0)}</div>
+    {filters_html}
   </div>
   <section class="summary">
     <div class="panel"><h2>Attempt Status</h2><ul>{status_html}</ul></div>
@@ -266,6 +314,37 @@ def _build_summary(intents: list[dict[str, object]]) -> dict[str, object]:
         "agent_counts": dict(sorted(agent_counts.items(), key=lambda item: (-item[1], item[0]))[:8]),
         "hot_files": hot_files,
     }
+
+
+def _attempt_matches(
+    attempt: dict[str, object],
+    *,
+    agent: str | None,
+    status: str | None,
+    file_path: str | None,
+) -> bool:
+    if agent and agent not in str(attempt.get("agent_id", "")):
+        return False
+    if status:
+        statuses = {
+            str(attempt.get("verified_status", "")),
+            str(attempt.get("reported_status", "")),
+        }
+        if status not in statuses:
+            return False
+    if file_path:
+        files = attempt.get("files", {})
+        if not isinstance(files, dict):
+            return False
+        all_files = [
+            str(path)
+            for paths in files.values()
+            if isinstance(paths, list)
+            for path in paths
+        ]
+        if not any(file_path in path for path in all_files):
+            return False
+    return True
 
 
 def _metric_list(values: dict[object, object]) -> str:
