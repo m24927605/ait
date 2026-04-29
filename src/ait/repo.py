@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import subprocess
 from pathlib import Path
 
@@ -44,6 +45,62 @@ def initialize_git_repo(repo_root: str | Path) -> Path:
         message = result.stderr.strip() or "Unable to initialize git repository."
         raise ValueError(message)
     return resolve_repo_root(root)
+
+
+def repository_has_commits(repo_root: str | Path) -> bool:
+    root = resolve_repo_root(repo_root)
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", "HEAD"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def ensure_initial_commit(repo_root: str | Path) -> bool:
+    root = resolve_repo_root(repo_root)
+    if repository_has_commits(root):
+        return False
+    gitignore_path = root / ".gitignore"
+    if gitignore_path.exists():
+        add_result = subprocess.run(
+            ["git", "add", "--", ".gitignore"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if add_result.returncode != 0:
+            message = add_result.stderr.strip() or "Unable to stage .gitignore."
+            raise ValueError(message)
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "AIT",
+        "GIT_AUTHOR_EMAIL": "ait@example.invalid",
+        "GIT_COMMITTER_NAME": "AIT",
+        "GIT_COMMITTER_EMAIL": "ait@example.invalid",
+    }
+    result = subprocess.run(
+        [
+            "git",
+            "commit",
+            "--allow-empty",
+            "--no-verify",
+            "-m",
+            "chore: initialize repository for AIT",
+        ],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        message = result.stderr.strip() or "Unable to create initial AIT baseline commit."
+        raise ValueError(message)
+    return True
 
 
 def get_root_commit_oid(repo_root: str | Path) -> str:

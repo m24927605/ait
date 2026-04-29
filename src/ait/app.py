@@ -29,6 +29,7 @@ from ait.lifecycle import refresh_intent_status
 from ait.repo import (
     compose_repo_id,
     derive_repo_identity,
+    ensure_initial_commit,
     initialize_git_repo,
     resolve_repo_root,
 )
@@ -50,6 +51,7 @@ class InitResult:
     repo_id: str
     socket_path: Path
     git_initialized: bool = False
+    baseline_commit_created: bool = False
 
 
 @dataclass(slots=True)
@@ -89,6 +91,7 @@ def object_id(repo_id: str) -> str:
 
 def init_repo(repo_root: str | Path, *, auto_git_init: bool = False) -> InitResult:
     git_initialized = False
+    baseline_commit_created = False
     try:
         root = resolve_repo_root(repo_root)
     except ValueError:
@@ -98,9 +101,10 @@ def init_repo(repo_root: str | Path, *, auto_git_init: bool = False) -> InitResu
         git_initialized = True
     ait_dir = bootstrap_ait_dir(root)
     config = ensure_local_config(root)
+    ensure_ait_ignored(root)
+    baseline_commit_created = ensure_initial_commit(root)
     if not config.repo_identity:
         config = ensure_repo_identity(root, derive_repo_identity(root))
-    ensure_ait_ignored(root)
     db_path = ait_dir / "state.sqlite3"
     conn = connect_db(db_path)
     try:
@@ -119,6 +123,7 @@ def init_repo(repo_root: str | Path, *, auto_git_init: bool = False) -> InitResu
         repo_id=repo_id,
         socket_path=socket_path,
         git_initialized=git_initialized,
+        baseline_commit_created=baseline_commit_created,
     )
 
 

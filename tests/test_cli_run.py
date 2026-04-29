@@ -45,6 +45,40 @@ class CliRunTests(unittest.TestCase):
         self.assertEqual("agent out\n", payload["command_stdout"])
         self.assertEqual("agent err\n", payload["command_stderr"])
 
+    def test_run_json_in_unborn_git_repo_creates_baseline_before_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _git(repo_root, "init")
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "run",
+                        "--format",
+                        "json",
+                        "--intent",
+                        "Unborn repo smoke",
+                        "--",
+                        sys.executable,
+                        "-c",
+                        "print('ok')",
+                    ],
+                ):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(0, exit_code)
+            self.assertEqual(0, payload["exit_code"])
+            self.assertEqual("ok\n", payload["command_stdout"])
+            self.assertEqual(
+                "chore: initialize repository for AIT",
+                _git_stdout(repo_root, "log", "-1", "--format=%s"),
+            )
+
     def test_run_json_auto_commits_changes_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
@@ -786,6 +820,10 @@ def _git_stdout(repo_root: Path, *args: str) -> str:
         capture_output=True,
         text=True,
     ).stdout.strip()
+
+
+def _git(repo_root: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=repo_root, check=True, capture_output=True)
 
 
 if __name__ == "__main__":

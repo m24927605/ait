@@ -273,7 +273,12 @@ class CliAdapterTests(unittest.TestCase):
             self.assertTrue((repo_root / ".git").exists())
             self.assertTrue((repo_root / ".ait" / "bin" / "claude").exists())
             self.assertIn("Git: initialized", text)
-            self.assertTrue(config["repo_identity"].startswith("unborn:"))
+            self.assertIn("Git baseline: created initial commit", text)
+            self.assertFalse(config["repo_identity"].startswith("unborn:"))
+            self.assertEqual(
+                "chore: initialize repository for AIT",
+                _git_stdout(repo_root, "log", "-1", "--format=%s"),
+            )
 
     def test_init_text_initializes_every_detected_agent_cli_wrapper(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -724,8 +729,13 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertTrue((repo_root / ".git").exists())
             self.assertTrue(payload["git_initialized"])
+            self.assertTrue(payload["baseline_commit_created"])
             self.assertEqual(["claude-code"], payload["installed_adapters"])
-            self.assertTrue(config["repo_identity"].startswith("unborn:"))
+            self.assertFalse(config["repo_identity"].startswith("unborn:"))
+            self.assertEqual(
+                "chore: initialize repository for AIT",
+                _git_stdout(repo_root, "log", "-1", "--format=%s"),
+            )
 
     def test_doctor_fix_json_initializes_memory_policy_and_imports_agent_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1407,3 +1417,14 @@ def _git_commit_initial(repo_root: Path) -> None:
     (repo_root / "README.md").write_text("initial\n", encoding="utf-8")
     subprocess.run(["git", "add", "README.md"], cwd=repo_root, check=True)
     subprocess.run(["git", "commit", "-m", "init"], cwd=repo_root, check=True, capture_output=True)
+
+
+def _git_stdout(repo_root: Path, *args: str) -> str:
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return completed.stdout.strip()

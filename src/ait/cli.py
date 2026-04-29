@@ -1167,6 +1167,7 @@ def _init_payload(init_result, automation, statuses, memory_import=None, memory_
         "repo_id": init_result.repo_id,
         "socket_path": str(init_result.socket_path),
         "git_initialized": init_result.git_initialized,
+        "baseline_commit_created": init_result.baseline_commit_created,
         "installed_adapters": [item.adapter.name for item in automation.installed],
         "skipped_adapters": [asdict(item) for item in automation.skipped],
         "shell_snippet": automation.shell_snippet,
@@ -1208,6 +1209,8 @@ def _format_init(payload: dict[str, object]) -> str:
     lines.append("Details:")
     if payload.get("git_initialized"):
         lines.append("Git: initialized")
+    if payload.get("baseline_commit_created"):
+        lines.append("Git baseline: created initial commit")
     lines.append(f"Repo: {payload['repo_root']}")
     lines.append(f"State: {payload['ait_dir']}")
     if skipped:

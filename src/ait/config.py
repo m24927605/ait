@@ -90,7 +90,10 @@ def ensure_repo_identity(repo_root: str | Path, repo_identity: str) -> LocalConf
     config = ensure_local_config(repo_root)
     if config.repo_identity == repo_identity:
         return config
-    if config.repo_identity:
+    if config.repo_identity and not (
+        config.repo_identity.startswith("unborn:")
+        and not repo_identity.startswith("unborn:")
+    ):
         return config
     updated = LocalConfig(
         schema_version=LOCAL_CONFIG_SCHEMA_VERSION,
