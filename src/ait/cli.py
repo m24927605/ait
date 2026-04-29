@@ -72,6 +72,7 @@ from ait.memory import (
 from ait.memory_policy import init_memory_policy, load_memory_policy
 from ait.query import blame_path, execute_query, list_shortcut_expression, parse_blame_target
 from ait.reconcile import reconcile_repo
+from ait.report import build_work_graph, render_work_graph_text, write_work_graph_html
 from ait.repo import resolve_repo_root
 from ait.runner import run_agent_command
 from ait.shell_integration import (
@@ -285,6 +286,12 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser.add_argument("name", choices=tuple(sorted(ADAPTERS)), nargs="?", default="claude-code")
     status_parser.add_argument("--format", choices=("text", "json"), default="text")
     status_parser.add_argument("--all", action="store_true", dest="all_adapters")
+
+    graph_parser = subparsers.add_parser("graph")
+    graph_parser.add_argument("--format", choices=("text", "json"), default="text")
+    graph_parser.add_argument("--limit", type=int, default=20)
+    graph_parser.add_argument("--html", action="store_true")
+    graph_parser.add_argument("--output")
 
     repair_parser = subparsers.add_parser("repair")
     repair_parser.add_argument(
@@ -835,6 +842,27 @@ def main() -> int:
         else:
             print(_format_status(payload))
             _maybe_emit_automation_hint(args, repo_root, result)
+        return 0
+    if args.command == "graph":
+        try:
+            graph = build_work_graph(repo_root, limit=args.limit)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        if args.html:
+            output_path = Path(args.output) if args.output else Path(graph["repo_root"]) / ".ait" / "report" / "graph.html"
+            path = write_work_graph_html(graph, output_path)
+            if args.format == "json":
+                payload = dict(graph)
+                payload["html_path"] = str(path)
+                print(json.dumps(payload, indent=2))
+            else:
+                print(f"wrote {path}")
+            return 0
+        if args.format == "json":
+            print(json.dumps(graph, indent=2))
+        else:
+            print(render_work_graph_text(graph))
         return 0
     if args.command == "repair":
         names = (args.name,) if args.name else tuple(name for name in sorted(ADAPTERS) if name != "shell")

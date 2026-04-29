@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.47.0 - 2026-04-29
+
+### Added
+
+- Add `ait graph` to render a local AI work-history tree from repo state,
+  grouping intents, attempts, agents, changed files, commits, and memory
+  note counts.
+- Add `ait graph --html` to write a static, read-only local tree graph to
+  `.ait/report/graph.html` without starting a web server.
+- Add JSON output and negative-limit validation for the work graph.
+
 ## 0.46.0 - 2026-04-29
 
 ### Changed

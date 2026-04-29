@@ -517,6 +517,72 @@ class CliRunTests(unittest.TestCase):
         self.assertEqual(2, exit_code)
         self.assertIn("limit must be non-negative", stderr.getvalue())
 
+    def test_work_graph_outputs_text_and_static_html(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            run_stdout = io.StringIO()
+            text_stdout = io.StringIO()
+            html_stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "run",
+                        "--format",
+                        "json",
+                        "--intent",
+                        "Build graph report",
+                        "--",
+                        sys.executable,
+                        "-c",
+                        "from pathlib import Path; Path('graph.txt').write_text('ok\\n')",
+                    ],
+                ):
+                    with redirect_stdout(run_stdout):
+                        run_exit = cli.main()
+                with patch("sys.argv", ["ait", "graph"]):
+                    with redirect_stdout(text_stdout):
+                        text_exit = cli.main()
+                with patch("sys.argv", ["ait", "graph", "--html"]):
+                    with redirect_stdout(html_stdout):
+                        html_exit = cli.main()
+
+            run_payload = json.loads(run_stdout.getvalue())
+            graph_text = text_stdout.getvalue()
+            html_path = repo_root / ".ait" / "report" / "graph.html"
+            html = html_path.read_text(encoding="utf-8")
+
+            self.assertEqual(0, run_exit)
+            self.assertEqual(0, text_exit)
+            self.assertEqual(0, html_exit)
+            self.assertIn("AIT Work Graph", graph_text)
+            self.assertIn("Intent", graph_text)
+            self.assertIn("Build graph report", graph_text)
+            self.assertIn("Attempt 1", graph_text)
+            self.assertIn("graph.txt", graph_text)
+            self.assertIn(run_payload["attempt_id"].rsplit(":", 1)[-1][:8], graph_text)
+            self.assertIn("wrote", html_stdout.getvalue())
+            self.assertIn("AIT Work Graph", html)
+            self.assertIn("Build graph report", html)
+            self.assertIn("graph.txt", html)
+
+    def test_work_graph_json_rejects_negative_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            stderr = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "graph", "--limit", "-1"]):
+                    with redirect_stderr(stderr):
+                        exit_code = cli.main()
+
+        self.assertEqual(2, exit_code)
+        self.assertIn("limit must be non-negative", stderr.getvalue())
+
     def test_memory_policy_cli_initializes_and_shows_policy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
