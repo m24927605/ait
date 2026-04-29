@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.53.0 - 2026-04-29
+
+### Added
+
+- Add `ait upgrade` to update the current ait installation through the
+  detected installer: `pipx upgrade ait-vcs`, `python -m pip install -U
+  ait-vcs`, or `npm install -g ait-vcs`.
+- Add `ait upgrade --dry-run` and JSON output so users and scripts can
+  inspect the selected upgrade command before running it.
+- Add regression coverage for pipx dry-run output and virtualenv/pip
+  upgrade execution.
+
 ## 0.52.0 - 2026-04-29
 
 ### Fixed

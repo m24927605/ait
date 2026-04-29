@@ -14,6 +14,13 @@ ait --version
 
 The PyPI package name is `ait-vcs`; the installed command is `ait`.
 
+Upgrade the current install with:
+
+```bash
+ait upgrade
+ait --version
+```
+
 If you prefer a project virtual environment:
 
 ```bash

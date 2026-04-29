@@ -4,6 +4,7 @@ import io
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import chdir, redirect_stderr, redirect_stdout
@@ -950,6 +951,67 @@ class CliAdapterTests(unittest.TestCase):
             ait_path.write_text("#!/bin/sh\n", encoding="utf-8")
 
             self.assertEqual("npm", cli._classify_ait_source(str(ait_path)))
+
+    def test_upgrade_dry_run_reports_pipx_upgrade_command(self) -> None:
+        stdout = io.StringIO()
+        installation = {
+            "current_version": "0.52.0",
+            "source": "pipx",
+            "active_path": "/Users/me/.local/bin/ait",
+            "executable_path": "/Users/me/.local/pipx/venvs/ait-vcs/bin/ait",
+            "path_entries": [],
+            "conflict": False,
+            "next_steps": [],
+        }
+
+        with patch("ait.cli._installation_payload", return_value=installation):
+            with patch("ait.cli.shutil.which", return_value="/opt/homebrew/bin/pipx"):
+                with patch("sys.argv", ["ait", "upgrade", "--dry-run", "--format", "json"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue())
+
+        self.assertEqual(0, exit_code)
+        self.assertFalse(payload["ran"])
+        self.assertEqual(["pipx", "upgrade", "ait-vcs"], payload["command"])
+
+    def test_upgrade_json_runs_python_pip_for_venv_install(self) -> None:
+        stdout = io.StringIO()
+        installation = {
+            "current_version": "0.52.0",
+            "source": "venv",
+            "active_path": "/repo/.venv/bin/ait",
+            "executable_path": "/repo/.venv/bin/ait",
+            "path_entries": [],
+            "conflict": False,
+            "next_steps": [],
+        }
+        completed = subprocess.CompletedProcess(
+            [sys.executable, "-m", "pip", "install", "-U", "ait-vcs"],
+            0,
+            "upgraded\n",
+            "",
+        )
+
+        with patch("ait.cli._installation_payload", return_value=installation):
+            with patch("ait.cli.subprocess.run", return_value=completed) as run:
+                with patch("sys.argv", ["ait", "upgrade", "--format", "json"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue())
+
+        self.assertEqual(0, exit_code)
+        self.assertTrue(payload["ran"])
+        self.assertEqual([sys.executable, "-m", "pip", "install", "-U", "ait-vcs"], payload["command"])
+        self.assertEqual("upgraded\n", payload["stdout"])
+        run.assert_called_once_with(
+            [sys.executable, "-m", "pip", "install", "-U", "ait-vcs"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
 
     def test_status_json_reports_memory_health_when_state_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

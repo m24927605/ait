@@ -87,7 +87,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.52.0` alpha quality for local dogfood use. It is
+This repository is at `0.53.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -120,14 +120,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.52.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.53.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.52.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.53.0"
 .venv/bin/ait --help
 ```
 
@@ -151,6 +151,26 @@ python3.14 -m venv .venv
 .venv/bin/ait --version
 .venv/bin/ait --help
 ```
+
+## Upgrade
+
+Let ait choose the right installer for the current command:
+
+```bash
+ait upgrade
+ait --version
+```
+
+Preview the command without running it:
+
+```bash
+ait upgrade --dry-run
+ait upgrade --dry-run --format json
+```
+
+`ait upgrade` uses the detected install source: `pipx upgrade ait-vcs`
+for pipx installs, `python -m pip install -U ait-vcs` for virtualenv or
+Python installs, and `npm install -g ait-vcs` for npm installs.
 
 ## Install From npm
 
@@ -809,7 +829,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.52.0
+git checkout v0.53.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

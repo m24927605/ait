@@ -287,6 +287,10 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser.add_argument("--format", choices=("text", "json"), default="text")
     status_parser.add_argument("--all", action="store_true", dest="all_adapters")
 
+    upgrade_parser = subparsers.add_parser("upgrade")
+    upgrade_parser.add_argument("--dry-run", action="store_true")
+    upgrade_parser.add_argument("--format", choices=("text", "json"), default="text")
+
     graph_parser = subparsers.add_parser("graph")
     graph_parser.add_argument("--format", choices=("text", "json"), default="text")
     graph_parser.add_argument("--limit", type=int, default=20)
@@ -849,6 +853,17 @@ def main() -> int:
             print(_format_status(payload))
             _maybe_emit_automation_hint(args, repo_root, result)
         return 0
+    if args.command == "upgrade":
+        try:
+            payload = _upgrade_payload(dry_run=args.dry_run, output_format=args.format)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        if args.format == "json":
+            print(json.dumps(payload, indent=2))
+        else:
+            print(_format_upgrade(payload))
+        return int(payload.get("exit_code", 1))
     if args.command == "graph":
         try:
             graph = build_work_graph(
@@ -1569,6 +1584,69 @@ def _installation_next_steps(payload: dict[str, object]) -> list[str]:
         "rehash",
         "ait --version",
     ]
+
+
+def _upgrade_payload(*, dry_run: bool, output_format: str) -> dict[str, object]:
+    installation = _installation_payload()
+    command = _upgrade_command(installation)
+    payload: dict[str, object] = {
+        "dry_run": dry_run,
+        "source": installation.get("source", "unknown"),
+        "current_version": installation.get("current_version", "unknown"),
+        "command": command,
+        "installation": installation,
+    }
+    if dry_run:
+        payload.update({"exit_code": 0, "ran": False})
+        return payload
+    if output_format == "json":
+        completed = subprocess.run(command, capture_output=True, text=True, check=False)
+        payload.update(
+            {
+                "ran": True,
+                "exit_code": completed.returncode,
+                "stdout": completed.stdout,
+                "stderr": completed.stderr,
+            }
+        )
+        return payload
+    completed = subprocess.run(command, check=False)
+    payload.update({"ran": True, "exit_code": completed.returncode})
+    return payload
+
+
+def _upgrade_command(installation: dict[str, object]) -> list[str]:
+    source = str(installation.get("source") or "unknown")
+    if source == "pipx":
+        if shutil.which("pipx") is None:
+            raise ValueError("pipx install detected, but pipx is not on PATH")
+        return ["pipx", "upgrade", "ait-vcs"]
+    if source == "npm":
+        if shutil.which("npm") is None:
+            raise ValueError("npm install detected, but npm is not on PATH")
+        return ["npm", "install", "-g", "ait-vcs"]
+    if source in {"venv", "python", "path"}:
+        return [sys.executable, "-m", "pip", "install", "-U", "ait-vcs"]
+    raise ValueError(
+        f"unsupported ait install source for automatic upgrade: {source}; "
+        "use pipx upgrade ait-vcs or python -m pip install -U ait-vcs"
+    )
+
+
+def _format_upgrade(payload: dict[str, object]) -> str:
+    lines = [
+        "AIT upgrade",
+        f"Source: {payload.get('source', 'unknown')}",
+        f"Current version: {payload.get('current_version', 'unknown')}",
+        "Command: " + " ".join(str(part) for part in payload.get("command", [])),
+    ]
+    if payload.get("dry_run"):
+        lines.append("State: dry run")
+    else:
+        lines.append(f"Exit code: {payload.get('exit_code')}")
+        lines.append("Next:")
+        lines.append("- ait --version")
+    return "\n".join(lines)
 
 
 def _format_installation_alert_lines(installation: dict[str, object]) -> list[str]:
