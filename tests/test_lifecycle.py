@@ -69,6 +69,29 @@ class IntentLifecycleForwardOnlyTests(unittest.TestCase):
 
         self.assertEqual("finished", self._intent_status("repo:01INTENT"))
 
+    def test_succeeded_attempt_moves_running_intent_to_finished(self) -> None:
+        update_intent_status(self.conn, "repo:01INTENT", "running")
+        self._seed_attempt(
+            "repo:01ATT1",
+            reported_status="finished",
+            verified_status="succeeded",
+        )
+
+        refresh_intent_status(self.conn, "repo:01INTENT")
+
+        self.assertEqual("finished", self._intent_status("repo:01INTENT"))
+
+    def test_succeeded_attempt_moves_open_intent_to_finished(self) -> None:
+        self._seed_attempt(
+            "repo:01ATT1",
+            reported_status="finished",
+            verified_status="succeeded",
+        )
+
+        refresh_intent_status(self.conn, "repo:01INTENT")
+
+        self.assertEqual("finished", self._intent_status("repo:01INTENT"))
+
     def test_terminal_finished_intent_is_not_mutated(self) -> None:
         update_intent_status(self.conn, "repo:01INTENT", "finished")
         self._seed_attempt(

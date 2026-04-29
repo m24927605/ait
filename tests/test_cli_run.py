@@ -591,6 +591,7 @@ class CliRunTests(unittest.TestCase):
             self.assertEqual(0, html_exit)
             self.assertIn("AIT Work Graph", graph_text)
             self.assertIn("Intent", graph_text)
+            self.assertIn("[status=finished]", graph_text)
             self.assertIn("Build graph report", graph_text)
             self.assertIn("Attempt 1", graph_text)
             self.assertIn("graph.txt", graph_text)

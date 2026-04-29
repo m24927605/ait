@@ -4,7 +4,8 @@ V1 spec (ai-vcs-mvp-spec.md, Intent Transition Rules) defines only forward
 transitions:
 
 - `open -> running`: any attempt reaches `reported_status = running`
-- `running -> finished`: any attempt reaches `verified_status = promoted`
+- `open|running -> finished`: any attempt reaches `verified_status =
+  succeeded` or `promoted`
 - `* -> abandoned` / `* -> superseded`: explicit user command (not handled here)
 
 Terminal states (`finished`, `abandoned`, `superseded`) must never be mutated
@@ -47,7 +48,7 @@ def refresh_intent_status(conn: sqlite3.Connection, intent_id: str) -> None:
         (intent_id,),
     ).fetchall()
 
-    if any(str(item["verified_status"]) == "promoted" for item in attempts):
+    if any(str(item["verified_status"]) in {"succeeded", "promoted"} for item in attempts):
         update_intent_status(conn, intent_id, "finished")
         return
 

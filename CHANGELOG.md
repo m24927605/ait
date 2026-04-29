@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.54.0 - 2026-04-29
+
+### Fixed
+
+- Mark non-terminal intents as `finished` when any child attempt verifies
+  as `succeeded`, not only when an attempt is promoted.
+- Keep failed and discarded-only intents running for review/retry, while
+  still preserving terminal `finished`, `abandoned`, and `superseded`
+  states.
+- Add regression coverage so `ait graph` shows a successful wrapper run
+  under a finished intent instead of a running intent.
+
 ## 0.53.0 - 2026-04-29
 
 ### Added
