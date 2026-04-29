@@ -1114,7 +1114,7 @@ class CliAdapterTests(unittest.TestCase):
 
             self.assertEqual(0, exit_code)
             self.assertEqual(["codex"], payload["installed_adapters"])
-            self.assertIn("run --adapter codex --format json", repaired_wrapper)
+            self.assertIn('run --adapter codex --format "$AIT_WRAPPER_FORMAT"', repaired_wrapper)
             self.assertIn(str(real_codex.resolve()), repaired_wrapper)
             self.assertIn("PATH_add .ait/bin", (repo_root / ".envrc").read_text(encoding="utf-8"))
 

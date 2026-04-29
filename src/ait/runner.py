@@ -97,7 +97,7 @@ def run_agent_command(
     if context_file is not None:
         env["AIT_CONTEXT_FILE"] = str(context_file)
     completed: subprocess.CompletedProcess[str] | None = None
-    should_capture_output = capture_command_output or adapter.name in {"aider", "codex"}
+    should_capture_output = capture_command_output
     raw_trace_ref: str | None = None
     with AitHarness.open(
         attempt_id=attempt.attempt_id,
@@ -125,11 +125,6 @@ def run_agent_command(
                 "",
                 f"ait run failed: command not executable: {command[0]} ({exc})\n",
             )
-        if should_capture_output and not capture_command_output:
-            if completed.stdout:
-                print(completed.stdout, end="")
-            if completed.stderr:
-                print(completed.stderr, end="", file=sys.stderr)
         if adapter.name in {"aider", "codex"}:
             raw_trace_ref = _write_command_transcript(
                 root,

@@ -107,6 +107,37 @@ class CliRunTests(unittest.TestCase):
         self.assertEqual([], payload["attempt"]["commits"])
         self.assertEqual("?? agent.txt", status)
 
+    def test_run_text_format_prints_summary_to_stderr(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "run",
+                        "--format",
+                        "text",
+                        "--intent",
+                        "Text run",
+                        "--",
+                        sys.executable,
+                        "-c",
+                        "from pathlib import Path; Path('agent.txt').write_text('ok\\n')",
+                    ],
+                ):
+                    with redirect_stdout(stdout), redirect_stderr(stderr):
+                        exit_code = cli.main()
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("AIT run", stderr.getvalue())
+        self.assertIn("Exit code: 0", stderr.getvalue())
+
     def test_memory_text_outputs_repo_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

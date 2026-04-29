@@ -87,7 +87,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.51.0` alpha quality for local dogfood use. It is
+This repository is at `0.52.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -120,14 +120,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.51.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.52.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.51.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.52.0"
 .venv/bin/ait --help
 ```
 
@@ -293,7 +293,11 @@ attempt_id="$(ait run --format json --intent "Try change" -- \
 ```
 
 Use `--format text` to stream command stdout and stderr directly to the
-terminal while still printing the final ait result afterward.
+terminal while printing a compact final ait result to stderr afterward.
+Repo-local wrappers choose this mode automatically when stdin and stdout
+are real terminals, so interactive CLIs such as `codex` keep their TTY.
+When wrappers are invoked non-interactively, they keep JSON output for
+scripts and smoke tests.
 
 The wrapped process receives:
 
@@ -805,7 +809,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.51.0
+git checkout v0.52.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q

@@ -600,8 +600,13 @@ def _adapter_wrapper_script(adapter: AgentAdapter, real_binary: str) -> str:
         "fi\n"
         f': "${{AIT_INTENT:={intent}}}"\n'
         f': "${{AIT_COMMIT_MESSAGE:={commit_message}}}"\n'
+        'if [ -t 0 ] && [ -t 1 ]; then\n'
+        '  AIT_WRAPPER_FORMAT=text\n'
+        "else\n"
+        '  AIT_WRAPPER_FORMAT=json\n'
+        "fi\n"
         'exec "$AIT_WRAPPER_AIT_COMMAND" '
-        f"run --adapter {shlex.quote(adapter.name)} --format json "
+        f"run --adapter {shlex.quote(adapter.name)} --format \"$AIT_WRAPPER_FORMAT\" "
         '--intent "$AIT_INTENT" --commit-message "$AIT_COMMIT_MESSAGE" -- '
         '"$AIT_WRAPPER_REAL_BINARY" "$@"\n'
     )

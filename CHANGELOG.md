@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.52.0 - 2026-04-29
+
+### Fixed
+
+- Let repo-local agent wrappers use `ait run --format text` when stdin
+  and stdout are real terminals, so interactive CLIs such as Codex keep
+  their TTY and no longer fail with `stdout is not a terminal`.
+- Keep wrapper JSON output for non-interactive invocations, preserving
+  existing scripted smoke tests and automation.
+- Make `ait run --format text` stream the child process directly and
+  print a compact ait summary to stderr after the command exits.
+
 ## 0.51.0 - 2026-04-29
 
 ### Changed

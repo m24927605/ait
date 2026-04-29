@@ -532,7 +532,10 @@ def main() -> int:
         except (AdapterError, WorkspaceError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
-        print(json.dumps(asdict(result), indent=2))
+        if args.format == "json":
+            print(json.dumps(asdict(result), indent=2))
+        else:
+            print(_format_run_result(result), file=sys.stderr)
         return result.exit_code
     if args.command == "context":
         context = build_agent_context(repo_root, intent_id=args.intent_id)
@@ -1113,6 +1116,20 @@ def _format_memory_import(result) -> str:
         for item in result.skipped:
             lines.append(f"- {item.get('path')}: {item.get('reason')} ({item.get('source')})")
     return "\n".join(lines)
+
+
+def _format_run_result(result) -> str:
+    attempt = result.attempt.attempt
+    return "\n".join(
+        [
+            "AIT run",
+            f"Intent: {result.intent_id}",
+            f"Attempt: {result.attempt_id}",
+            f"Workspace: {result.workspace_ref}",
+            f"Exit code: {result.exit_code}",
+            f"Status: {attempt.get('verified_status')}",
+        ]
+    )
 
 
 def _init_payload(init_result, automation, statuses, memory_import=None, memory_policy=None) -> dict[str, object]:

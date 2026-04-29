@@ -153,7 +153,9 @@ class AdapterTests(unittest.TestCase):
             self.assertTrue(result.ok)
             self.assertTrue(wrapper_path.exists())
             self.assertIn("PATH_add .ait/bin", (repo_root / ".envrc").read_text(encoding="utf-8"))
-            self.assertIn("run --adapter aider --format json", wrapper)
+            self.assertIn("AIT_WRAPPER_FORMAT=text", wrapper)
+            self.assertIn("AIT_WRAPPER_FORMAT=json", wrapper)
+            self.assertIn('run --adapter aider --format "$AIT_WRAPPER_FORMAT"', wrapper)
             self.assertIn(str(real_aider.resolve()), wrapper)
 
     def test_doctor_automation_reports_codex_wrapper_state(self) -> None:
@@ -304,7 +306,9 @@ class AdapterTests(unittest.TestCase):
             self.assertEqual(str(wrapper_path.resolve()), result.wrapper_path)
             self.assertIn(str(wrapper_path.resolve()), result.wrote_files)
             self.assertIn(str(real_claude), wrapper)
-            self.assertIn("run --adapter claude-code --format json", wrapper)
+            self.assertIn("AIT_WRAPPER_FORMAT=text", wrapper)
+            self.assertIn("AIT_WRAPPER_FORMAT=json", wrapper)
+            self.assertIn('run --adapter claude-code --format "$AIT_WRAPPER_FORMAT"', wrapper)
             self.assertTrue(os.access(wrapper_path, os.X_OK))
 
     def test_wrapper_reports_missing_real_binary_with_next_step(self) -> None:
