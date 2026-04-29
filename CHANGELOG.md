@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.48.0 - 2026-04-29
+
+### Changed
+
+- Make `ait graph --html` easier to inspect by adding a first-screen
+  summary for attempt status counts, active agents, hot files, and
+  memory topics.
+- Render the static HTML work graph with native expandable/collapsible
+  tree sections using `<details>` and `<summary>`, without adding a
+  server or JavaScript runtime.
+- Keep the graph output read-only and local under `.ait/report/`.
+
 ## 0.47.0 - 2026-04-29
 
 ### Added

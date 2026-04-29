@@ -566,6 +566,9 @@ class CliRunTests(unittest.TestCase):
             self.assertIn(run_payload["attempt_id"].rsplit(":", 1)[-1][:8], graph_text)
             self.assertIn("wrote", html_stdout.getvalue())
             self.assertIn("AIT Work Graph", html)
+            self.assertIn("Attempt Status", html)
+            self.assertIn("Hot Files", html)
+            self.assertIn("<details", html)
             self.assertIn("Build graph report", html)
             self.assertIn("graph.txt", html)
 

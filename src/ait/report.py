@@ -36,6 +36,7 @@ def build_work_graph(repo_root: str | Path, *, limit: int = 20) -> dict[str, obj
                 attempt["files"] = _query_files(conn, str(attempt["id"]))
                 attempt["commits"] = _query_commits(conn, str(attempt["id"]))
             intent["attempts"] = attempts
+        summary = _build_summary(intents)
         memory_topics = _query_memory_topics(conn)
         graph.update(
             {
@@ -43,6 +44,7 @@ def build_work_graph(repo_root: str | Path, *, limit: int = 20) -> dict[str, obj
                 "attempt_count": _count_rows(conn, "attempts"),
                 "memory_note_count": sum(memory_topics.values()),
                 "memory_topics": memory_topics,
+                "summary": summary,
                 "intents": intents,
             }
         )
@@ -125,12 +127,28 @@ def write_work_graph_html(graph: dict[str, object], output_path: str | Path) -> 
 def render_work_graph_html(graph: dict[str, object]) -> str:
     title = "AIT Work Graph"
     intents_html = "\n".join(
-        _intent_html(intent)
-        for intent in graph.get("intents", [])
-        if isinstance(intent, dict)
+        _intent_html(intent, open_by_default=index < 3)
+        for index, intent in enumerate(
+            item for item in graph.get("intents", []) if isinstance(item, dict)
+        )
     )
     if not intents_html:
         intents_html = "<li><span class=\"muted\">No intents recorded</span></li>"
+    summary = graph.get("summary", {})
+    if not isinstance(summary, dict):
+        summary = {}
+    status_counts = summary.get("status_counts", {})
+    agent_counts = summary.get("agent_counts", {})
+    hot_files = summary.get("hot_files", [])
+    status_html = _metric_list(status_counts if isinstance(status_counts, dict) else {})
+    agent_html = _metric_list(agent_counts if isinstance(agent_counts, dict) else {})
+    hot_file_html = "\n".join(
+        f"<li><code>{escape(str(item.get('path', '')))}</code> <span class=\"muted\">{item.get('count', 0)}</span></li>"
+        for item in hot_files
+        if isinstance(item, dict)
+    ) or "<li><span class=\"muted\">none</span></li>"
+    memory_topics = graph.get("memory_topics", {})
+    memory_html = _metric_list(memory_topics if isinstance(memory_topics, dict) else {})
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -138,14 +156,19 @@ def render_work_graph_html(graph: dict[str, object]) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{title}</title>
   <style>
-    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 32px; color: #1f2937; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 32px; color: #1f2937; background: #ffffff; }}
     h1 {{ font-size: 24px; margin: 0 0 16px; }}
-    .meta {{ color: #4b5563; margin-bottom: 24px; }}
+    h2 {{ font-size: 15px; margin: 0 0 8px; }}
+    .meta {{ color: #4b5563; margin-bottom: 20px; }}
+    .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 0 0 24px; }}
+    .panel {{ border: 1px solid #d1d5db; border-radius: 6px; padding: 12px; background: #f9fafb; }}
+    .panel ul {{ margin: 0; padding-left: 18px; }}
     .tree, .tree ul {{ list-style: none; margin: 0; padding-left: 22px; }}
     .tree li {{ margin: 8px 0; position: relative; }}
     .tree li::before {{ content: ""; position: absolute; left: -14px; top: 0; bottom: -8px; border-left: 1px solid #d1d5db; }}
     .tree li::after {{ content: ""; position: absolute; left: -14px; top: 12px; width: 10px; border-top: 1px solid #d1d5db; }}
     .tree > li::before, .tree > li::after {{ display: none; }}
+    details > summary {{ cursor: pointer; }}
     .node {{ display: inline-block; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 6px; background: #f9fafb; }}
     .muted {{ color: #6b7280; }}
     code {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }}
@@ -158,37 +181,43 @@ def render_work_graph_html(graph: dict[str, object]) -> str:
     <div>Generated: <code>{escape(str(graph.get("generated_at", "")))}</code></div>
     <div>Summary: intents={graph.get("intent_count", 0)} attempts={graph.get("attempt_count", 0)} memory_notes={graph.get("memory_note_count", 0)}</div>
   </div>
+  <section class="summary">
+    <div class="panel"><h2>Attempt Status</h2><ul>{status_html}</ul></div>
+    <div class="panel"><h2>Agents</h2><ul>{agent_html}</ul></div>
+    <div class="panel"><h2>Hot Files</h2><ul>{hot_file_html}</ul></div>
+    <div class="panel"><h2>Memory</h2><ul>{memory_html}</ul></div>
+  </section>
   <ul class="tree">
-    <li><span class="node">Repo</span>
+    <li><details open><summary><span class="node">Repo</span></summary>
       <ul>
         {intents_html}
       </ul>
-    </li>
+    </details></li>
   </ul>
 </body>
 </html>
 """
 
-
-def _intent_html(intent: dict[str, object]) -> str:
+def _intent_html(intent: dict[str, object], *, open_by_default: bool) -> str:
     attempts = "\n".join(
-        _attempt_html(attempt)
+        _attempt_html(attempt, open_by_default=open_by_default)
         for attempt in intent.get("attempts", [])
         if isinstance(attempt, dict)
     )
     if not attempts:
         attempts = "<li><span class=\"muted\">attempts: none</span></li>"
+    open_attr = " open" if open_by_default else ""
     return (
-        "<li><span class=\"node\">"
+        f"<li><details{open_attr}><summary><span class=\"node\">"
         f"Intent {escape(str(intent.get('short_id', '')))}: {escape(str(intent.get('title', '')))} "
         f"[{escape(str(intent.get('status', '')))}]"
-        "</span><ul>"
+        "</span></summary><ul>"
         f"{attempts}"
-        "</ul></li>"
+        "</ul></details></li>"
     )
 
 
-def _attempt_html(attempt: dict[str, object]) -> str:
+def _attempt_html(attempt: dict[str, object], *, open_by_default: bool) -> str:
     children: list[str] = []
     files = attempt.get("files", {})
     changed = files.get("changed", []) if isinstance(files, dict) else []
@@ -201,13 +230,50 @@ def _attempt_html(attempt: dict[str, object]) -> str:
             f"<code>{escape(str(commit.get('commit_oid', ''))[:12])}</code></li>"
         )
     child_html = "<ul>" + "\n".join(children) + "</ul>" if children else ""
+    open_attr = " open" if open_by_default else ""
     return (
-        "<li><span class=\"node\">"
+        f"<li><details{open_attr}><summary><span class=\"node\">"
         f"Attempt {attempt.get('ordinal')} {escape(str(attempt.get('short_id', '')))} "
         f"agent={escape(str(attempt.get('agent_id', '')))} "
         f"status={escape(str(attempt.get('verified_status', '')))}/{escape(str(attempt.get('reported_status', '')))}"
-        "</span>"
-        f"{child_html}</li>"
+        "</span></summary>"
+        f"{child_html}</details></li>"
+    )
+
+
+def _build_summary(intents: list[dict[str, object]]) -> dict[str, object]:
+    status_counts: dict[str, int] = {}
+    agent_counts: dict[str, int] = {}
+    file_counts: dict[str, int] = {}
+    for intent in intents:
+        for attempt in [item for item in intent.get("attempts", []) if isinstance(item, dict)]:
+            status = str(attempt.get("verified_status", "unknown"))
+            status_counts[status] = status_counts.get(status, 0) + 1
+            agent = str(attempt.get("agent_id", "unknown"))
+            agent_counts[agent] = agent_counts.get(agent, 0) + 1
+            files = attempt.get("files", {})
+            if not isinstance(files, dict):
+                continue
+            for file_path in files.get("changed", []) or files.get("touched", []):
+                path = str(file_path)
+                file_counts[path] = file_counts.get(path, 0) + 1
+    hot_files = [
+        {"path": path, "count": count}
+        for path, count in sorted(file_counts.items(), key=lambda item: (-item[1], item[0]))[:8]
+    ]
+    return {
+        "status_counts": dict(sorted(status_counts.items())),
+        "agent_counts": dict(sorted(agent_counts.items(), key=lambda item: (-item[1], item[0]))[:8]),
+        "hot_files": hot_files,
+    }
+
+
+def _metric_list(values: dict[object, object]) -> str:
+    if not values:
+        return "<li><span class=\"muted\">none</span></li>"
+    return "\n".join(
+        f"<li>{escape(str(key))} <span class=\"muted\">{escape(str(value))}</span></li>"
+        for key, value in sorted(values.items(), key=lambda item: str(item[0]))
     )
 
 
