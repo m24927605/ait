@@ -165,6 +165,7 @@ def write_work_graph_html(graph: dict[str, object], output_path: str | Path) -> 
 
 def render_work_graph_html(graph: dict[str, object]) -> str:
     title = "AIT Work Graph"
+    visual_graph_html = _visual_graph_html(graph)
     intents_html = "\n".join(
         _intent_html(intent, open_by_default=index < 3)
         for index, intent in enumerate(
@@ -224,6 +225,27 @@ def render_work_graph_html(graph: dict[str, object]) -> str:
     .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 0 0 18px; }}
     .panel {{ border: 1px solid var(--border); border-radius: 6px; padding: 12px; background: var(--surface); }}
     .panel ul {{ margin: 0; padding-left: 18px; }}
+    .visual-graph {{ margin: 0 0 18px; border: 1px solid var(--border); border-radius: 6px; background: #fff; overflow: auto; }}
+    .visual-inner {{ min-width: 920px; padding: 16px; }}
+    .graph-row {{ display: grid; grid-template-columns: 160px minmax(230px, 1fr) minmax(280px, 2fr); gap: 18px; align-items: stretch; position: relative; }}
+    .graph-row + .graph-row {{ margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }}
+    .graph-column {{ display: grid; align-content: start; gap: 8px; min-width: 0; }}
+    .graph-column-label {{ font-size: 11px; text-transform: uppercase; color: var(--muted); letter-spacing: .04em; }}
+    .graph-card {{ display: grid; gap: 6px; min-width: 0; padding: 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); position: relative; }}
+    .graph-card::after {{ content: ""; position: absolute; top: 50%; right: -19px; width: 18px; border-top: 1px solid var(--border); }}
+    .graph-column:last-child .graph-card::after {{ display: none; }}
+    .graph-title {{ font-weight: 650; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+    .graph-subtitle {{ color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+    .graph-attempts {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px; }}
+    .graph-attempt {{ border-left: 4px solid var(--border); }}
+    .graph-attempt.outcome-succeeded, .graph-attempt.outcome-promoted {{ border-left-color: var(--ok); }}
+    .graph-attempt.outcome-succeeded_noop, .graph-attempt.outcome-needs_review, .graph-attempt.outcome-failed_with_evidence {{ border-left-color: var(--warn); }}
+    .graph-attempt.outcome-failed, .graph-attempt.outcome-failed_no_evidence {{ border-left-color: var(--bad); }}
+    .graph-facts {{ display: flex; flex-wrap: wrap; gap: 5px; }}
+    .graph-artifacts {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }}
+    .artifact {{ min-width: 0; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: #fff; }}
+    .artifact strong {{ display: block; margin-bottom: 4px; font-size: 12px; }}
+    .artifact code {{ display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
     .tree, .tree ul {{ list-style: none; margin: 0; padding-left: 22px; }}
     .tree li {{ margin: 8px 0; position: relative; }}
     .tree li::before {{ content: ""; position: absolute; left: -14px; top: 0; bottom: -8px; border-left: 1px solid var(--border); }}
@@ -248,7 +270,7 @@ def render_work_graph_html(graph: dict[str, object]) -> str:
     .hidden-by-filter {{ display: none !important; }}
     .empty-state {{ display: none; padding: 18px; border: 1px dashed var(--border); border-radius: 6px; color: var(--muted); }}
     .empty-state.visible {{ display: block; }}
-    @media (max-width: 780px) {{ main {{ padding: 16px; }} .toolbar {{ grid-template-columns: 1fr; }} .tree, .tree ul {{ padding-left: 14px; }} }}
+    @media (max-width: 780px) {{ main {{ padding: 16px; }} .toolbar {{ grid-template-columns: 1fr; }} .visual-inner {{ min-width: 760px; }} .tree, .tree ul {{ padding-left: 14px; }} }}
   </style>
 </head>
 <body>
@@ -273,6 +295,7 @@ def render_work_graph_html(graph: dict[str, object]) -> str:
       <div class="panel"><h2>Hot Files</h2><ul>{hot_file_html}</ul></div>
       <div class="panel"><h2>Memory</h2><ul>{memory_html}</ul></div>
     </section>
+    {visual_graph_html}
     <div id="emptyState" class="empty-state">No attempts match the current filters.</div>
     <ul class="tree" id="workGraph">
       <li><details open><summary><span class="node">Repo</span></summary>
@@ -306,6 +329,20 @@ def render_work_graph_html(graph: dict[str, object]) -> str:
         node.classList.toggle('hidden-by-filter', !visible);
         if (visible) visibleAttempts += 1;
       }});
+      document.querySelectorAll('[data-visual-attempt]').forEach((node) => {{
+        const haystack = node.dataset.search || '';
+        const statuses = node.dataset.statuses || '';
+        const visible = (!query || haystack.includes(query))
+          && (!agent || node.dataset.agent === agent)
+          && (!status || statuses.split(' ').includes(status))
+          && (!outcome || node.dataset.outcome === outcome);
+        node.classList.toggle('hidden-by-filter', !visible);
+      }});
+      document.querySelectorAll('[data-visual-intent]').forEach((node) => {{
+        const hasVisibleAttempt = Boolean(node.querySelector('[data-visual-attempt]:not(.hidden-by-filter)'));
+        const hasAttempts = Boolean(node.querySelector('[data-visual-attempt]'));
+        node.classList.toggle('hidden-by-filter', hasAttempts && !hasVisibleAttempt);
+      }});
       document.querySelectorAll('[data-intent-node]').forEach((node) => {{
         const hasVisibleAttempt = Boolean(node.querySelector('[data-attempt-node]:not(.hidden-by-filter)'));
         const hasAttempts = Boolean(node.querySelector('[data-attempt-node]'));
@@ -322,6 +359,124 @@ def render_work_graph_html(graph: dict[str, object]) -> str:
 </body>
 </html>
 """
+
+
+def _visual_graph_html(graph: dict[str, object]) -> str:
+    intents = [item for item in graph.get("intents", []) if isinstance(item, dict)]
+    if not intents:
+        return (
+            "<section class=\"visual-graph\" aria-label=\"Visual work graph\">"
+            "<div class=\"visual-inner\"><span class=\"muted\">No visual graph data</span></div>"
+            "</section>"
+        )
+    rows = "\n".join(_visual_intent_row(intent) for intent in intents)
+    return (
+        "<section class=\"visual-graph\" aria-label=\"Visual work graph\">"
+        "<div class=\"visual-inner\">"
+        "<div class=\"graph-column-label\">Visual Tree Graph</div>"
+        f"{rows}"
+        "</div>"
+        "</section>"
+    )
+
+
+def _visual_intent_row(intent: dict[str, object]) -> str:
+    attempts = [item for item in intent.get("attempts", []) if isinstance(item, dict)]
+    attempt_cards = "\n".join(_visual_attempt_card(attempt) for attempt in attempts)
+    artifact_cards = "\n".join(_visual_artifact_card(attempt) for attempt in attempts)
+    if not attempt_cards:
+        attempt_cards = "<div class=\"graph-card\"><div class=\"graph-title muted\">No attempts</div></div>"
+    if not artifact_cards:
+        artifact_cards = "<div class=\"artifact\"><strong>Artifacts</strong><span class=\"muted\">none</span></div>"
+    search_text = _search_blob(
+        str(intent.get("short_id", "")),
+        str(intent.get("title", "")),
+        str(intent.get("status", "")),
+        *(str(attempt.get("agent_id", "")) for attempt in attempts),
+    )
+    return (
+        f"<div class=\"graph-row\" data-visual-intent data-search=\"{escape(search_text, quote=True)}\">"
+        "<div class=\"graph-column\">"
+        "<div class=\"graph-column-label\">Intent</div>"
+        "<div class=\"graph-card\">"
+        f"<div class=\"graph-title\">{escape(str(intent.get('title', '')))}</div>"
+        f"<div class=\"graph-subtitle\">{escape(str(intent.get('short_id', '')))} · {escape(str(intent.get('kind', '')))}</div>"
+        f"<div class=\"graph-facts\">{_badge(str(intent.get('status', '')), kind='neutral')}</div>"
+        "</div></div>"
+        "<div class=\"graph-column\">"
+        "<div class=\"graph-column-label\">Attempts</div>"
+        f"<div class=\"graph-attempts\">{attempt_cards}</div>"
+        "</div>"
+        "<div class=\"graph-column\">"
+        "<div class=\"graph-column-label\">Evidence</div>"
+        f"<div class=\"graph-artifacts\">{artifact_cards}</div>"
+        "</div>"
+        "</div>"
+    )
+
+
+def _visual_attempt_card(attempt: dict[str, object]) -> str:
+    verified_status = str(attempt.get("verified_status", ""))
+    reported_status = str(attempt.get("reported_status", ""))
+    outcome = str(attempt.get("outcome_class") or "unclassified")
+    agent = str(attempt.get("agent_id", ""))
+    files = attempt.get("files", {})
+    changed = files.get("changed", []) if isinstance(files, dict) else []
+    touched = files.get("touched", []) if isinstance(files, dict) else []
+    file_list = changed or touched
+    memory_notes = [item for item in attempt.get("memory_notes", []) if isinstance(item, dict)]
+    search_text = _search_blob(
+        str(attempt.get("short_id", "")),
+        agent,
+        verified_status,
+        reported_status,
+        outcome,
+        *(str(path) for path in file_list),
+        *(str(note.get("body", "")) for note in memory_notes),
+    )
+    css_outcome = _css_token(outcome)
+    return (
+        f"<div class=\"graph-card graph-attempt outcome-{css_outcome}\" data-visual-attempt "
+        f"data-agent=\"{escape(agent, quote=True)}\" "
+        f"data-statuses=\"{escape(_search_blob(verified_status, reported_status), quote=True)}\" "
+        f"data-outcome=\"{escape(outcome, quote=True)}\" "
+        f"data-search=\"{escape(search_text, quote=True)}\">"
+        f"<div class=\"graph-title\">Attempt {attempt.get('ordinal')} {escape(str(attempt.get('short_id', '')))}</div>"
+        f"<div class=\"graph-subtitle\">{escape(agent)}</div>"
+        f"<div class=\"graph-facts\">{_badge(verified_status, kind='status')}{_badge(outcome, kind='outcome')}</div>"
+        "</div>"
+    )
+
+
+def _visual_artifact_card(attempt: dict[str, object]) -> str:
+    files = attempt.get("files", {})
+    changed = files.get("changed", []) if isinstance(files, dict) else []
+    touched = files.get("touched", []) if isinstance(files, dict) else []
+    file_list = changed or touched
+    commits = [item for item in attempt.get("commits", []) if isinstance(item, dict)]
+    memory_notes = [item for item in attempt.get("memory_notes", []) if isinstance(item, dict)]
+    transcript_mode = str(attempt.get("transcript_mode") or "none")
+    file_text = escape(str(file_list[0])) if file_list else "none"
+    commit_text = escape(str(commits[0].get("commit_oid", ""))[:12]) if commits else "none"
+    memory_text = str(len(memory_notes))
+    transcript_text = escape(transcript_mode)
+    return (
+        "<div class=\"artifact\">"
+        f"<strong>Files</strong><code>{file_text}</code>"
+        f"<span class=\"muted\">{len(file_list)}</span>"
+        "</div>"
+        "<div class=\"artifact\">"
+        f"<strong>Commits</strong><code>{commit_text}</code>"
+        f"<span class=\"muted\">{len(commits)}</span>"
+        "</div>"
+        "<div class=\"artifact\">"
+        f"<strong>Memory</strong><code>{memory_text}</code>"
+        "</div>"
+        "<div class=\"artifact\">"
+        f"<strong>Transcript</strong><code>{transcript_text}</code>"
+        "</div>"
+    )
+
 
 def _intent_html(intent: dict[str, object], *, open_by_default: bool) -> str:
     attempts = "\n".join(
@@ -494,6 +649,11 @@ def _json_list(raw: str) -> tuple[str, ...]:
 
 def _search_blob(*parts: str) -> str:
     return " ".join(part for part in parts if part).lower()
+
+
+def _css_token(value: str) -> str:
+    token = "".join(char if char.isalnum() else "_" for char in value.lower()).strip("_")
+    return token or "unknown"
 
 
 def _build_summary(intents: list[dict[str, object]]) -> dict[str, object]:
