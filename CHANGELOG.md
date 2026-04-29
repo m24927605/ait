@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.51.0 - 2026-04-29
+
+### Changed
+
+- Make `ait doctor --fix` and `ait repair` automatically initialize Git
+  when run from a plain project directory, matching the low-friction
+  `ait init` behavior.
+- Make `ait status` in a non-Git directory report a single actionable
+  next step, `ait init`, without creating `.git` or `.ait/`.
+- Add regression coverage for plain-directory status diagnostics and
+  `doctor --fix --format json` initialization.
+
 ## 0.50.0 - 2026-04-29
 
 ### Changed

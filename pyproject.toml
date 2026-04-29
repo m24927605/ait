@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ait-vcs"
-version = "0.50.0"
+version = "0.51.0"
 description = "Git worktree isolation and provenance for AI coding agents"
 readme = "README.md"
 requires-python = ">=3.14"

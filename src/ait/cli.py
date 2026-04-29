@@ -766,7 +766,7 @@ def main() -> int:
     if args.command == "doctor":
         if args.fix:
             try:
-                init_result = init_repo(repo_root)
+                init_result = init_repo(repo_root, auto_git_init=True)
                 result = enable_available_adapters(
                     init_result.repo_root,
                     names=(args.name,) if args.name else None,
@@ -877,7 +877,7 @@ def main() -> int:
         names = (args.name,) if args.name else tuple(name for name in sorted(ADAPTERS) if name != "shell")
         before = tuple(doctor_automation(name, repo_root) for name in names)
         try:
-            init_result = init_repo(repo_root)
+            init_result = init_repo(repo_root, auto_git_init=True)
             result = enable_available_adapters(init_result.repo_root, names=names)
             memory_import = ensure_agent_memory_imported(init_result.repo_root)
             memory_lint = lint_memory_notes(init_result.repo_root, fix=True)
@@ -1326,6 +1326,8 @@ def _doctor_next_steps(result) -> list[str]:
     checks = {check.name: check.ok for check in result.checks}
     if result.ok:
         return []
+    if not checks.get("git_repo", True):
+        return ["ait init"]
     if "automation" in checks and not checks["automation"]:
         return []
     if not checks.get("wrapper_file", True):
@@ -1346,6 +1348,8 @@ def _agent_cli_message(payload: dict[str, object]) -> str:
     command = _agent_command_name(adapter)
     if payload["ok"]:
         return f"ready: run {command} ..."
+    if not payload["git_repo"]:
+        return "not ready: run ait init"
     if not payload["real_agent_binary"]:
         return f"not ready: install {command} or put the real {command} binary on PATH"
     if not payload["wrapper_installed"]:
@@ -1684,6 +1688,8 @@ def _agent_cli_summary(payload: dict[str, object]) -> str:
     command = _agent_command_name(adapter)
     if payload["agent_cli_ready"]:
         return f"ready, run {command} ..."
+    if not payload["git_repo"]:
+        return "run ait init"
     if not payload["real_agent_binary"]:
         return f"install {command}"
     if not payload["wrapper_installed"]:

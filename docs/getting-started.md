@@ -78,7 +78,10 @@ ait doctor --fix --format json
 That path performs the same repo setup work as `ait init`, repairs
 detected agent wrappers, imports existing agent memory files, creates the
 default memory policy, and reports whether the current shell is ready for
-direct `claude`, `codex`, or `aider` use.
+direct `claude`, `codex`, `aider`, `gemini`, or `cursor` use. Like
+`ait init`, `ait doctor --fix` initializes Git first when the current
+directory is not already a repository. `ait status` remains read-only and
+will report `ait init` as the next step in a plain project directory.
 
 For persistent zsh/bash activation in new terminal sessions, install
 the opt-in shell integration after reviewing it:

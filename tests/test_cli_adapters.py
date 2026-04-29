@@ -697,6 +697,35 @@ class CliAdapterTests(unittest.TestCase):
             self.assertTrue((wrapper_dir / "codex").exists())
             self.assertTrue((repo_root / ".ait" / "memory-policy.json").exists())
 
+    def test_doctor_fix_auto_initializes_git_repo_in_plain_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + "/usr/bin:/bin"
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "doctor", "claude-code", "--fix", "--format", "json"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            payload = json.loads(stdout.getvalue())
+            config = json.loads((repo_root / ".ait" / "config.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(0, exit_code)
+            self.assertTrue((repo_root / ".git").exists())
+            self.assertTrue(payload["git_initialized"])
+            self.assertEqual(["claude-code"], payload["installed_adapters"])
+            self.assertTrue(config["repo_identity"].startswith("unborn:"))
+
     def test_doctor_fix_json_initializes_memory_policy_and_imports_agent_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp) / "repo"
@@ -798,6 +827,35 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(cli.package_version(), payload["installation"]["current_version"])
             self.assertIn("path_entries", payload["installation"])
             self.assertIn("ait init --adapter claude-code", payload["next_steps"])
+            self.assertFalse((repo_root / ".ait").exists())
+
+    def test_status_json_in_plain_directory_points_to_init_without_writing_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "status", "--format", "json"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+            payload = json.loads(stdout.getvalue())
+
+            self.assertEqual(0, exit_code)
+            self.assertFalse(payload["git_repo"])
+            self.assertEqual(["ait init"], payload["next_steps"])
+            self.assertEqual("not ready: run ait init", payload["agent_cli_message"])
+            self.assertFalse((repo_root / ".git").exists())
             self.assertFalse((repo_root / ".ait").exists())
 
     def test_installation_payload_detects_npm_pipx_version_conflict(self) -> None:

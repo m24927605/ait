@@ -87,7 +87,7 @@ verification, and rollback.
 
 ## Status
 
-This repository is at `0.50.0` alpha quality for local dogfood use. It is
+This repository is at `0.51.0` alpha quality for local dogfood use. It is
 local-only: metadata lives in `.ait/` inside one Git repository and is
 intentionally not synchronized across machines.
 
@@ -120,14 +120,14 @@ Verify:
 Install the tagged release with `pipx`:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.50.0"
+pipx install "git+https://github.com/m24927605/ait.git@v0.51.0"
 ```
 
 Or install into a virtual environment:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.50.0"
+.venv/bin/pip install "git+https://github.com/m24927605/ait.git@v0.51.0"
 .venv/bin/ait --help
 ```
 
@@ -510,10 +510,13 @@ ait doctor --fix --format json
 ait bootstrap --check
 ```
 
-`ait doctor --fix --format json` is the scripted repair form. It
-initializes `.ait/`, repairs wrappers and `.envrc`, imports detected
-agent memory, creates the default memory policy, and reports whether the
-current shell can directly run the wrapped agent CLI.
+`ait doctor --fix --format json` is the scripted repair form. It runs
+`git init` first when needed, initializes `.ait/`, repairs wrappers and
+`.envrc`, imports detected agent memory, creates the default memory
+policy, and reports whether the current shell can directly run the
+wrapped agent CLI. `ait status` stays read-only; in a plain project
+directory it reports `ait init` as the next step without writing `.git`
+or `.ait/`.
 
 If a wrapper or `.envrc` is damaged after setup, repair the repo-local
 automation and conservative memory lint issues without learning the
@@ -802,7 +805,7 @@ Clean clone smoke test:
 tmpdir="$(mktemp -d)"
 git clone https://github.com/m24927605/ait.git "$tmpdir/ait"
 cd "$tmpdir/ait"
-git checkout v0.50.0
+git checkout v0.51.0
 python3.14 -m venv .venv
 .venv/bin/pip install -e . pytest
 .venv/bin/pytest -q
