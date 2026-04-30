@@ -423,6 +423,7 @@ class CliAdapterTests(unittest.TestCase):
                             + os.pathsep
                             + old_path
                         ),
+                        "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
                     }
                     completed = subprocess.run(
                         ["claude", "--fake-prompt"],
@@ -495,6 +496,7 @@ class CliAdapterTests(unittest.TestCase):
                                     + os.pathsep
                                     + old_path
                                 ),
+                                "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
                             }
                             completed = subprocess.run(
                                 [command_name, "--fake-prompt"],

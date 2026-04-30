@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tempfile
@@ -345,6 +346,7 @@ class AppFlowTests(unittest.TestCase):
                     head_branch,
                 ],
                 cwd=repo_root,
+                env={**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")},
                 capture_output=True,
                 text=True,
             )
