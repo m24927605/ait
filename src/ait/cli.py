@@ -931,8 +931,14 @@ def main() -> int:
             )
             memory_status = _memory_status_payload(repo_root)
             installation = _installation_payload()
+            daemon = _daemon_status_payload(repo_root)
             payload = [
-                _status_payload(result, memory_status=memory_status, installation=installation)
+                _status_payload(
+                    result,
+                    memory_status=memory_status,
+                    installation=installation,
+                    daemon=daemon,
+                )
                 for result in results
             ]
             if args.format == "json":
@@ -946,6 +952,7 @@ def main() -> int:
             result,
             memory_status=_memory_status_payload(repo_root),
             installation=_installation_payload(),
+            daemon=_daemon_status_payload(repo_root),
         )
         if args.format == "json":
             print(json.dumps(payload, indent=2))
@@ -1917,6 +1924,7 @@ def _status_payload(
     *,
     memory_status: dict[str, object] | None = None,
     installation: dict[str, object] | None = None,
+    daemon: dict[str, object] | None = None,
 ) -> dict[str, object]:
     checks = {check.name: check.ok for check in result.checks}
     payload = {
@@ -1931,6 +1939,7 @@ def _status_payload(
         "direnv_loaded": checks.get("direnv_env_loaded", False),
         "memory": memory_status or {},
         "ait_health": _ait_health_payload(memory_status or {}),
+        "daemon": daemon or {},
         "next_steps": _doctor_next_steps(result),
     }
     if installation is not None:
@@ -1961,6 +1970,23 @@ def _format_status(payload: dict[str, object]) -> str:
     ])
     if isinstance(installation, dict):
         lines.extend(_format_installation_lines(installation, include_next_steps=False))
+    daemon = payload.get("daemon", {})
+    if isinstance(daemon, dict) and daemon:
+        if daemon.get("available", True):
+            lines.append(
+                "Daemon: "
+                f"{'running' if daemon.get('running') else 'stopped'} "
+                f"(socket_connectable={daemon.get('socket_connectable', False)}, "
+                f"pid_matches={daemon.get('pid_matches', False)})"
+            )
+            if daemon.get("pid") is not None:
+                lines.append(f"Daemon pid: {daemon.get('pid')}")
+            if daemon.get("stale_reason"):
+                lines.append(f"Daemon stale reason: {daemon.get('stale_reason')}")
+            if daemon.get("socket_path"):
+                lines.append(f"Daemon socket: {daemon.get('socket_path')}")
+        else:
+            lines.append(f"Daemon: unavailable ({daemon.get('reason', 'not initialized')})")
     ait_health = payload.get("ait_health", {})
     if isinstance(ait_health, dict):
         lines.append(f"AIT health: {ait_health.get('status', 'unknown')}")
@@ -2038,6 +2064,45 @@ def _ait_health_payload(memory_status: dict[str, object]) -> dict[str, object]:
     return {"status": "pass" if eval_status == "pass" else "unknown", "reasons": [], "next_steps": []}
 
 
+def _daemon_status_payload(repo_root: Path) -> dict[str, object]:
+    state_dir = repo_root / ".ait"
+    if not state_dir.exists():
+        return {
+            "available": False,
+            "reason": "ait not initialized",
+            "running": False,
+            "pid": None,
+            "pid_running": False,
+            "pid_matches": False,
+            "socket_connectable": False,
+            "stale_reason": None,
+        }
+    try:
+        status = daemon_status(repo_root)
+    except ValueError as exc:
+        return {
+            "available": False,
+            "reason": str(exc),
+            "running": False,
+            "pid": None,
+            "pid_running": False,
+            "pid_matches": False,
+            "socket_connectable": False,
+            "stale_reason": None,
+        }
+    return {
+        "available": True,
+        "running": status.running,
+        "pid": status.pid,
+        "pid_running": status.pid_running,
+        "pid_matches": status.pid_matches,
+        "socket_connectable": status.socket_connectable,
+        "stale_reason": status.stale_reason,
+        "socket_path": str(status.socket_path),
+        "pid_file": str(status.pid_file),
+    }
+
+
 def _agent_cli_summary(payload: dict[str, object]) -> str:
     adapter = str(payload["adapter"])
     command = _agent_command_name(adapter)
@@ -2069,6 +2134,8 @@ def _format_status_all(payload: list[dict[str, object]]) -> str:
             lines.extend(_format_installation_lines(installation, include_next_steps=False))
     for item in payload:
         command = _agent_command_name(str(item["adapter"]))
+        daemon = item.get("daemon", {})
+        daemon_label = "running" if isinstance(daemon, dict) and daemon.get("running") else "stopped"
         lines.append(
             f"- {command}: {_agent_cli_summary(item)}"
         )
@@ -2080,7 +2147,8 @@ def _format_status_all(payload: list[dict[str, object]]) -> str:
             f"real_binary={item['real_agent_binary']} "
             f"memory={item.get('memory', {}).get('initialized', False) if isinstance(item.get('memory'), dict) else False} "
             f"memory_health={item.get('memory', {}).get('health', 'unknown') if isinstance(item.get('memory'), dict) else 'unknown'} "
-            f"memory_eval={item.get('memory', {}).get('eval_status', 'unknown') if isinstance(item.get('memory'), dict) else 'unknown'}"
+            f"memory_eval={item.get('memory', {}).get('eval_status', 'unknown') if isinstance(item.get('memory'), dict) else 'unknown'} "
+            f"daemon={daemon_label}"
         )
         memory = item.get("memory", {})
         eval_next_steps = memory.get("eval_next_steps", []) if isinstance(memory, dict) else []

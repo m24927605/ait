@@ -1062,6 +1062,10 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual([], payload["memory"]["eval_next_steps"])
             self.assertEqual("pass", payload["ait_health"]["status"])
             self.assertEqual([], payload["ait_health"]["reasons"])
+            self.assertIn("daemon", payload)
+            self.assertFalse(payload["daemon"]["running"])
+            self.assertFalse(payload["daemon"]["socket_connectable"])
+            self.assertIn("daemon.sock", payload["daemon"]["socket_path"])
 
     def test_status_reports_memory_eval_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1163,6 +1167,37 @@ class CliAdapterTests(unittest.TestCase):
         self.assertIn("status.json", text)
         self.assertIn("Graph report:", text)
         self.assertIn("graph.html", text)
+
+    def test_status_reports_daemon_stale_reason(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            daemon_dir = repo_root / ".ait"
+            daemon_dir.mkdir(parents=True, exist_ok=True)
+            (daemon_dir / "daemon.pid").write_text(f"{os.getpid()}\n", encoding="utf-8")
+            json_stdout = io.StringIO()
+            text_stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "status", "--format", "json"]):
+                    with redirect_stdout(json_stdout):
+                        json_exit = cli.main()
+                with patch("sys.argv", ["ait", "status"]):
+                    with redirect_stdout(text_stdout):
+                        text_exit = cli.main()
+
+        payload = json.loads(json_stdout.getvalue())
+        text = text_stdout.getvalue()
+
+        self.assertEqual(0, json_exit)
+        self.assertEqual(0, text_exit)
+        self.assertFalse(payload["daemon"]["running"])
+        self.assertTrue(payload["daemon"]["pid_running"])
+        self.assertFalse(payload["daemon"]["pid_matches"])
+        self.assertEqual("pid_not_ait_daemon", payload["daemon"]["stale_reason"])
+        self.assertIn("Daemon: stopped", text)
+        self.assertIn("Daemon stale reason: pid_not_ait_daemon", text)
 
     def test_status_text_emits_one_time_automation_hint_to_stderr(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
