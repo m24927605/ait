@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
+import socket
 import sys
 import tempfile
 import threading
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -21,6 +24,19 @@ from ait.db import (
     run_migrations,
 )
 from ait.harness import AitHarness
+
+
+def _send_raw_event(socket_path: Path, envelope: dict[str, object]) -> dict[str, object]:
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        client.connect(str(socket_path))
+        stream = client.makefile("rwb")
+        stream.write((json.dumps(envelope, sort_keys=True) + "\n").encode("utf-8"))
+        stream.flush()
+        raw = stream.readline()
+    finally:
+        client.close()
+    return json.loads(raw.decode("utf-8"))
 
 
 class DaemonConcurrencyTests(unittest.TestCase):
@@ -145,6 +161,61 @@ class DaemonConcurrencyTests(unittest.TestCase):
 
         self.assertFalse(thread.is_alive())
         self.assertTrue(stop_event.is_set())
+
+
+    def test_duplicate_finished_event_schedules_verifier_once(self) -> None:
+        spawned_attempts: list[str] = []
+
+        def fake_verify(repo_root: Path, attempt_id: str) -> None:
+            del repo_root
+            spawned_attempts.append(attempt_id)
+
+        self._stop_event.set()
+        self._accept_thread.join(timeout=2.0)
+        self._server.close()
+        if self._socket_path.exists():
+            remove_socket_file(self._socket_path)
+
+        server = bind_unix_socket(self._socket_path)
+        stop_event = threading.Event()
+        thread = threading.Thread(
+            target=run_accept_loop,
+            kwargs={
+                "server": server,
+                "conn": self.conn,
+                "db_lock": self._db_lock,
+                "repo_root": Path(self._tmp.name),
+                "stop_event": stop_event,
+                "poll_interval_seconds": 0.02,
+            },
+            daemon=True,
+        )
+        envelope = {
+            "schema_version": 1,
+            "event_id": "repo:01DUPFINISH",
+            "event_type": "attempt_finished",
+            "sent_at": "2026-04-23T00:10:00Z",
+            "attempt_id": "repo:01ATTEMPT_A",
+            "ownership_token": "token-A",
+            "payload": {"exit_code": 0},
+        }
+        with patch("ait.daemon._verify_attempt_in_background", fake_verify):
+            thread.start()
+            first = _send_raw_event(self._socket_path, envelope)
+            second = _send_raw_event(
+                self._socket_path,
+                {**envelope, "sent_at": "2026-04-23T00:10:01Z"},
+            )
+            stop_event.set()
+            thread.join(timeout=2.0)
+        try:
+            server.close()
+        except Exception:
+            pass
+
+        self.assertFalse(first["duplicate"])
+        self.assertTrue(second["duplicate"])
+        self.assertEqual(["repo:01ATTEMPT_A"], spawned_attempts)
 
     def _seed_intent_and_attempts(self) -> None:
         insert_intent(

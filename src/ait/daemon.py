@@ -316,7 +316,7 @@ def _handle_client(
             }
             with db_lock:
                 result = process_event(conn, envelope_to_dict(envelope))
-            if should_verify:
+            if should_verify and not result.duplicate:
                 _verify_attempt_in_background(repo_root, envelope.attempt_id)
             _write_response(client, {"ok": True, **result.__dict__})
         except EventError as exc:
