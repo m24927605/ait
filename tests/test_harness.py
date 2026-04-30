@@ -167,6 +167,31 @@ class HarnessClientTests(unittest.TestCase):
         event_types = [evt["event_type"] for evt in self._received]
         self.assertEqual(["attempt_started", "attempt_finished"], event_types)
 
+    def test_finish_reconnects_once_when_daemon_connection_drops(self) -> None:
+        self._serve_thread = threading.Thread(
+            target=self._serve_close_on_first_finish_then_retry,
+            daemon=True,
+        )
+        self._serve_thread.start()
+
+        harness = AitHarness.open(
+            attempt_id="repo:nonce:01TESTATTEMPT",
+            ownership_token="test-token",
+            socket_path=self._socket_path,
+            agent={"agent_id": "myhar:worker", "harness": "myhar", "harness_version": "0"},
+        )
+        try:
+            harness.start()
+            harness.finish(exit_code=0)
+        finally:
+            harness.close()
+
+        self._serve_thread.join(timeout=2.0)
+        self.assertFalse(self._serve_thread.is_alive())
+        event_types = [evt["event_type"] for evt in self._received]
+        self.assertEqual(["attempt_started", "attempt_finished", "attempt_finished"], event_types)
+        self.assertEqual(self._received[1]["event_id"], self._received[2]["event_id"])
+
     def _serve_once(self, ok: bool = True) -> None:
         try:
             client, _ = self._server.accept()
@@ -202,11 +227,49 @@ class HarnessClientTests(unittest.TestCase):
                 envelope = json.loads(line.decode("utf-8"))
                 self._received.append(envelope)
                 if envelope["event_type"] == "attempt_finished":
+                    client.shutdown(socket.SHUT_RDWR)
                     return
                 file.write((json.dumps({"ok": True}) + "\n").encode("utf-8"))
                 file.flush()
         finally:
             client.close()
+
+    def _serve_close_on_first_finish_then_retry(self) -> None:
+        try:
+            client, _ = self._server.accept()
+        except (socket.timeout, OSError):
+            return
+        try:
+            file = client.makefile("rwb")
+            while True:
+                line = file.readline()
+                if not line:
+                    return
+                envelope = json.loads(line.decode("utf-8"))
+                self._received.append(envelope)
+                if envelope["event_type"] == "attempt_finished":
+                    client.shutdown(socket.SHUT_RDWR)
+                    break
+                file.write((json.dumps({"ok": True}) + "\n").encode("utf-8"))
+                file.flush()
+        finally:
+            client.close()
+
+        try:
+            retry, _ = self._server.accept()
+        except (socket.timeout, OSError):
+            return
+        try:
+            file = retry.makefile("rwb")
+            line = file.readline()
+            if not line:
+                return
+            envelope = json.loads(line.decode("utf-8"))
+            self._received.append(envelope)
+            file.write((json.dumps({"ok": True}) + "\n").encode("utf-8"))
+            file.flush()
+        finally:
+            retry.close()
 
 
 if __name__ == "__main__":

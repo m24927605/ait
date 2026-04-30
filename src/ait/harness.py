@@ -57,10 +57,15 @@ from typing import Any, Mapping, Sequence
 from ait.ids import new_ulid
 
 PROTOCOL_SCHEMA_VERSION = 1
+DEFAULT_SOCKET_TIMEOUT_SECONDS = 3.0
 
 
 class HarnessError(RuntimeError):
     """Raised on daemon error responses or protocol failures."""
+
+
+class _HarnessConnectionError(HarnessError):
+    """Raised when the daemon connection dies before a response."""
 
 
 @dataclass
@@ -74,6 +79,7 @@ class AitHarness:
     _started: bool = field(default=False, init=False)
     _finished: bool = field(default=False, init=False)
     _finish_attempted: bool = field(default=False, init=False)
+    socket_timeout_seconds: float = DEFAULT_SOCKET_TIMEOUT_SECONDS
 
     @classmethod
     def open(
@@ -187,13 +193,12 @@ class AitHarness:
 
     def _connect(self) -> None:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(self.socket_timeout_seconds)
         sock.connect(str(self.socket_path))
         self._sock = sock
         self._file = sock.makefile("rwb")
 
     def _send(self, *, event_type: str, payload: Mapping[str, Any]) -> dict[str, Any]:
-        if self._sock is None or self._file is None:
-            raise HarnessError("harness socket is not open")
         envelope = {
             "schema_version": PROTOCOL_SCHEMA_VERSION,
             "event_id": f"harness:{new_ulid()}",
@@ -203,11 +208,24 @@ class AitHarness:
             "ownership_token": self.ownership_token,
             "payload": dict(payload),
         }
+        try:
+            return self._send_envelope(envelope, event_type=event_type)
+        except (BrokenPipeError, ConnectionResetError, OSError, _HarnessConnectionError):
+            self.close()
+            self._connect()
+            try:
+                return self._send_envelope(envelope, event_type=event_type)
+            except (BrokenPipeError, ConnectionResetError, OSError, _HarnessConnectionError) as exc:
+                raise HarnessError(str(exc)) from exc
+
+    def _send_envelope(self, envelope: Mapping[str, Any], *, event_type: str) -> dict[str, Any]:
+        if self._sock is None or self._file is None:
+            raise _HarnessConnectionError("harness socket is not open")
         self._file.write((json.dumps(envelope, sort_keys=True) + "\n").encode("utf-8"))
         self._file.flush()
         raw = self._file.readline()
         if not raw:
-            raise HarnessError(f"daemon closed the connection before responding to {event_type}")
+            raise _HarnessConnectionError(f"daemon closed the connection before responding to {event_type}")
         response = json.loads(raw.decode("utf-8"))
         if not response.get("ok", False):
             raise HarnessError(
