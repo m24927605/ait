@@ -378,6 +378,8 @@ class CliRunTests(unittest.TestCase):
         self.assertEqual(180, payload["budget_chars"])
         self.assertTrue(payload["selected"])
         self.assertEqual("attempt-memory:test", payload["selected"][0]["source"])
+        self.assertEqual("temporal-v1", payload["selected"][0]["metadata"]["temporal_ranker"])
+        self.assertIn("temporal_score", payload["selected"][0]["metadata"])
         self.assertLessEqual(payload["rendered_chars"], 180)
 
     def test_memory_recall_cli_skips_unhealthy_memory_unless_requested(self) -> None:

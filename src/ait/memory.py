@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
+from datetime import UTC, datetime
 import json
 import math
 from pathlib import Path
@@ -1388,7 +1389,7 @@ def build_relevant_memory_recall(
         if not include_unhealthy
         else {}
     )
-    selected: list[RelevantMemoryItem] = []
+    eligible: list[MemorySearchResult] = []
     skipped: list[dict[str, object]] = []
     for result in candidates:
         source = str(result.metadata.get("source", ""))
@@ -1438,20 +1439,30 @@ def build_relevant_memory_recall(
                 }
             )
             continue
-        if len(selected) >= limit:
-            skipped.append({"kind": result.kind, "id": result.id, "source": source, "reason": "over selection limit"})
-            continue
-        selected.append(
-            RelevantMemoryItem(
-                kind=result.kind,
-                id=result.id,
-                source=source,
-                topic=result.title,
-                score=result.score,
-                text=result.text,
-                metadata=result.metadata,
-            )
+        eligible.append(result)
+    ranked = _apply_temporal_recall_ranking(eligible)
+    selected_results = ranked[:limit]
+    for result in ranked[limit:]:
+        skipped.append(
+            {
+                "kind": result.kind,
+                "id": result.id,
+                "source": str(result.metadata.get("source", "")),
+                "reason": "over selection limit",
+            }
         )
+    selected = [
+        RelevantMemoryItem(
+            kind=result.kind,
+            id=result.id,
+            source=str(result.metadata.get("source", "")),
+            topic=result.title,
+            score=result.score,
+            text=result.text,
+            metadata=result.metadata,
+        )
+        for result in selected_results
+    ]
 
     rendered, compacted = _render_relevant_memory_text(
         query=query,
@@ -1474,6 +1485,99 @@ def build_relevant_memory_recall(
         rendered_chars=len(rendered),
         compacted=compacted,
     )
+
+
+def _apply_temporal_recall_ranking(results: list[MemorySearchResult]) -> list[MemorySearchResult]:
+    now = _parse_memory_time(utc_now()) or datetime.now(tz=UTC)
+    ranked = [_temporal_ranked_result(result, now=now) for result in results]
+    ranked.sort(
+        key=lambda result: (
+            -float(result.metadata.get("temporal_score", result.score)),
+            -result.score,
+            result.kind,
+            result.id,
+        )
+    )
+    return ranked
+
+
+def _temporal_ranked_result(result: MemorySearchResult, *, now: datetime) -> MemorySearchResult:
+    metadata = dict(result.metadata)
+    temporal_kind = str(metadata.get("kind") or result.kind or "note")
+    anchor = _parse_memory_time(str(metadata.get("updated_at") or metadata.get("valid_from") or ""))
+    age_days = max(0.0, (now - anchor).total_seconds() / 86400.0) if anchor else None
+    time_factor = _temporal_time_factor(temporal_kind, age_days)
+    confidence_factor = _temporal_confidence_factor(str(metadata.get("confidence") or ""))
+    kind_factor = _temporal_kind_factor(temporal_kind)
+    temporal_score = result.score * time_factor * confidence_factor * kind_factor
+    metadata.update(
+        {
+            "temporal_ranker": "temporal-v1",
+            "temporal_kind": temporal_kind,
+            "temporal_base_score": round(result.score, 6),
+            "temporal_factor": round(time_factor * confidence_factor * kind_factor, 6),
+            "temporal_score": round(temporal_score, 6),
+        }
+    )
+    if age_days is not None:
+        metadata["temporal_age_days"] = round(age_days, 3)
+    return MemorySearchResult(
+        kind=result.kind,
+        id=result.id,
+        score=temporal_score,
+        title=result.title,
+        text=result.text,
+        metadata=metadata,
+    )
+
+
+def _temporal_time_factor(kind: str, age_days: float | None) -> float:
+    if age_days is None:
+        return 1.0
+    half_life_days, minimum = {
+        "current_state": (14.0, 0.35),
+        "workflow": (45.0, 0.50),
+        "failure": (45.0, 0.45),
+        "entity": (60.0, 0.50),
+        "rule": (90.0, 0.60),
+        "decision": (180.0, 0.70),
+        "manual": (365.0, 0.85),
+        "note": (90.0, 0.55),
+    }.get(kind, (90.0, 0.55))
+    return minimum + (1.0 - minimum) * (0.5 ** (age_days / half_life_days))
+
+
+def _temporal_confidence_factor(confidence: str) -> float:
+    return {
+        "manual": 1.08,
+        "high": 1.05,
+        "medium": 0.92,
+        "low": 0.78,
+    }.get(confidence, 0.90)
+
+
+def _temporal_kind_factor(kind: str) -> float:
+    return {
+        "decision": 1.04,
+        "rule": 1.03,
+        "workflow": 1.02,
+        "manual": 1.04,
+        "current_state": 1.00,
+        "entity": 0.96,
+        "failure": 0.88,
+    }.get(kind, 1.00)
+
+
+def _parse_memory_time(value: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _record_memory_retrieval_event(

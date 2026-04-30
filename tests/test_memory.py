@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 from ait.app import create_commit_for_attempt, create_attempt, create_intent, show_attempt
-from ait.db import connect_db, list_memory_facts, run_migrations
+from ait.db import connect_db, list_memory_facts, NewMemoryFact, run_migrations, upsert_memory_fact
 from ait.db.repositories import update_attempt
 from ait.memory import (
     add_memory_note,
@@ -119,6 +119,90 @@ class MemoryTests(unittest.TestCase):
             self.assertEqual("accepted", results[0].metadata["status"])
             self.assertEqual("fact", recall.selected[0].kind)
             self.assertIn("release 必須先跑 pytest", recall.selected[0].text)
+            self.assertEqual("temporal-v1", recall.selected[0].metadata["temporal_ranker"])
+            self.assertIn("temporal_score", recall.selected[0].metadata)
+
+    def test_relevant_memory_recall_prefers_recent_current_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            self.addCleanup(conn.close)
+            run_migrations(conn)
+            _upsert_test_fact(
+                conn,
+                fact_id="fact:old-state",
+                kind="current_state",
+                body="Billing retry cache mode uses legacy queue.",
+                updated_at="2024-01-01T00:00:00Z",
+            )
+            _upsert_test_fact(
+                conn,
+                fact_id="fact:recent-state",
+                kind="current_state",
+                body="Billing retry cache mode uses durable queue.",
+                updated_at="2026-04-20T00:00:00Z",
+            )
+
+            recall = build_relevant_memory_recall(repo_root, "billing retry cache mode", limit=1)
+
+            self.assertEqual(("fact:recent-state",), tuple(item.id for item in recall.selected))
+            self.assertEqual("temporal-v1", recall.selected[0].metadata["temporal_ranker"])
+            self.assertIn("temporal_age_days", recall.selected[0].metadata)
+
+    def test_relevant_memory_recall_keeps_old_decision_ahead_of_old_current_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            self.addCleanup(conn.close)
+            run_migrations(conn)
+            _upsert_test_fact(
+                conn,
+                fact_id="fact:old-state",
+                kind="current_state",
+                body="Billing retry architecture uses job queue.",
+                updated_at="2024-01-01T00:00:00Z",
+            )
+            _upsert_test_fact(
+                conn,
+                fact_id="fact:old-decision",
+                kind="decision",
+                body="Billing retry architecture uses job queue.",
+                updated_at="2024-01-01T00:00:00Z",
+            )
+
+            recall = build_relevant_memory_recall(repo_root, "billing retry architecture job queue", limit=1)
+
+            self.assertEqual(("fact:old-decision",), tuple(item.id for item in recall.selected))
+
+    def test_relevant_memory_recall_does_not_rank_failure_above_rule_on_same_relevance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            self.addCleanup(conn.close)
+            run_migrations(conn)
+            _upsert_test_fact(
+                conn,
+                fact_id="fact:failure",
+                kind="failure",
+                body="Release package workflow requires pytest.",
+                updated_at="2026-04-20T00:00:00Z",
+                confidence="high",
+            )
+            _upsert_test_fact(
+                conn,
+                fact_id="fact:rule",
+                kind="rule",
+                body="Release package workflow requires pytest.",
+                updated_at="2026-04-20T00:00:00Z",
+                confidence="high",
+            )
+
+            recall = build_relevant_memory_recall(repo_root, "release package workflow pytest", limit=1)
+
+            self.assertEqual(("fact:rule",), tuple(item.id for item in recall.selected))
 
     def test_memory_candidates_keep_failed_attempts_as_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -653,6 +737,33 @@ def _record_trace_attempt(
     finally:
         conn.close()
     return attempt.attempt_id
+
+
+def _upsert_test_fact(
+    conn,
+    *,
+    fact_id: str,
+    kind: str,
+    body: str,
+    updated_at: str,
+    confidence: str = "high",
+) -> None:
+    upsert_memory_fact(
+        conn,
+        NewMemoryFact(
+            id=fact_id,
+            kind=kind,
+            topic="billing",
+            body=body,
+            summary=body,
+            status="accepted",
+            confidence=confidence,
+            source_trace_ref=f".ait/traces/{fact_id}.txt",
+            valid_from=updated_at,
+            created_at=updated_at,
+            updated_at=updated_at,
+        ),
+    )
 
 
 def _git(repo_root: Path, *args: str) -> None:
