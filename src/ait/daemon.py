@@ -18,11 +18,13 @@ from ait.db import connect_db, run_migrations
 from ait.events import EventError, process_event, reap_stale_attempts
 from ait.protocol import ProtocolError, envelope_to_dict
 from ait.repo import resolve_repo_root
-from ait.verifier import verify_attempt_with_connection
+from ait.verifier import verify_attempt
 
 DEFAULT_REAPER_TTL_SECONDS = 300
 DEFAULT_REAPER_SCAN_INTERVAL_SECONDS = 30.0
 DEFAULT_REAPER_STARTUP_GRACE_SECONDS = 30.0
+_VERIFIER_THREADS: list[threading.Thread] = []
+_VERIFIER_THREADS_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,6 +168,7 @@ def serve_daemon(repo_root: str | Path) -> None:
         stop_event.set()
         if reaper_thread is not None:
             reaper_thread.join(timeout=5.0)
+        _join_verifier_threads(timeout=5.0)
         conn.close()
         server.close()
         if socket_path.exists():
@@ -307,13 +310,14 @@ def _handle_client(
         if envelope is None:
             return
         try:
+            should_verify = repo_root is not None and envelope.event_type in {
+                "attempt_finished",
+                "attempt_promoted",
+            }
             with db_lock:
                 result = process_event(conn, envelope_to_dict(envelope))
-                if repo_root is not None and envelope.event_type in {
-                    "attempt_finished",
-                    "attempt_promoted",
-                }:
-                    verify_attempt_with_connection(conn, repo_root, envelope.attempt_id)
+            if should_verify:
+                _verify_attempt_in_background(repo_root, envelope.attempt_id)
             _write_response(client, {"ok": True, **result.__dict__})
         except EventError as exc:
             _write_response(client, {"ok": False, "error": str(exc)})
@@ -322,7 +326,52 @@ def _handle_client(
 
 
 def _write_response(client: socket.socket, payload: dict[str, object]) -> None:
-    client.sendall((json.dumps(payload, sort_keys=True) + "\n").encode("utf-8"))
+    try:
+        client.sendall((json.dumps(payload, sort_keys=True) + "\n").encode("utf-8"))
+    except (BrokenPipeError, ConnectionResetError, OSError):
+        return
+
+
+def _verify_attempt_in_background(repo_root: Path, attempt_id: str) -> threading.Thread:
+    def run() -> None:
+        try:
+            verify_attempt(repo_root, attempt_id)
+        except Exception:
+            # Verification can be retried by explicit `ait attempt verify`.
+            pass
+        finally:
+            current = threading.current_thread()
+            with _VERIFIER_THREADS_LOCK:
+                if current in _VERIFIER_THREADS:
+                    _VERIFIER_THREADS.remove(current)
+
+    thread = threading.Thread(
+        target=run,
+        daemon=True,
+        name="ait-verifier",
+    )
+    with _VERIFIER_THREADS_LOCK:
+        _VERIFIER_THREADS.append(thread)
+    thread.start()
+    return thread
+
+
+def _join_verifier_threads(*, timeout: float) -> None:
+    deadline = time.monotonic() + timeout
+    while True:
+        with _VERIFIER_THREADS_LOCK:
+            threads = list(_VERIFIER_THREADS)
+        if not threads:
+            return
+        for thread in threads:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            thread.join(timeout=remaining)
+        with _VERIFIER_THREADS_LOCK:
+            _VERIFIER_THREADS[:] = [
+                thread for thread in _VERIFIER_THREADS if thread.is_alive()
+            ]
 
 
 def _socket_path(repo_root: Path) -> Path:
