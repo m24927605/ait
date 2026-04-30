@@ -1390,10 +1390,22 @@ def build_relevant_memory_recall(
     skipped: list[dict[str, object]] = []
     for result in candidates:
         source = str(result.metadata.get("source", ""))
-        if result.kind != "note":
+        if result.kind == "fact":
+            status = str(result.metadata.get("status", ""))
+            if status != "accepted":
+                skipped.append(
+                    {
+                        "kind": result.kind,
+                        "id": result.id,
+                        "source": source,
+                        "reason": f"memory fact status is {status}",
+                    }
+                )
+                continue
+        elif result.kind != "note":
             skipped.append({"kind": result.kind, "id": result.id, "reason": "not a memory note"})
             continue
-        if recall_source_blocked(source, policy):
+        if result.kind == "note" and recall_source_blocked(source, policy):
             skipped.append(
                 {
                     "kind": result.kind,
@@ -1403,7 +1415,7 @@ def build_relevant_memory_recall(
                 }
             )
             continue
-        if not recall_source_allowed(source, policy):
+        if result.kind == "note" and not recall_source_allowed(source, policy):
             skipped.append(
                 {
                     "kind": result.kind,
@@ -1413,7 +1425,7 @@ def build_relevant_memory_recall(
                 }
             )
             continue
-        if result.id in blocked_notes:
+        if result.kind == "note" and result.id in blocked_notes:
             skipped.append(
                 {
                     "kind": result.kind,
@@ -1669,6 +1681,60 @@ def _search_documents(
     policy: MemoryPolicy,
 ) -> tuple[dict[str, object], ...]:
     documents: list[dict[str, object]] = []
+    fact_rows = conn.execute(
+        """
+        SELECT
+            id, kind, topic, body, summary, status, confidence,
+            source_attempt_id, source_trace_ref, source_commit_oid,
+            source_file_path, valid_from, valid_to, superseded_by, updated_at
+        FROM memory_facts
+        WHERE status = 'accepted'
+        """
+    ).fetchall()
+    for row in fact_rows:
+        body, redacted = redact_text(str(row["body"]))
+        summary, summary_redacted = redact_text(str(row["summary"]))
+        source_attempt_id = str(row["source_attempt_id"] or "")
+        source_trace_ref = str(row["source_trace_ref"] or "")
+        source_commit_oid = str(row["source_commit_oid"] or "")
+        source_file_path = str(row["source_file_path"] or "")
+        source = f"memory-fact:{row['id']}"
+        documents.append(
+            {
+                "kind": "fact",
+                "id": str(row["id"]),
+                "title": str(row["topic"]),
+                "text": " ".join(
+                    part
+                    for part in (
+                        str(row["kind"]),
+                        str(row["topic"]),
+                        summary,
+                        body,
+                        source_file_path,
+                        source_commit_oid,
+                    )
+                    if part
+                ),
+                "metadata": {
+                    "kind": str(row["kind"]),
+                    "topic": str(row["topic"]),
+                    "status": str(row["status"]),
+                    "confidence": str(row["confidence"]),
+                    "source": source,
+                    "source_attempt_id": source_attempt_id,
+                    "source_trace_ref": source_trace_ref,
+                    "source_commit_oid": source_commit_oid,
+                    "source_file_path": source_file_path,
+                    "valid_from": str(row["valid_from"]),
+                    "valid_to": str(row["valid_to"] or ""),
+                    "superseded_by": str(row["superseded_by"] or ""),
+                    "updated_at": str(row["updated_at"]),
+                    "redacted": redacted or summary_redacted,
+                },
+            }
+        )
+
     note_rows = conn.execute(
         """
         SELECT id, topic, body, source, updated_at

@@ -702,6 +702,7 @@ class CliRunTests(unittest.TestCase):
             self.assertIn("Build graph report", html)
             self.assertIn("graph.txt", html)
             self.assertIn("Outcome Reasons", html)
+            self.assertIn("Memory Facts", html)
             self.assertIn("Memory Candidates", html)
             self.assertIn("outcome badge", html)
             self.assertIn("Transcript", html)

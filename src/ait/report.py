@@ -51,6 +51,7 @@ def build_work_graph(
                 attempt["files"] = _query_files(conn, str(attempt["id"]))
                 attempt["commits"] = _query_commits(conn, str(attempt["id"]))
                 attempt["memory_notes"] = _query_attempt_memory_notes(conn, str(attempt["id"]))
+                attempt["memory_facts"] = _query_attempt_memory_facts(conn, str(attempt["id"]))
             attempts = [
                 attempt
                 for attempt in attempts
@@ -425,6 +426,7 @@ def _visual_attempt_card(attempt: dict[str, object]) -> str:
     touched = files.get("touched", []) if isinstance(files, dict) else []
     file_list = changed or touched
     memory_notes = [item for item in attempt.get("memory_notes", []) if isinstance(item, dict)]
+    memory_facts = [item for item in attempt.get("memory_facts", []) if isinstance(item, dict)]
     search_text = _search_blob(
         str(attempt.get("short_id", "")),
         agent,
@@ -433,6 +435,7 @@ def _visual_attempt_card(attempt: dict[str, object]) -> str:
         outcome,
         *(str(path) for path in file_list),
         *(str(note.get("body", "")) for note in memory_notes),
+        *(str(fact.get("body", "")) for fact in memory_facts),
     )
     css_outcome = _css_token(outcome)
     return (
@@ -455,10 +458,11 @@ def _visual_artifact_card(attempt: dict[str, object]) -> str:
     file_list = changed or touched
     commits = [item for item in attempt.get("commits", []) if isinstance(item, dict)]
     memory_notes = [item for item in attempt.get("memory_notes", []) if isinstance(item, dict)]
+    memory_facts = [item for item in attempt.get("memory_facts", []) if isinstance(item, dict)]
     transcript_mode = str(attempt.get("transcript_mode") or "none")
     file_text = escape(str(file_list[0])) if file_list else "none"
     commit_text = escape(str(commits[0].get("commit_oid", ""))[:12]) if commits else "none"
-    memory_text = str(len(memory_notes))
+    memory_text = str(len(memory_notes) + len(memory_facts))
     transcript_text = escape(transcript_mode)
     return (
         "<div class=\"artifact\">"
@@ -519,6 +523,9 @@ def _attempt_html(attempt: dict[str, object], *, open_by_default: bool) -> str:
     if outcome_reasons:
         children.append(_reasons_html(outcome_reasons))
     memory_notes = [item for item in attempt.get("memory_notes", []) if isinstance(item, dict)]
+    memory_facts = [item for item in attempt.get("memory_facts", []) if isinstance(item, dict)]
+    if memory_facts:
+        children.append(_memory_facts_html(memory_facts))
     if memory_notes:
         children.append(_memory_notes_html(memory_notes))
     transcript_html = _transcript_html(attempt)
@@ -539,6 +546,7 @@ def _attempt_html(attempt: dict[str, object], *, open_by_default: bool) -> str:
         str(attempt.get("transcript", "")),
         *(str(path) for path in file_list),
         *(str(note.get("body", "")) for note in memory_notes),
+        *(str(fact.get("body", "")) for fact in memory_facts),
     )
     return (
         f"<li data-attempt-node data-agent=\"{escape(agent, quote=True)}\" "
@@ -613,6 +621,21 @@ def _memory_notes_html(notes: list[dict[str, object]]) -> str:
         for note in notes
     )
     return f"<details open><summary>Memory Candidates <span class=\"muted\">{len(notes)}</span></summary>{items}</details>"
+
+
+def _memory_facts_html(facts: list[dict[str, object]]) -> str:
+    items = "\n".join(
+        "<div class=\"memory-note\">"
+        f"{_badge(str(fact.get('status') or 'unknown'), kind='status')}"
+        f" {_badge(str(fact.get('kind') or 'fact'), kind='memory')}"
+        f" <code>{escape(str(fact.get('id', '')))}</code>"
+        f"<pre>{escape(str(fact.get('body', '')))}</pre>"
+        f"<div class=\"muted\">confidence={escape(str(fact.get('confidence', '')))} "
+        f"source_trace={escape(str(fact.get('source_trace_ref', '')))}</div>"
+        "</div>"
+        for fact in facts
+    )
+    return f"<details open><summary>Memory Facts <span class=\"muted\">{len(facts)}</span></summary>{items}</details>"
 
 
 def _badge(value: str, *, kind: str) -> str:
@@ -881,6 +904,40 @@ def _query_attempt_memory_notes(conn: sqlite3.Connection, attempt_id: str) -> li
             "source": str(row["source"]),
             "body": str(row["body"]),
             "created_at": str(row["created_at"]),
+            "updated_at": str(row["updated_at"]),
+        }
+        for row in rows
+    ]
+
+
+def _query_attempt_memory_facts(conn: sqlite3.Connection, attempt_id: str) -> list[dict[str, object]]:
+    rows = conn.execute(
+        """
+        SELECT
+            id, kind, topic, body, summary, status, confidence,
+            source_trace_ref, source_commit_oid, source_file_path,
+            valid_from, valid_to, superseded_by, updated_at
+        FROM memory_facts
+        WHERE source_attempt_id = ?
+        ORDER BY updated_at DESC, id ASC
+        """,
+        (attempt_id,),
+    ).fetchall()
+    return [
+        {
+            "id": str(row["id"]),
+            "kind": str(row["kind"]),
+            "topic": str(row["topic"]),
+            "body": str(row["body"]),
+            "summary": str(row["summary"]),
+            "status": str(row["status"]),
+            "confidence": str(row["confidence"]),
+            "source_trace_ref": str(row["source_trace_ref"] or ""),
+            "source_commit_oid": str(row["source_commit_oid"] or ""),
+            "source_file_path": str(row["source_file_path"] or ""),
+            "valid_from": str(row["valid_from"]),
+            "valid_to": str(row["valid_to"] or ""),
+            "superseded_by": str(row["superseded_by"] or ""),
             "updated_at": str(row["updated_at"]),
         }
         for row in rows

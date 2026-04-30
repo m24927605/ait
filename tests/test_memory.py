@@ -100,6 +100,26 @@ class MemoryTests(unittest.TestCase):
             self.assertEqual("project-rule", facts[0].topic)
             self.assertNotIn("Token usage", durable_notes[0].body)
 
+    def test_memory_search_and_recall_use_accepted_structured_facts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            attempt_id = _record_trace_attempt(
+                repo_root,
+                title="Release rule",
+                trace_text="以後所有 release 必須先跑 pytest。\n",
+            )
+            attempt_result = show_attempt(repo_root, attempt_id=attempt_id)
+            add_memory_candidates_for_attempt(repo_root, attempt_result)
+
+            results = search_repo_memory(repo_root, "release pytest")
+            recall = build_relevant_memory_recall(repo_root, "release pytest")
+
+            self.assertEqual("fact", results[0].kind)
+            self.assertEqual("accepted", results[0].metadata["status"])
+            self.assertEqual("fact", recall.selected[0].kind)
+            self.assertIn("release 必須先跑 pytest", recall.selected[0].text)
+
     def test_memory_candidates_keep_failed_attempts_as_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
@@ -128,6 +148,9 @@ class MemoryTests(unittest.TestCase):
             self.assertEqual("rule", facts[0].kind)
             self.assertIn("部署流程", candidates[0].body)
             self.assertEqual((), list_memory_notes(repo_root, topic="durable-memory"))
+
+            recall = build_relevant_memory_recall(repo_root, "部署流程 pytest")
+            self.assertEqual((), recall.selected)
 
     def test_memory_candidates_skip_codex_prompt_and_exec_echoes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
