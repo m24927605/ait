@@ -15,7 +15,7 @@ import time
 from ait.config import DEFAULT_DAEMON_IDLE_TIMEOUT_SECONDS, DEFAULT_DAEMON_SOCKET_PATH, ensure_local_config
 from ait.daemon_transport import NDJSONSocketStream, bind_unix_socket, remove_socket_file
 from ait.db import connect_db, run_migrations
-from ait.events import EventError, process_event, reap_stale_attempts
+from ait.events import EventError, process_event, reap_stale_attempts, recover_running_attempts
 from ait.protocol import ProtocolError, envelope_to_dict
 from ait.repo import resolve_repo_root
 from ait.verifier import verify_attempt
@@ -142,6 +142,11 @@ def serve_daemon(repo_root: str | Path) -> None:
     try:
         with db_lock:
             run_migrations(conn)
+            recover_running_attempts(
+                conn,
+                now=_now(),
+                heartbeat_ttl_seconds=_reaper_ttl(root),
+            )
         reaper_thread = threading.Thread(
             target=run_reaper_loop,
             kwargs={
