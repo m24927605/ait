@@ -96,6 +96,7 @@ def run_agent_command(
             root,
             workspace,
             intent.intent_id,
+            attempt_id=attempt.attempt_id,
             command=tuple(command),
             agent_id=resolved_agent_id,
         )
@@ -405,6 +406,7 @@ def _write_context_file(
     workspace: Path,
     intent_id: str,
     *,
+    attempt_id: str,
     command: tuple[str, ...] = (),
     agent_id: str | None = None,
 ) -> Path:
@@ -425,7 +427,12 @@ def _write_context_file(
         auto_query.query,
         sources=auto_query.sources,
     )
-    recall = build_relevant_memory_recall(repo_root, auto_query.query, budget_chars=4000)
+    recall = build_relevant_memory_recall(
+        repo_root,
+        auto_query.query,
+        budget_chars=4000,
+        attempt_id=attempt_id,
+    )
     relevant_memory = render_relevant_memory_recall(recall)
     path = workspace / ".ait-context.md"
     path.write_text(

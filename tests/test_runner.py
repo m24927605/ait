@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+from ait.db import connect_db, list_memory_retrieval_events
 from ait.memory import list_memory_notes, search_repo_memory
 from ait.runner import _run_command_with_pty_transcript, _strip_terminal_control, run_agent_command
 
@@ -177,6 +178,48 @@ class RunnerTests(unittest.TestCase):
             self.assertIn("command_args:", copied.read_text(encoding="utf-8"))
             self.assertIn("agent:", copied.read_text(encoding="utf-8"))
             self.assertNotIn("Edges:", copied.read_text(encoding="utf-8"))
+
+    def test_run_agent_command_records_memory_retrieval_events_for_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            first = run_agent_command(
+                repo_root,
+                intent_title="Seed memory",
+                agent_id="shell:test",
+                command=[
+                    sys.executable,
+                    "-c",
+                    "print('以後所有 release 必須先跑 pytest。')",
+                ],
+                capture_command_output=True,
+            )
+            second = run_agent_command(
+                repo_root,
+                intent_title="Use release memory",
+                agent_id="shell:test",
+                command=[
+                    sys.executable,
+                    "-c",
+                    (
+                        "import os;"
+                        "from pathlib import Path;"
+                        "Path('context-copy.txt').write_text(Path(os.environ['AIT_CONTEXT_FILE']).read_text())"
+                    ),
+                ],
+                with_context=True,
+            )
+
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            self.addCleanup(conn.close)
+            events = list_memory_retrieval_events(conn, attempt_id=second.attempt_id)
+            copied = (Path(second.workspace_ref) / "context-copy.txt").read_text(encoding="utf-8")
+
+            self.assertEqual(0, first.exit_code)
+            self.assertEqual(0, second.exit_code)
+            self.assertEqual(1, len(events))
+            self.assertTrue(events[0].selected_fact_ids)
+            self.assertIn("release 必須先跑 pytest", copied)
 
     def test_run_agent_command_auto_imports_agent_memory_before_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

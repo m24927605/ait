@@ -9,8 +9,9 @@ import sqlite3
 import unicodedata
 import uuid
 
-from ait.db import connect_db, run_migrations, utc_now
+from ait.db import connect_db, insert_memory_retrieval_event, run_migrations, utc_now
 from ait.db.repositories import NewMemoryFact, get_attempt_outcome, upsert_memory_fact
+from ait.db.repositories import NewMemoryRetrievalEvent
 from ait.memory_policy import (
     EXCLUDED_MARKER,
     MemoryPolicy,
@@ -1377,6 +1378,7 @@ def build_relevant_memory_recall(
     limit: int = 6,
     budget_chars: int = 4000,
     include_unhealthy: bool = False,
+    attempt_id: str | None = None,
 ) -> RelevantMemoryRecall:
     root = resolve_repo_root(repo_root)
     policy = load_memory_policy(root)
@@ -1456,6 +1458,14 @@ def build_relevant_memory_recall(
         selected=tuple(selected),
         budget_chars=budget_chars,
     )
+    if attempt_id:
+        _record_memory_retrieval_event(
+            root,
+            attempt_id=attempt_id,
+            query=query,
+            selected=tuple(selected),
+            budget_chars=budget_chars,
+        )
     return RelevantMemoryRecall(
         query=query,
         selected=tuple(selected),
@@ -1464,6 +1474,34 @@ def build_relevant_memory_recall(
         rendered_chars=len(rendered),
         compacted=compacted,
     )
+
+
+def _record_memory_retrieval_event(
+    repo_root: Path,
+    *,
+    attempt_id: str,
+    query: str,
+    selected: tuple[RelevantMemoryItem, ...],
+    budget_chars: int,
+) -> None:
+    selected_fact_ids = tuple(item.id for item in selected if item.kind == "fact")
+    conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+    try:
+        run_migrations(conn)
+        insert_memory_retrieval_event(
+            conn,
+            NewMemoryRetrievalEvent(
+                id=f"{attempt_id}:memory-retrieval:{uuid.uuid4().hex}",
+                attempt_id=attempt_id,
+                query=query,
+                selected_fact_ids=selected_fact_ids,
+                ranker_version="hybrid-v1",
+                budget_chars=budget_chars,
+                created_at=utc_now(),
+            ),
+        )
+    finally:
+        conn.close()
 
 
 def _lint_note_codes_by_severity(
