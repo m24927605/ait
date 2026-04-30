@@ -15,7 +15,6 @@ def refresh_run_reports(repo_root: str | Path, *, latest_attempt_id: str | None 
     report_dir = root / ".ait" / "report"
     report_dir.mkdir(parents=True, exist_ok=True)
     graph = build_work_graph(root)
-    graph_path = write_work_graph_html(graph, report_dir / "graph.html")
     memory_eval = evaluate_memory_retrievals(root)
     latest_attempt = _latest_attempt_payload(root, latest_attempt_id)
     health = _health_rollup(
@@ -34,9 +33,12 @@ def refresh_run_reports(repo_root: str | Path, *, latest_attempt_id: str | None 
             "average_score": memory_eval.average_score,
             "next_steps": _memory_eval_next_steps(memory_eval.status),
         },
-        "graph_html_path": str(graph_path),
+        "graph_html_path": str(report_dir / "graph.html"),
         "recommended_next_steps": health["next_steps"],
     }
+    graph["report_status"] = payload
+    graph_path = write_work_graph_html(graph, report_dir / "graph.html")
+    payload["graph_html_path"] = str(graph_path)
     status_path = report_dir / "status.json"
     status_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     payload["status_path"] = str(status_path)

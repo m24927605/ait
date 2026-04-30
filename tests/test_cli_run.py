@@ -702,6 +702,8 @@ class CliRunTests(unittest.TestCase):
             self.assertIn(run_payload["attempt_id"].rsplit(":", 1)[-1][:8], graph_text)
             self.assertIn("wrote", html_stdout.getvalue())
             self.assertIn("AIT Work Graph", html)
+            self.assertIn("AIT Health", html)
+            self.assertIn("Status <span class=\"badge badge-ok\">pass</span>", html)
             self.assertIn("Attempt Status", html)
             self.assertIn("Outcomes", html)
             self.assertIn("Hot Files", html)
@@ -726,6 +728,44 @@ class CliRunTests(unittest.TestCase):
             self.assertIn("AIT_GRAPH_TRANSCRIPT_TOKEN", html)
             self.assertNotIn("https://", html)
             self.assertNotIn("http://", html)
+
+    def test_work_graph_html_shows_background_health_warning(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            run_stdout = io.StringIO()
+            graph_stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "run",
+                        "--format",
+                        "json",
+                        "--intent",
+                        "Fail graph health",
+                        "--",
+                        sys.executable,
+                        "-c",
+                        "raise SystemExit(7)",
+                    ],
+                ):
+                    with redirect_stdout(run_stdout):
+                        run_exit = cli.main()
+                with patch("sys.argv", ["ait", "graph", "--html"]):
+                    with redirect_stdout(graph_stdout):
+                        graph_exit = cli.main()
+
+            html = (repo_root / ".ait" / "report" / "graph.html").read_text(encoding="utf-8")
+
+            self.assertEqual(7, run_exit)
+            self.assertEqual(0, graph_exit)
+            self.assertIn("AIT Health", html)
+            self.assertIn("Status <span class=\"badge badge-warn\">warn</span>", html)
+            self.assertIn("latest attempt failed", html)
+            self.assertIn("<code>ait graph --html</code>", html)
 
     def test_memory_retrievals_cli_and_graph_show_context_memory_use(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

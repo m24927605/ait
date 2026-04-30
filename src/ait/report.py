@@ -35,6 +35,7 @@ def build_work_graph(
         "state_path": str(db_path),
         "generated_at": utc_now(),
         "initialized": db_path.exists(),
+        "report_status": _read_report_status(root),
         "intent_count": 0,
         "attempt_count": 0,
         "memory_note_count": 0,
@@ -89,6 +90,15 @@ def build_work_graph(
     finally:
         conn.close()
     return graph
+
+
+def _read_report_status(repo_root: Path) -> dict[str, object]:
+    status_path = repo_root / ".ait" / "report" / "status.json"
+    try:
+        payload = json.loads(status_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def render_work_graph_text(graph: dict[str, object]) -> str:
@@ -218,6 +228,7 @@ def render_work_graph_html(graph: dict[str, object]) -> str:
     ) or "<li><span class=\"muted\">none</span></li>"
     memory_topics = graph.get("memory_topics", {})
     memory_html = _metric_list(memory_topics if isinstance(memory_topics, dict) else {})
+    health_html = _health_panel_html(graph.get("report_status", {}))
     filters = graph.get("filters", {})
     filters_html = ""
     if isinstance(filters, dict) and filters:
@@ -318,6 +329,7 @@ def render_work_graph_html(graph: dict[str, object]) -> str:
       <label>Outcome<select id="filterOutcome"><option value="">All outcomes</option>{outcome_options}</select></label>
     </section>
     <section class="summary">
+      {health_html}
       <div class="panel"><h2>Attempt Status</h2><ul>{status_html}</ul></div>
       <div class="panel"><h2>Outcomes</h2><ul>{outcome_html}</ul></div>
       <div class="panel"><h2>Agents</h2><ul>{agent_html}</ul></div>
@@ -796,7 +808,42 @@ def _badge(value: str, *, kind: str) -> str:
             css += " badge-warn"
         elif lowered == "fail":
             css += " badge-bad"
+    elif kind == "health":
+        if lowered == "pass":
+            css += " badge-ok"
+        elif lowered == "warn":
+            css += " badge-warn"
+        elif lowered == "fail":
+            css += " badge-bad"
     return f"<span class=\"{css}\">{escape(value)}</span>"
+
+
+def _health_panel_html(report_status: object) -> str:
+    if not isinstance(report_status, dict):
+        return '<div class="panel"><h2>AIT Health</h2><ul><li><span class="muted">unknown</span></li></ul></div>'
+    health = report_status.get("health", {})
+    if not isinstance(health, dict):
+        return '<div class="panel"><h2>AIT Health</h2><ul><li><span class="muted">unknown</span></li></ul></div>'
+    status = str(health.get("status") or "unknown")
+    reasons = [str(item) for item in health.get("reasons", []) if str(item)]
+    next_steps = [str(item) for item in health.get("next_steps", []) if str(item)]
+    generated_at = str(report_status.get("generated_at") or "")
+    items = [f"<li>Status {_badge(status, kind='health')}</li>"]
+    if generated_at:
+        items.append(f"<li>Generated <code>{escape(generated_at)}</code></li>")
+    if reasons:
+        items.append(
+            "<li>Reasons<ul>"
+            + "".join(f"<li>{escape(reason)}</li>" for reason in reasons)
+            + "</ul></li>"
+        )
+    if next_steps:
+        items.append(
+            "<li>Next<ul>"
+            + "".join(f"<li><code>{escape(step)}</code></li>" for step in next_steps)
+            + "</ul></li>"
+        )
+    return "<div class=\"panel\"><h2>AIT Health</h2><ul>" + "".join(items) + "</ul></div>"
 
 
 def _json_list(raw: str) -> tuple[str, ...]:
