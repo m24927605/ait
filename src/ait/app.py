@@ -169,7 +169,9 @@ def create_attempt(
     resolved_agent_id = _validate_agent_id(agent_id)
     init_result = init_repo(repo_root)
     conn = connect_db(init_result.db_path)
+    workspace = None
     try:
+        conn.execute("BEGIN IMMEDIATE")
         intent_id = resolve_intent_id(conn, intent_id)
         intent = get_intent(conn, intent_id)
         if intent is None:
@@ -204,6 +206,17 @@ def create_attempt(
                 agent_harness=harness_prefix,
             ),
         )
+        if conn.in_transaction:
+            conn.commit()
+    except Exception:
+        if conn.in_transaction:
+            conn.rollback()
+        if workspace is not None:
+            try:
+                remove_attempt_workspace(workspace.workspace_ref)
+            except Exception:
+                pass
+        raise
     finally:
         conn.close()
     return AttemptResult(
