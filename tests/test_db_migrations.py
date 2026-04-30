@@ -38,6 +38,10 @@ class MigrationTests(unittest.TestCase):
                     "evidence_files",
                     "memory_notes",
                     "attempt_outcomes",
+                    "memory_facts",
+                    "memory_fact_entities",
+                    "memory_fact_edges",
+                    "memory_retrieval_events",
                 }.issubset(tables)
             )
             self.assertEqual(str(SCHEMA_VERSION), get_meta(conn, "schema_version"))
@@ -114,6 +118,27 @@ class MigrationTests(unittest.TestCase):
             ).fetchall()
         }
         self.assertIn("idx_attempt_outcomes_class_classified_at", indexes)
+
+    def test_temporal_memory_tables_have_expected_indexes(self) -> None:
+        conn = connect_db(":memory:")
+        self.addCleanup(conn.close)
+
+        run_migrations(conn)
+
+        indexes = {
+            row["name"]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
+            ).fetchall()
+        }
+        self.assertIn("idx_memory_facts_status_kind_updated_at", indexes)
+        self.assertIn("idx_memory_facts_topic_status_updated_at", indexes)
+        self.assertIn("idx_memory_facts_source_attempt", indexes)
+        self.assertIn("idx_memory_fact_entities_entity", indexes)
+        self.assertIn("idx_memory_fact_entities_type_entity", indexes)
+        self.assertIn("idx_memory_fact_edges_source", indexes)
+        self.assertIn("idx_memory_fact_edges_target", indexes)
+        self.assertIn("idx_memory_retrieval_events_attempt", indexes)
 
     def test_run_migrations_rejects_newer_schema_version(self) -> None:
         conn = sqlite3.connect(":memory:")

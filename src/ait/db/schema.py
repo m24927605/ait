@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 @dataclass(frozen=True)
@@ -189,6 +189,102 @@ MIGRATIONS: tuple[Migration, ...] = (
 
         CREATE INDEX IF NOT EXISTS idx_attempt_outcomes_class_classified_at
             ON attempt_outcomes(outcome_class, classified_at);
+        """,
+    ),
+    Migration(
+        version=6,
+        name="temporal_memory_facts",
+        sql="""
+        CREATE TABLE IF NOT EXISTS memory_facts (
+            id TEXT PRIMARY KEY,
+            schema_version INTEGER NOT NULL,
+            kind TEXT NOT NULL CHECK (
+                kind IN (
+                    'decision',
+                    'rule',
+                    'workflow',
+                    'failure',
+                    'entity',
+                    'current_state',
+                    'manual'
+                )
+            ),
+            topic TEXT NOT NULL,
+            body TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (
+                status IN ('candidate', 'accepted', 'rejected', 'superseded')
+            ),
+            confidence TEXT NOT NULL CHECK (
+                confidence IN ('high', 'medium', 'low', 'manual')
+            ),
+            source_attempt_id TEXT REFERENCES attempts(id) ON DELETE SET NULL,
+            source_trace_ref TEXT,
+            source_commit_oid TEXT,
+            source_file_path TEXT,
+            valid_from TEXT NOT NULL,
+            valid_to TEXT,
+            superseded_by TEXT REFERENCES memory_facts(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_memory_facts_status_kind_updated_at
+            ON memory_facts(status, kind, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_memory_facts_topic_status_updated_at
+            ON memory_facts(topic, status, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_memory_facts_source_attempt
+            ON memory_facts(source_attempt_id);
+
+        CREATE TABLE IF NOT EXISTS memory_fact_entities (
+            memory_fact_id TEXT NOT NULL REFERENCES memory_facts(id) ON DELETE CASCADE,
+            entity TEXT NOT NULL,
+            entity_type TEXT NOT NULL,
+            weight REAL NOT NULL,
+            PRIMARY KEY (memory_fact_id, entity, entity_type)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_memory_fact_entities_entity
+            ON memory_fact_entities(entity);
+        CREATE INDEX IF NOT EXISTS idx_memory_fact_entities_type_entity
+            ON memory_fact_entities(entity_type, entity);
+        CREATE INDEX IF NOT EXISTS idx_memory_fact_entities_fact
+            ON memory_fact_entities(memory_fact_id);
+
+        CREATE TABLE IF NOT EXISTS memory_fact_edges (
+            id TEXT PRIMARY KEY,
+            source_fact_id TEXT NOT NULL REFERENCES memory_facts(id) ON DELETE CASCADE,
+            target_fact_id TEXT NOT NULL REFERENCES memory_facts(id) ON DELETE CASCADE,
+            edge_type TEXT NOT NULL CHECK (
+                edge_type IN (
+                    'supersedes',
+                    'supports',
+                    'contradicts',
+                    'related_to',
+                    'derived_from'
+                )
+            ),
+            confidence TEXT NOT NULL CHECK (confidence IN ('high', 'medium', 'low')),
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_memory_fact_edges_source
+            ON memory_fact_edges(source_fact_id, edge_type);
+        CREATE INDEX IF NOT EXISTS idx_memory_fact_edges_target
+            ON memory_fact_edges(target_fact_id, edge_type);
+
+        CREATE TABLE IF NOT EXISTS memory_retrieval_events (
+            id TEXT PRIMARY KEY,
+            attempt_id TEXT NOT NULL REFERENCES attempts(id) ON DELETE CASCADE,
+            query TEXT NOT NULL,
+            selected_fact_ids_json TEXT NOT NULL,
+            ranker_version TEXT NOT NULL,
+            budget_chars INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_memory_retrieval_events_attempt
+            ON memory_retrieval_events(attempt_id, created_at);
         """,
     ),
 )

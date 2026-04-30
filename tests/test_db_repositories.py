@@ -11,13 +11,30 @@ from ait.db import (
     get_attempt,
     get_evidence_summary,
     get_intent,
+    get_memory_fact,
+    get_memory_retrieval_event,
     insert_attempt,
     insert_attempt_commit,
     insert_evidence_file,
     insert_intent,
+    insert_memory_fact_edge,
+    insert_memory_retrieval_event,
+    list_memory_fact_edges,
+    list_memory_fact_entities,
+    list_memory_facts,
+    list_memory_retrieval_events,
+    replace_memory_fact_entities,
     run_migrations,
+    upsert_memory_fact,
 )
-from ait.db.repositories import NewAttempt, NewIntent
+from ait.db.repositories import (
+    MemoryFactEntityRecord,
+    NewAttempt,
+    NewIntent,
+    NewMemoryFact,
+    NewMemoryFactEdge,
+    NewMemoryRetrievalEvent,
+)
 
 
 class RepositoryTests(unittest.TestCase):
@@ -170,6 +187,163 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual("def456", commit_row["commit_oid"])
         self.assertEqual("src/auth.ts", file_row["file_path"])
         self.assertEqual("token-1", fetched_attempt.ownership_token)
+
+    def test_memory_fact_round_trips_with_entities_and_filters(self) -> None:
+        fact = upsert_memory_fact(
+            self.conn,
+            NewMemoryFact(
+                id="fact:rule:1",
+                kind="rule",
+                topic="testing",
+                body="All API routes must use zod validation.",
+                summary="API routes require zod validation.",
+                status="accepted",
+                confidence="high",
+                source_attempt_id=None,
+                source_trace_ref=".ait/traces/run.txt",
+                source_commit_oid="abc123",
+                source_file_path="src/api/users.ts",
+                valid_from="2026-04-30T00:00:00Z",
+                created_at="2026-04-30T00:00:00Z",
+                updated_at="2026-04-30T00:00:00Z",
+            ),
+        )
+        replace_memory_fact_entities(
+            self.conn,
+            memory_fact_id=fact.id,
+            entities=(
+                MemoryFactEntityRecord(fact.id, "src/api/users.ts", "file", 1.0),
+                MemoryFactEntityRecord(fact.id, "zod", "package", 0.8),
+            ),
+        )
+
+        fetched = get_memory_fact(self.conn, fact.id)
+        by_status = list_memory_facts(self.conn, status="accepted")
+        by_kind = list_memory_facts(self.conn, kind="rule")
+        entities = list_memory_fact_entities(self.conn, fact.id)
+
+        assert fetched is not None
+        self.assertEqual("rule", fetched.kind)
+        self.assertEqual("testing", fetched.topic)
+        self.assertEqual("accepted", fetched.status)
+        self.assertEqual(["fact:rule:1"], [item.id for item in by_status])
+        self.assertEqual(["fact:rule:1"], [item.id for item in by_kind])
+        self.assertEqual(("file", "package"), tuple(item.entity_type for item in entities))
+
+    def test_memory_fact_supersession_edge_and_default_filtering(self) -> None:
+        old_fact = upsert_memory_fact(
+            self.conn,
+            NewMemoryFact(
+                id="fact:workflow:old",
+                kind="workflow",
+                topic="testing",
+                body="Run npm test.",
+                summary="Use npm test.",
+                status="accepted",
+                confidence="high",
+                valid_from="2026-04-29T00:00:00Z",
+                created_at="2026-04-29T00:00:00Z",
+                updated_at="2026-04-29T00:00:00Z",
+            ),
+        )
+        new_fact = upsert_memory_fact(
+            self.conn,
+            NewMemoryFact(
+                id="fact:workflow:new",
+                kind="workflow",
+                topic="testing",
+                body="Run pnpm test.",
+                summary="Use pnpm test.",
+                status="accepted",
+                confidence="high",
+                valid_from="2026-04-30T00:00:00Z",
+                created_at="2026-04-30T00:00:00Z",
+                updated_at="2026-04-30T00:00:00Z",
+            ),
+        )
+        upsert_memory_fact(
+            self.conn,
+            NewMemoryFact(
+                id=old_fact.id,
+                kind=old_fact.kind,
+                topic=old_fact.topic,
+                body=old_fact.body,
+                summary=old_fact.summary,
+                status="superseded",
+                confidence=old_fact.confidence,
+                valid_from=old_fact.valid_from,
+                valid_to="2026-04-30T00:00:00Z",
+                superseded_by=new_fact.id,
+                created_at=old_fact.created_at,
+                updated_at="2026-04-30T00:00:00Z",
+            ),
+        )
+        edge = insert_memory_fact_edge(
+            self.conn,
+            NewMemoryFactEdge(
+                id="edge:1",
+                source_fact_id=new_fact.id,
+                target_fact_id=old_fact.id,
+                edge_type="supersedes",
+                confidence="high",
+                created_at="2026-04-30T00:00:00Z",
+            ),
+        )
+
+        default_facts = list_memory_facts(self.conn)
+        all_facts = list_memory_facts(self.conn, include_superseded=True)
+        edges = list_memory_fact_edges(self.conn, source_fact_id=new_fact.id)
+
+        self.assertEqual("supersedes", edge.edge_type)
+        self.assertEqual(["fact:workflow:new"], [fact.id for fact in default_facts])
+        self.assertEqual({"fact:workflow:old", "fact:workflow:new"}, {fact.id for fact in all_facts})
+        self.assertEqual(["edge:1"], [item.id for item in edges])
+
+    def test_memory_retrieval_event_round_trips_selected_fact_ids(self) -> None:
+        insert_intent(
+            self.conn,
+            NewIntent(
+                id="repo:01INTENT",
+                repo_id="repo",
+                title="Use memory",
+                created_at="2026-04-23T00:00:00Z",
+                created_by_actor_type="agent",
+                created_by_actor_id="codex:worker-1",
+                trigger_source="cli",
+            ),
+        )
+        attempt = insert_attempt(
+            self.conn,
+            NewAttempt(
+                id="repo:01ATTEMPT1",
+                intent_id="repo:01INTENT",
+                agent_id="codex:worker-1",
+                workspace_ref="/repo/.ait/workspaces/attempt-1",
+                base_ref_oid="abc123",
+                started_at="2026-04-23T00:01:00Z",
+                ownership_token="token-1",
+            ),
+        )
+        event = insert_memory_retrieval_event(
+            self.conn,
+            NewMemoryRetrievalEvent(
+                id="retrieval:1",
+                attempt_id=attempt.id,
+                query="zod validation",
+                selected_fact_ids=("fact:rule:1", "fact:workflow:1"),
+                ranker_version="hybrid-v1",
+                budget_chars=4000,
+                created_at="2026-04-30T00:00:00Z",
+            ),
+        )
+
+        fetched = get_memory_retrieval_event(self.conn, event.id)
+        events = list_memory_retrieval_events(self.conn, attempt_id=attempt.id)
+
+        assert fetched is not None
+        self.assertEqual(("fact:rule:1", "fact:workflow:1"), fetched.selected_fact_ids)
+        self.assertEqual("hybrid-v1", fetched.ranker_version)
+        self.assertEqual(["retrieval:1"], [item.id for item in events])
 
 
 if __name__ == "__main__":
