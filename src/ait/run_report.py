@@ -18,10 +18,16 @@ def refresh_run_reports(repo_root: str | Path, *, latest_attempt_id: str | None 
     graph_path = write_work_graph_html(graph, report_dir / "graph.html")
     memory_eval = evaluate_memory_retrievals(root)
     latest_attempt = _latest_attempt_payload(root, latest_attempt_id)
+    health = _health_rollup(
+        latest_attempt=latest_attempt,
+        memory_eval_status=memory_eval.status,
+        memory_eval_next_steps=_memory_eval_next_steps(memory_eval.status),
+    )
     payload = {
         "generated_at": utc_now(),
         "repo_root": str(root),
         "latest_attempt": latest_attempt,
+        "health": health,
         "memory_eval": {
             "status": memory_eval.status,
             "event_count": memory_eval.event_count,
@@ -29,7 +35,7 @@ def refresh_run_reports(repo_root: str | Path, *, latest_attempt_id: str | None 
             "next_steps": _memory_eval_next_steps(memory_eval.status),
         },
         "graph_html_path": str(graph_path),
-        "recommended_next_steps": _recommended_next_steps(memory_eval.status),
+        "recommended_next_steps": health["next_steps"],
     }
     status_path = report_dir / "status.json"
     status_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
@@ -63,3 +69,48 @@ def _memory_eval_next_steps(status: str) -> list[str]:
 
 def _recommended_next_steps(memory_eval_status: str) -> list[str]:
     return _memory_eval_next_steps(memory_eval_status)
+
+
+def _health_rollup(
+    *,
+    latest_attempt: dict[str, object] | None,
+    memory_eval_status: str,
+    memory_eval_next_steps: list[str],
+) -> dict[str, object]:
+    status = "pass"
+    reasons: list[str] = []
+    next_steps: list[str] = []
+    if memory_eval_status == "fail":
+        status = "fail"
+        reasons.append("memory eval failed")
+        next_steps.extend(memory_eval_next_steps)
+    elif memory_eval_status == "warn":
+        status = "warn"
+        reasons.append("memory eval warning")
+        next_steps.extend(memory_eval_next_steps)
+    if latest_attempt and _latest_attempt_failed(latest_attempt):
+        if status != "fail":
+            status = "warn"
+        reasons.append("latest attempt failed")
+        next_steps.append("ait graph --html")
+    return {
+        "status": status,
+        "reasons": _dedupe(reasons),
+        "next_steps": _dedupe(next_steps),
+    }
+
+
+def _latest_attempt_failed(latest_attempt: dict[str, object]) -> bool:
+    verified = str(latest_attempt.get("verified_status") or "")
+    outcome = str(latest_attempt.get("outcome_class") or "")
+    return verified == "failed" or outcome.startswith("failed")
+
+
+def _dedupe(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        if item not in seen:
+            seen.add(item)
+            result.append(item)
+    return result

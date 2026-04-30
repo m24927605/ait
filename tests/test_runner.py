@@ -48,6 +48,8 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(result.attempt_id, report["latest_attempt"]["attempt_id"])
             self.assertEqual(graph_path.resolve(), Path(report["graph_html_path"]).resolve())
             self.assertIn("memory_eval", report)
+            self.assertEqual("pass", report["health"]["status"])
+            self.assertEqual([], report["health"]["reasons"])
 
     def test_run_agent_command_self_repairs_memory_policy_and_imports_agent_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -86,6 +88,9 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual("failed", result.attempt.attempt["verified_status"])
             self.assertEqual("failed_with_evidence", result.attempt.outcome["outcome_class"])
             self.assertEqual(1, result.attempt.evidence_summary["observed_commands_run"])
+            report = json.loads((repo_root / ".ait" / "report" / "status.json").read_text(encoding="utf-8"))
+            self.assertEqual("warn", report["health"]["status"])
+            self.assertIn("latest attempt failed", report["health"]["reasons"])
 
     def test_run_agent_command_records_missing_command_as_failed_attempt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

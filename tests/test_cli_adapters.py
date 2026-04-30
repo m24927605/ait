@@ -1060,6 +1060,8 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(0, payload["memory"]["eval_event_count"])
             self.assertEqual(100, payload["memory"]["eval_average_score"])
             self.assertEqual([], payload["memory"]["eval_next_steps"])
+            self.assertEqual("pass", payload["ait_health"]["status"])
+            self.assertEqual([], payload["ait_health"]["reasons"])
 
     def test_status_reports_memory_eval_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1092,7 +1094,13 @@ class CliAdapterTests(unittest.TestCase):
         self.assertEqual(1, payload["memory"]["eval_event_count"])
         self.assertLess(payload["memory"]["eval_average_score"], 100)
         self.assertEqual(["ait memory eval", "ait graph --html"], payload["memory"]["eval_next_steps"])
+        self.assertEqual("fail", payload["ait_health"]["status"])
+        self.assertIn("memory eval failed", payload["ait_health"]["reasons"])
         self.assertIn("Memory eval: fail", text)
+        self.assertIn("AIT health: fail", text)
+        self.assertIn("Health reasons:", text)
+        self.assertIn("- memory eval failed", text)
+        self.assertIn("Health next:", text)
         self.assertIn("Memory eval next:", text)
         self.assertIn("- ait memory eval", text)
         self.assertIn("- ait graph --html", text)
@@ -1112,6 +1120,11 @@ class CliAdapterTests(unittest.TestCase):
                     {
                         "generated_at": "2026-04-30T00:00:00Z",
                         "repo_root": str(repo_root),
+                        "health": {
+                            "status": "warn",
+                            "reasons": ["latest attempt failed"],
+                            "next_steps": ["ait graph --html"],
+                        },
                         "graph_html_path": str(graph_path),
                         "memory_eval": {
                             "status": "pass",
@@ -1141,6 +1154,11 @@ class CliAdapterTests(unittest.TestCase):
         self.assertEqual(0, text_exit)
         self.assertEqual(status_path.resolve(), Path(payload["memory"]["report"]["status_path"]).resolve())
         self.assertEqual(graph_path.resolve(), Path(payload["memory"]["report"]["graph_html_path"]).resolve())
+        self.assertEqual("warn", payload["ait_health"]["status"])
+        self.assertIn("latest attempt failed", payload["ait_health"]["reasons"])
+        self.assertIn("AIT health: warn", text)
+        self.assertIn("- latest attempt failed", text)
+        self.assertIn("- ait graph --html", text)
         self.assertIn("Last report:", text)
         self.assertIn("status.json", text)
         self.assertIn("Graph report:", text)

@@ -1930,6 +1930,7 @@ def _status_payload(
         "direnv_available": checks.get("direnv_binary", False),
         "direnv_loaded": checks.get("direnv_env_loaded", False),
         "memory": memory_status or {},
+        "ait_health": _ait_health_payload(memory_status or {}),
         "next_steps": _doctor_next_steps(result),
     }
     if installation is not None:
@@ -1960,6 +1961,17 @@ def _format_status(payload: dict[str, object]) -> str:
     ])
     if isinstance(installation, dict):
         lines.extend(_format_installation_lines(installation, include_next_steps=False))
+    ait_health = payload.get("ait_health", {})
+    if isinstance(ait_health, dict):
+        lines.append(f"AIT health: {ait_health.get('status', 'unknown')}")
+        reasons = ait_health.get("reasons", [])
+        if reasons:
+            lines.append("Health reasons:")
+            lines.extend(f"- {reason}" for reason in reasons)
+        health_next = ait_health.get("next_steps", [])
+        if health_next:
+            lines.append("Health next:")
+            lines.extend(f"- {step}" for step in health_next)
     memory = payload.get("memory", {})
     if isinstance(memory, dict):
         imported = memory.get("imported_sources", [])
@@ -1997,6 +2009,33 @@ def _format_status(payload: dict[str, object]) -> str:
         lines.append("Next steps:")
         lines.extend(f"- {step}" for step in next_steps)
     return "\n".join(lines)
+
+
+def _ait_health_payload(memory_status: dict[str, object]) -> dict[str, object]:
+    report = memory_status.get("report", {})
+    if isinstance(report, dict):
+        health = report.get("health", {})
+        if isinstance(health, dict) and health.get("status"):
+            return {
+                "status": str(health.get("status", "unknown")),
+                "reasons": [str(item) for item in health.get("reasons", []) if str(item)],
+                "next_steps": [str(item) for item in health.get("next_steps", []) if str(item)],
+            }
+    eval_status = str(memory_status.get("eval_status", "unknown"))
+    next_steps = memory_status.get("eval_next_steps", [])
+    if eval_status == "fail":
+        return {
+            "status": "fail",
+            "reasons": ["memory eval failed"],
+            "next_steps": [str(item) for item in next_steps],
+        }
+    if eval_status == "warn":
+        return {
+            "status": "warn",
+            "reasons": ["memory eval warning"],
+            "next_steps": [str(item) for item in next_steps],
+        }
+    return {"status": "pass" if eval_status == "pass" else "unknown", "reasons": [], "next_steps": []}
 
 
 def _agent_cli_summary(payload: dict[str, object]) -> str:
