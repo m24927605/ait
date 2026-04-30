@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ait.app import create_attempt, create_intent
 from ait.db import connect_db, insert_attempt_commit
+from ait.hooks import install_post_rewrite_hook
 from ait.reconcile import reconcile_repo
 
 
@@ -57,6 +58,54 @@ class ReconcileTests(unittest.TestCase):
             self.assertFalse((repo_root / ".ait" / "post-rewrite.last").exists())
             self.assertFalse((repo_root / ".ait" / "manual-reconcile-required").exists())
 
+    def test_reconcile_handles_chained_amends_from_real_post_rewrite_hook(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            install_post_rewrite_hook(repo_root)
+            intent = create_intent(repo_root, title="Chained amend", description=None, kind="bugfix")
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+
+            tracked = repo_root / "tracked.txt"
+            tracked.write_text("v1\n", encoding="utf-8")
+            _git(repo_root, "add", "tracked.txt")
+            _git(repo_root, "commit", "-m", "tracked v1")
+            base_oid = _git_stdout(repo_root, "rev-parse", "HEAD~1")
+            current_oid = _git_stdout(repo_root, "rev-parse", "HEAD")
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            try:
+                insert_attempt_commit(
+                    conn,
+                    attempt_id=attempt.attempt_id,
+                    commit_oid=current_oid,
+                    base_commit_oid=base_oid,
+                    touched_files=("tracked.txt",),
+                )
+            finally:
+                conn.close()
+
+            for index in range(2, 5):
+                tracked.write_text(f"v{index}\n", encoding="utf-8")
+                _git(repo_root, "add", "tracked.txt")
+                _git(repo_root, "commit", "--amend", "-m", f"tracked v{index}")
+                current_oid = _git_stdout(repo_root, "rev-parse", "HEAD")
+
+                result = reconcile_repo(repo_root)
+
+                conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+                try:
+                    row = conn.execute(
+                        "SELECT commit_oid FROM attempt_commits WHERE attempt_id = ?",
+                        (attempt.attempt_id,),
+                    ).fetchone()
+                finally:
+                    conn.close()
+                self.assertEqual(1, result.processed_mappings)
+                self.assertEqual(1, result.updated_commit_rows)
+                self.assertEqual(0, result.unmapped_mappings)
+                self.assertEqual(current_oid, row["commit_oid"])
+                self.assertFalse((repo_root / ".ait" / "post-rewrite.last").exists())
+
 
 def _init_git_repo(repo_root: Path) -> None:
     _git(repo_root, "init")
@@ -75,6 +124,17 @@ def _git(repo_root: Path, *args: str) -> None:
         capture_output=True,
         text=True,
     )
+
+
+def _git_stdout(repo_root: Path, *args: str) -> str:
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return completed.stdout.strip()
 
 
 if __name__ == "__main__":
