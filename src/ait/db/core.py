@@ -12,12 +12,21 @@ def connect_db(
     *,
     check_same_thread: bool = True,
 ) -> sqlite3.Connection:
-    if db_path != ":memory:":
+    in_memory = str(db_path) == ":memory:"
+    if not in_memory:
         path = Path(db_path)
         path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path, check_same_thread=check_same_thread)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 5000")
+    if not in_memory:
+        try:
+            conn.execute("PRAGMA journal_mode = WAL")
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower():
+                raise
+        conn.execute("PRAGMA synchronous = NORMAL")
     return conn
 
 
@@ -44,7 +53,11 @@ def set_meta(conn: sqlite3.Connection, key: str, value: str) -> None:
 
 
 def run_migrations(conn: sqlite3.Connection) -> None:
-    with conn:
+    started_transaction = False
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+        started_transaction = True
+    try:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS meta (
@@ -76,7 +89,7 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         for migration in MIGRATIONS:
             if migration.version in applied_versions:
                 continue
-            conn.executescript(migration.sql)
+            _execute_migration_sql(conn, migration.sql)
             conn.execute(
                 """
                 INSERT OR IGNORE INTO schema_migrations(version, name, applied_at)
@@ -86,3 +99,17 @@ def run_migrations(conn: sqlite3.Connection) -> None:
             )
 
         set_meta(conn, "schema_version", str(SCHEMA_VERSION))
+        if started_transaction:
+            conn.commit()
+    except Exception:
+        if started_transaction:
+            conn.rollback()
+        raise
+
+
+def _execute_migration_sql(conn: sqlite3.Connection, sql: str) -> None:
+    for statement in sql.split(";"):
+        statement = statement.strip()
+        if not statement:
+            continue
+        conn.execute(statement)
