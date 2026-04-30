@@ -711,6 +711,76 @@ class CliRunTests(unittest.TestCase):
             self.assertNotIn("https://", html)
             self.assertNotIn("http://", html)
 
+    def test_memory_retrievals_cli_and_graph_show_context_memory_use(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            seed_stdout = io.StringIO()
+            run_stdout = io.StringIO()
+            retrieval_stdout = io.StringIO()
+            graph_stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "run",
+                        "--format",
+                        "json",
+                        "--intent",
+                        "Seed release memory",
+                        "--",
+                        sys.executable,
+                        "-c",
+                        "print('以後所有 release 必須先跑 pytest。')",
+                    ],
+                ):
+                    with redirect_stdout(seed_stdout):
+                        seed_exit = cli.main()
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "run",
+                        "--format",
+                        "json",
+                        "--with-context",
+                        "--intent",
+                        "Use release memory",
+                        "--",
+                        sys.executable,
+                        "-c",
+                        "from pathlib import Path; Path('context-copy.txt').write_text(Path('.ait-context.md').read_text())",
+                    ],
+                ):
+                    with redirect_stdout(run_stdout):
+                        run_exit = cli.main()
+                with patch("sys.argv", ["ait", "memory", "retrievals"]):
+                    with redirect_stdout(retrieval_stdout):
+                        retrieval_exit = cli.main()
+                with patch("sys.argv", ["ait", "graph", "--html"]):
+                    with redirect_stdout(graph_stdout):
+                        graph_exit = cli.main()
+
+            seed_payload = json.loads(seed_stdout.getvalue())
+            run_payload = json.loads(run_stdout.getvalue())
+            retrieval_text = retrieval_stdout.getvalue()
+            html = (repo_root / ".ait" / "report" / "graph.html").read_text(encoding="utf-8")
+
+            self.assertEqual(0, seed_exit)
+            self.assertEqual(0, run_exit)
+            self.assertEqual(0, retrieval_exit)
+            self.assertEqual(0, graph_exit)
+            self.assertEqual(0, seed_payload["exit_code"])
+            self.assertEqual(0, run_payload["exit_code"])
+            self.assertIn("AIT Memory Retrievals", retrieval_text)
+            self.assertIn("release 必須先跑 pytest", retrieval_text)
+            self.assertIn("hybrid-v1", retrieval_text)
+            self.assertIn("Memory Used", html)
+            self.assertIn("release 必須先跑 pytest", html)
+            self.assertIn("Use release memory", html)
+
     def test_work_graph_json_rejects_negative_limit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

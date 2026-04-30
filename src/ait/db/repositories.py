@@ -692,16 +692,28 @@ def get_memory_retrieval_event(
 def list_memory_retrieval_events(
     conn: sqlite3.Connection,
     *,
-    attempt_id: str,
+    attempt_id: str | None = None,
+    limit: int | None = None,
 ) -> list[MemoryRetrievalEventRecord]:
+    clauses: list[str] = []
+    params: list[object] = []
+    if attempt_id is not None:
+        clauses.append("attempt_id = ?")
+        params.append(attempt_id)
+    where = "WHERE " + " AND ".join(clauses) if clauses else ""
+    limit_clause = ""
+    if limit is not None:
+        limit_clause = "LIMIT ?"
+        params.append(limit)
     rows = conn.execute(
-        """
+        f"""
         SELECT *
         FROM memory_retrieval_events
-        WHERE attempt_id = ?
+        {where}
         ORDER BY created_at DESC, id ASC
+        {limit_clause}
         """,
-        (attempt_id,),
+        tuple(params),
     ).fetchall()
     return [_row_to_memory_retrieval_event(row) for row in rows]
 

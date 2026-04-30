@@ -51,7 +51,13 @@ from ait.app import (
     verify_attempt,
 )
 from ait.daemon import daemon_status, prune_daemon, serve_daemon, start_daemon, stop_daemon
-from ait.db import connect_db, list_memory_facts, run_migrations
+from ait.db import (
+    connect_db,
+    get_memory_fact,
+    list_memory_facts,
+    list_memory_retrieval_events,
+    run_migrations,
+)
 from ait.memory import (
     add_memory_note,
     agent_memory_status,
@@ -208,6 +214,10 @@ def build_parser() -> argparse.ArgumentParser:
     memory_facts.add_argument("--include-superseded", action="store_true")
     memory_facts.add_argument("--limit", type=int, default=100)
     memory_facts.add_argument("--format", choices=("text", "json"), default="text")
+    memory_retrievals = memory_subparsers.add_parser("retrievals")
+    memory_retrievals.add_argument("--attempt")
+    memory_retrievals.add_argument("--limit", type=int, default=50)
+    memory_retrievals.add_argument("--format", choices=("text", "json"), default="text")
     memory_note = memory_subparsers.add_parser("note")
     memory_note_subparsers = memory_note.add_subparsers(dest="memory_note_command")
     memory_note_add = memory_note_subparsers.add_parser("add")
@@ -576,6 +586,48 @@ def main() -> int:
                 print(json.dumps([asdict(fact) for fact in facts], indent=2))
             else:
                 print(_format_memory_facts(facts), end="")
+            return 0
+        if args.memory_command == "retrievals":
+            if args.limit < 0:
+                print("error: limit must be non-negative", file=sys.stderr)
+                return 2
+            root = resolve_repo_root(repo_root)
+            conn = connect_db(root / ".ait" / "state.sqlite3")
+            try:
+                run_migrations(conn)
+                events = list_memory_retrieval_events(
+                    conn,
+                    attempt_id=args.attempt,
+                    limit=args.limit,
+                )
+                facts_by_id = {
+                    fact_id: fact
+                    for event in events
+                    for fact_id in event.selected_fact_ids
+                    for fact in [get_memory_fact(conn, fact_id)]
+                    if fact is not None
+                }
+            finally:
+                conn.close()
+            if args.format == "json":
+                print(
+                    json.dumps(
+                        [
+                            {
+                                **asdict(event),
+                                "selected_facts": [
+                                    asdict(facts_by_id[fact_id])
+                                    for fact_id in event.selected_fact_ids
+                                    if fact_id in facts_by_id
+                                ],
+                            }
+                            for event in events
+                        ],
+                        indent=2,
+                    )
+                )
+            else:
+                print(_format_memory_retrievals(events, facts_by_id), end="")
             return 0
         if args.memory_command == "graph":
             if args.memory_graph_command == "build":
@@ -1191,6 +1243,37 @@ def _format_memory_facts(facts) -> str:
         if source_bits:
             lines.append("  source: " + " ".join(source_bits))
         lines.append(f"  {fact.summary}")
+    return "\n".join(lines) + "\n"
+
+
+def _format_memory_retrievals(events, facts_by_id) -> str:
+    lines = ["AIT Memory Retrievals"]
+    if not events:
+        lines.append("- none")
+        return "\n".join(lines) + "\n"
+    for event in events:
+        short_attempt = event.attempt_id.rsplit(":", 1)[-1][:8]
+        lines.append(
+            f"- {event.id} attempt={short_attempt} "
+            f"facts={len(event.selected_fact_ids)} ranker={event.ranker_version} "
+            f"budget={event.budget_chars} created={event.created_at}"
+        )
+        if event.query:
+            lines.append(f"  query: {event.query}")
+        if event.selected_fact_ids:
+            lines.append("  selected facts:")
+            for fact_id in event.selected_fact_ids[:8]:
+                fact = facts_by_id.get(fact_id)
+                if fact is None:
+                    lines.append(f"  - {fact_id} missing")
+                else:
+                    lines.append(
+                        f"  - {fact.id} {fact.kind}/{fact.topic} "
+                        f"status={fact.status} confidence={fact.confidence}"
+                    )
+                    lines.append(f"    {fact.summary}")
+            if len(event.selected_fact_ids) > 8:
+                lines.append(f"  - ... {len(event.selected_fact_ids) - 8} more")
     return "\n".join(lines) + "\n"
 
 

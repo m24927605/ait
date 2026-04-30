@@ -52,6 +52,7 @@ def build_work_graph(
                 attempt["commits"] = _query_commits(conn, str(attempt["id"]))
                 attempt["memory_notes"] = _query_attempt_memory_notes(conn, str(attempt["id"]))
                 attempt["memory_facts"] = _query_attempt_memory_facts(conn, str(attempt["id"]))
+                attempt["memory_retrievals"] = _query_attempt_memory_retrievals(conn, str(attempt["id"]))
             attempts = [
                 attempt
                 for attempt in attempts
@@ -154,6 +155,18 @@ def render_work_graph_text(graph: dict[str, object]) -> str:
                     lines.append(detail_prefix + f"- {str(commit.get('commit_oid', ''))[:12]}")
                 if len(commits) > 5:
                     lines.append(detail_prefix + f"- ... {len(commits) - 5} more")
+            retrievals = [item for item in attempt.get("memory_retrievals", []) if isinstance(item, dict)]
+            if retrievals:
+                lines.append(detail_prefix + "Memory Used:")
+                for retrieval in retrievals[:5]:
+                    lines.append(
+                        detail_prefix
+                        + f"- facts={len(retrieval.get('selected_facts', []))} "
+                        + f"ranker={retrieval.get('ranker_version')} "
+                        + f"query={retrieval.get('query')}"
+                    )
+                if len(retrievals) > 5:
+                    lines.append(detail_prefix + f"- ... {len(retrievals) - 5} more")
     return "\n".join(lines)
 
 
@@ -524,6 +537,9 @@ def _attempt_html(attempt: dict[str, object], *, open_by_default: bool) -> str:
         children.append(_reasons_html(outcome_reasons))
     memory_notes = [item for item in attempt.get("memory_notes", []) if isinstance(item, dict)]
     memory_facts = [item for item in attempt.get("memory_facts", []) if isinstance(item, dict)]
+    memory_retrievals = [item for item in attempt.get("memory_retrievals", []) if isinstance(item, dict)]
+    if memory_retrievals:
+        children.append(_memory_retrievals_html(memory_retrievals))
     if memory_facts:
         children.append(_memory_facts_html(memory_facts))
     if memory_notes:
@@ -547,6 +563,13 @@ def _attempt_html(attempt: dict[str, object], *, open_by_default: bool) -> str:
         *(str(path) for path in file_list),
         *(str(note.get("body", "")) for note in memory_notes),
         *(str(fact.get("body", "")) for fact in memory_facts),
+        *(str(retrieval.get("query", "")) for retrieval in memory_retrievals),
+        *(
+            str(fact.get("body", ""))
+            for retrieval in memory_retrievals
+            for fact in retrieval.get("selected_facts", [])
+            if isinstance(fact, dict)
+        ),
     )
     return (
         f"<li data-attempt-node data-agent=\"{escape(agent, quote=True)}\" "
@@ -636,6 +659,35 @@ def _memory_facts_html(facts: list[dict[str, object]]) -> str:
         for fact in facts
     )
     return f"<details open><summary>Memory Facts <span class=\"muted\">{len(facts)}</span></summary>{items}</details>"
+
+
+def _memory_retrievals_html(retrievals: list[dict[str, object]]) -> str:
+    items: list[str] = []
+    for retrieval in retrievals:
+        facts = [item for item in retrieval.get("selected_facts", []) if isinstance(item, dict)]
+        fact_items = "\n".join(
+            "<li>"
+            f"<code>{escape(str(fact.get('id', '')))}</code> "
+            f"{_badge(str(fact.get('status') or 'unknown'), kind='status')} "
+            f"{escape(str(fact.get('summary') or fact.get('body') or ''))}"
+            "</li>"
+            for fact in facts[:8]
+        )
+        if len(facts) > 8:
+            fact_items += f"<li><span class=\"muted\">... {len(facts) - 8} more</span></li>"
+        if not fact_items:
+            fact_items = "<li><span class=\"muted\">none</span></li>"
+        items.append(
+            "<div class=\"memory-note\">"
+            f"{_badge(str(retrieval.get('ranker_version') or 'ranker'), kind='memory')}"
+            f" <code>{escape(str(retrieval.get('id', '')))}</code>"
+            f"<div class=\"muted\">budget={escape(str(retrieval.get('budget_chars', '')))} "
+            f"created={escape(str(retrieval.get('created_at', '')))}</div>"
+            f"<pre>{escape(str(retrieval.get('query', '')))}</pre>"
+            f"<ul class=\"mini-list\">{fact_items}</ul>"
+            "</div>"
+        )
+    return f"<details open><summary>Memory Used <span class=\"muted\">{len(retrievals)}</span></summary>{''.join(items)}</details>"
 
 
 def _badge(value: str, *, kind: str) -> str:
@@ -942,6 +994,70 @@ def _query_attempt_memory_facts(conn: sqlite3.Connection, attempt_id: str) -> li
         }
         for row in rows
     ]
+
+
+def _query_attempt_memory_retrievals(conn: sqlite3.Connection, attempt_id: str) -> list[dict[str, object]]:
+    rows = conn.execute(
+        """
+        SELECT id, query, selected_fact_ids_json, ranker_version, budget_chars, created_at
+        FROM memory_retrieval_events
+        WHERE attempt_id = ?
+        ORDER BY created_at DESC, id ASC
+        """,
+        (attempt_id,),
+    ).fetchall()
+    retrievals: list[dict[str, object]] = []
+    for row in rows:
+        fact_ids = _json_string_list(str(row["selected_fact_ids_json"] or "[]"))
+        retrievals.append(
+            {
+                "id": str(row["id"]),
+                "query": str(row["query"]),
+                "selected_fact_ids": fact_ids,
+                "selected_facts": _query_memory_facts_by_ids(conn, fact_ids),
+                "ranker_version": str(row["ranker_version"]),
+                "budget_chars": int(row["budget_chars"]),
+                "created_at": str(row["created_at"]),
+            }
+        )
+    return retrievals
+
+
+def _query_memory_facts_by_ids(conn: sqlite3.Connection, fact_ids: tuple[str, ...]) -> list[dict[str, object]]:
+    if not fact_ids:
+        return []
+    placeholders = ",".join("?" for _ in fact_ids)
+    rows = conn.execute(
+        f"""
+        SELECT id, kind, topic, body, summary, status, confidence
+        FROM memory_facts
+        WHERE id IN ({placeholders})
+        """,
+        fact_ids,
+    ).fetchall()
+    facts = {
+        str(row["id"]): {
+            "id": str(row["id"]),
+            "kind": str(row["kind"]),
+            "topic": str(row["topic"]),
+            "body": str(row["body"]),
+            "summary": str(row["summary"]),
+            "status": str(row["status"]),
+            "confidence": str(row["confidence"]),
+        }
+        for row in rows
+    }
+    return [facts[fact_id] for fact_id in fact_ids if fact_id in facts]
+
+
+def _json_string_list(raw: str) -> tuple[str, ...]:
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError:
+        return ()
+    if not isinstance(value, list):
+        return ()
+    return tuple(str(item) for item in value)
 
 
 def _query_memory_topics(conn: sqlite3.Connection) -> dict[str, int]:
