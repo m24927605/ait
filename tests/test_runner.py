@@ -14,6 +14,7 @@ from ait.db import connect_db, list_memory_retrieval_events
 from ait.memory import add_memory_note, list_memory_notes, search_repo_memory
 from ait.runner import (
     AIT_CONTEXT_BUDGET_CHARS,
+    _finish_attempt_locally,
     _run_command_with_pty_transcript,
     _strip_terminal_control,
     run_agent_command,
@@ -195,6 +196,45 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual("succeeded", result.attempt.attempt["verified_status"])
             self.assertEqual(0, result.attempt.attempt["result_exit_code"])
             self.assertIsNotNone(result.attempt.attempt["raw_trace_ref"])
+
+    def test_finish_attempt_locally_does_not_dedupe_repeated_fallbacks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            def interrupt_finish(harness, **kwargs):
+                del kwargs
+                harness._finish_attempted = True
+                raise KeyboardInterrupt
+
+            with patch("ait.runner.AitHarness.finish", interrupt_finish):
+                result = run_agent_command(
+                    repo_root,
+                    intent_title="Repeated local finish",
+                    command=[sys.executable, "-c", "print('finished before interrupt')"],
+                    capture_command_output=True,
+                )
+
+            _finish_attempt_locally(
+                repo_root,
+                result.attempt_id,
+                exit_code=0,
+                raw_trace_ref=result.attempt.attempt["raw_trace_ref"],
+            )
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            try:
+                count = conn.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM meta
+                    WHERE key LIKE ?
+                    """,
+                    (f"event_seen:ait-run-local-finish:{result.attempt_id}:%",),
+                ).fetchone()[0]
+            finally:
+                conn.close()
+
+            self.assertEqual(2, count)
 
     def test_run_agent_command_can_write_context_file_for_wrapped_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

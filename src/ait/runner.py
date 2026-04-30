@@ -19,8 +19,9 @@ from ait.context import build_agent_context, render_agent_context_text
 from ait.daemon import start_daemon
 from ait.db import connect_db, get_attempt
 from ait.db.core import utc_now
-from ait.events import handle_attempt_finished
+from ait.events import process_event
 from ait.harness import AitHarness, HarnessError
+from ait.ids import new_ulid
 from ait.memory import (
     add_attempt_memory_note,
     build_relevant_memory_recall,
@@ -505,13 +506,18 @@ def _finish_attempt_locally(
         payload: dict[str, object] = {"exit_code": int(exit_code)}
         if raw_trace_ref is not None:
             payload["raw_trace_ref"] = raw_trace_ref
-        with conn:
-            handle_attempt_finished(
-                conn,
-                attempt=attempt,
-                sent_at=utc_now(),
-                payload=payload,
-            )
+        process_event(
+            conn,
+            {
+                "schema_version": 1,
+                "event_id": f"ait-run-local-finish:{attempt_id}:{new_ulid()}",
+                "event_type": "attempt_finished",
+                "sent_at": utc_now(),
+                "attempt_id": attempt_id,
+                "ownership_token": attempt.ownership_token,
+                "payload": payload,
+            },
+        )
     finally:
         conn.close()
 
