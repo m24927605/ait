@@ -9,3 +9,4 @@ npm/ait-vcs/libexec/
 npm/ait-vcs/node_modules/
 npm/ait-vcs/coverage/
 npm/ait-vcs/*.tgz
+docs/llm-long-term-memory-zh.md
