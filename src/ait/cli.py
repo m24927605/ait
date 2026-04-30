@@ -75,6 +75,7 @@ from ait.memory import (
     render_memory_lint_result,
     search_repo_memory,
 )
+from ait.memory_eval import evaluate_memory_retrievals, render_memory_eval_report
 from ait.memory_policy import init_memory_policy, load_memory_policy
 from ait.query import QueryError, blame_path, execute_query, list_shortcut_expression, parse_blame_target
 from ait.reconcile import reconcile_repo
@@ -218,6 +219,10 @@ def build_parser() -> argparse.ArgumentParser:
     memory_retrievals.add_argument("--attempt")
     memory_retrievals.add_argument("--limit", type=int, default=50)
     memory_retrievals.add_argument("--format", choices=("text", "json"), default="text")
+    memory_eval = memory_subparsers.add_parser("eval")
+    memory_eval.add_argument("--attempt")
+    memory_eval.add_argument("--limit", type=int, default=50)
+    memory_eval.add_argument("--format", choices=("text", "json"), default="text")
     memory_note = memory_subparsers.add_parser("note")
     memory_note_subparsers = memory_note.add_subparsers(dest="memory_note_command")
     memory_note_add = memory_note_subparsers.add_parser("add")
@@ -629,6 +634,21 @@ def main() -> int:
             else:
                 print(_format_memory_retrievals(events, facts_by_id), end="")
             return 0
+        if args.memory_command == "eval":
+            try:
+                report = evaluate_memory_retrievals(
+                    repo_root,
+                    attempt_id=args.attempt,
+                    limit=args.limit,
+                )
+            except ValueError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 2
+            if args.format == "json":
+                print(json.dumps(report.to_dict(), indent=2))
+            else:
+                print(render_memory_eval_report(report), end="")
+            return 1 if report.status == "fail" else 0
         if args.memory_command == "graph":
             if args.memory_graph_command == "build":
                 brain = write_repo_brain(repo_root)

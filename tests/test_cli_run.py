@@ -11,6 +11,22 @@ from pathlib import Path
 from unittest.mock import patch
 
 from ait import cli
+from ait.db import (
+    connect_db,
+    insert_attempt,
+    insert_intent,
+    insert_memory_retrieval_event,
+    replace_memory_fact_entities,
+    run_migrations,
+    upsert_memory_fact,
+)
+from ait.db.repositories import (
+    MemoryFactEntityRecord,
+    NewAttempt,
+    NewIntent,
+    NewMemoryFact,
+    NewMemoryRetrievalEvent,
+)
 
 
 class CliRunTests(unittest.TestCase):
@@ -781,6 +797,386 @@ class CliRunTests(unittest.TestCase):
             self.assertIn("release 必須先跑 pytest", html)
             self.assertIn("Use release memory", html)
 
+    def test_memory_eval_empty_repo_outputs_passing_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "memory", "eval", "--format", "json"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(0, exit_code)
+        self.assertEqual("pass", payload["status"])
+        self.assertEqual(0, payload["event_count"])
+        self.assertEqual(100, payload["average_score"])
+        self.assertEqual([], payload["events"])
+
+    def test_memory_eval_rejects_negative_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            stderr = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "memory", "eval", "--limit", "-1"]):
+                    with redirect_stderr(stderr):
+                        exit_code = cli.main()
+
+        self.assertEqual(2, exit_code)
+        self.assertIn("limit must be non-negative", stderr.getvalue())
+
+    def test_memory_eval_passes_healthy_selected_fact_and_filters_attempt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            attempt_id = _seed_memory_eval_state(
+                repo_root,
+                fact_id="fact:release:pytest",
+                fact_status="accepted",
+                confidence="high",
+                selected_fact_ids=("fact:release:pytest",),
+                query="release pytest workflow",
+                source_trace_ref=".ait/traces/release.txt",
+            )
+            other_attempt_id = _seed_memory_eval_state(
+                repo_root,
+                intent_id="intent:other",
+                attempt_id="attempt:other",
+                event_id="retrieval:other",
+                fact_id="fact:other",
+                fact_status="accepted",
+                confidence="high",
+                selected_fact_ids=("fact:other",),
+                query="other memory",
+                source_trace_ref=".ait/traces/other.txt",
+                summary="Use other memory",
+                body="Other workflow memory is unrelated.",
+                entities=("other",),
+            )
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    ["ait", "memory", "eval", "--attempt", attempt_id, "--format", "json"],
+                ):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(0, exit_code)
+        self.assertEqual("pass", payload["status"])
+        self.assertEqual(1, payload["event_count"])
+        event = payload["events"][0]
+        self.assertEqual(attempt_id, event["attempt_id"])
+        self.assertNotEqual(other_attempt_id, event["attempt_id"])
+        self.assertEqual("pass", event["status"])
+        self.assertEqual(100, event["score"])
+        self.assertEqual(["fact:release:pytest"], event["selected_fact_ids"])
+        self.assertEqual([], event["issues"])
+        self.assertEqual([], event["warnings"])
+        self.assertEqual(
+            {
+                "event_id",
+                "attempt_id",
+                "query",
+                "status",
+                "score",
+                "selected_count",
+                "issue_count",
+                "warning_count",
+                "selected_fact_ids",
+                "missing_relevant_fact_ids",
+                "issues",
+                "warnings",
+                "selected_facts",
+            },
+            set(event),
+        )
+        self.assertEqual(
+            {
+                "id",
+                "kind",
+                "topic",
+                "summary",
+                "status",
+                "confidence",
+                "relevance_score",
+            },
+            set(event["selected_facts"][0]),
+        )
+
+    def test_memory_eval_fails_unaccepted_superseded_and_policy_blocked_fact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            (repo_root / ".ait").mkdir(exist_ok=True)
+            (repo_root / ".ait" / "memory-policy.json").write_text(
+                json.dumps(
+                    {
+                        "exclude_paths": ["secret/**"],
+                        "exclude_transcript_patterns": ["BEGIN PRIVATE KEY"],
+                        "recall_source_allow": ["attempt-memory:*", "agent-memory:*"],
+                        "recall_source_block": [],
+                        "recall_lint_block_severities": ["error"],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            _upsert_eval_fact(
+                repo_root,
+                fact_id="fact:new",
+                status="accepted",
+                confidence="high",
+                summary="Replacement release fact",
+                body="Replacement release workflow.",
+                source_trace_ref=".ait/traces/new.txt",
+            )
+            _seed_memory_eval_state(
+                repo_root,
+                fact_id="fact:bad",
+                fact_status="candidate",
+                confidence="high",
+                selected_fact_ids=("fact:bad",),
+                query="release pytest workflow",
+                source_file_path="secret/release.md",
+                superseded_by="fact:new",
+            )
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "memory", "eval", "--format", "json"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(1, exit_code)
+        self.assertEqual("fail", payload["status"])
+        event = payload["events"][0]
+        self.assertEqual("fail", event["status"])
+        self.assertLess(event["score"], 100)
+        self.assertTrue(any("not accepted" in issue for issue in event["issues"]))
+        self.assertTrue(any("stale or superseded" in issue for issue in event["issues"]))
+        self.assertTrue(any("blocked by memory policy" in issue for issue in event["issues"]))
+
+    def test_memory_eval_fails_source_trace_ref_blocked_by_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            (repo_root / ".ait").mkdir(exist_ok=True)
+            (repo_root / ".ait" / "memory-policy.json").write_text(
+                json.dumps(
+                    {
+                        "exclude_paths": [".env"],
+                        "exclude_transcript_patterns": ["BEGIN PRIVATE KEY"],
+                        "recall_source_allow": ["attempt-memory:*", "agent-memory:*"],
+                        "recall_source_block": ["blocked:*"],
+                        "recall_lint_block_severities": ["error"],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            _seed_memory_eval_state(
+                repo_root,
+                fact_id="fact:blocked-trace",
+                fact_status="accepted",
+                confidence="high",
+                selected_fact_ids=("fact:blocked-trace",),
+                query="release pytest workflow",
+                source_trace_ref="blocked:trace",
+            )
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "memory", "eval", "--format", "json"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(1, exit_code)
+        self.assertEqual("fail", payload["status"])
+        self.assertTrue(
+            any("blocked by memory policy" in issue for issue in payload["events"][0]["issues"])
+        )
+
+    def test_memory_eval_fails_logical_source_not_allowed_by_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            _seed_memory_eval_state(
+                repo_root,
+                fact_id="fact:untrusted",
+                fact_status="accepted",
+                confidence="high",
+                selected_fact_ids=("fact:untrusted",),
+                query="release pytest workflow",
+                source_trace_ref="untrusted:trace",
+            )
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "memory", "eval", "--format", "json"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(1, exit_code)
+        self.assertEqual("fail", payload["status"])
+        self.assertTrue(
+            any("blocked by memory policy" in issue for issue in payload["events"][0]["issues"])
+        )
+
+    def test_memory_eval_expiry_is_judged_against_retrieval_time(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            _seed_memory_eval_state(
+                repo_root,
+                fact_id="fact:expires-later",
+                fact_status="accepted",
+                confidence="high",
+                selected_fact_ids=("fact:expires-later",),
+                query="release pytest workflow",
+                source_trace_ref=".ait/traces/release.txt",
+                valid_to="2026-04-30T00:03:00Z",
+            )
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "memory", "eval", "--format", "json"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(0, exit_code)
+        self.assertEqual("pass", payload["status"])
+        self.assertEqual("pass", payload["events"][0]["status"])
+
+    def test_memory_eval_fails_expired_fact_at_retrieval_time(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            _seed_memory_eval_state(
+                repo_root,
+                fact_id="fact:expired",
+                fact_status="accepted",
+                confidence="high",
+                selected_fact_ids=("fact:expired",),
+                query="release pytest workflow",
+                source_trace_ref=".ait/traces/release.txt",
+                valid_to="2026-04-30T00:01:00Z",
+            )
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "memory", "eval", "--format", "json"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(1, exit_code)
+        self.assertEqual("fail", payload["status"])
+        self.assertTrue(any("stale or superseded" in issue for issue in payload["events"][0]["issues"]))
+
+    def test_memory_eval_fails_rejected_fact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            _seed_memory_eval_state(
+                repo_root,
+                fact_id="fact:rejected",
+                fact_status="rejected",
+                confidence="high",
+                selected_fact_ids=("fact:rejected",),
+                query="release pytest workflow",
+                source_trace_ref=".ait/traces/release.txt",
+            )
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "memory", "eval", "--format", "json"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(1, exit_code)
+        self.assertEqual("fail", payload["status"])
+        self.assertTrue(any("not accepted" in issue for issue in payload["events"][0]["issues"]))
+
+    def test_memory_eval_warns_for_low_confidence_no_evidence_and_missing_relevant_fact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            _seed_memory_eval_state(
+                repo_root,
+                fact_id="fact:release:pytest",
+                fact_status="accepted",
+                confidence="medium",
+                selected_fact_ids=("fact:release:pytest",),
+                query="release pytest workflow",
+            )
+            _upsert_eval_fact(
+                repo_root,
+                fact_id="fact:release:build",
+                status="accepted",
+                confidence="high",
+                summary="Run build before release",
+                body="Release workflow must run build before publishing.",
+                source_trace_ref=".ait/traces/build.txt",
+            )
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "memory", "eval"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+        text = stdout.getvalue()
+        self.assertEqual(0, exit_code)
+        self.assertIn("Status: warn", text)
+        self.assertIn("score=", text)
+        self.assertIn("selected:", text)
+        self.assertIn("fact:release:pytest", text)
+        self.assertIn("confidence is not high", text)
+        self.assertIn("has no trace, commit, or file evidence", text)
+        self.assertIn("missing relevant facts", text)
+        self.assertIn("fact:release:build", text)
+
+    def test_memory_eval_warns_when_no_facts_selected_but_relevant_fact_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            _seed_memory_eval_state(
+                repo_root,
+                fact_id="fact:release:pytest",
+                fact_status="accepted",
+                confidence="high",
+                selected_fact_ids=(),
+                query="release pytest workflow",
+                source_trace_ref=".ait/traces/release.txt",
+            )
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "memory", "eval", "--format", "json"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(0, exit_code)
+        self.assertEqual("warn", payload["status"])
+        event = payload["events"][0]
+        self.assertEqual("warn", event["status"])
+        self.assertEqual(0, event["selected_count"])
+        self.assertIn("fact:release:pytest", event["missing_relevant_fact_ids"])
+        self.assertTrue(any("no facts selected" in warning for warning in event["warnings"]))
+
     def test_work_graph_json_rejects_negative_limit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
@@ -932,6 +1328,137 @@ def _git_stdout(repo_root: Path, *args: str) -> str:
 
 def _git(repo_root: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=repo_root, check=True, capture_output=True)
+
+
+def _seed_memory_eval_state(
+    repo_root: Path,
+    *,
+    fact_id: str,
+    fact_status: str,
+    confidence: str,
+    selected_fact_ids: tuple[str, ...],
+    query: str,
+    intent_id: str = "intent:release",
+    attempt_id: str = "attempt:release",
+    event_id: str = "retrieval:release",
+    source_trace_ref: str | None = None,
+    source_file_path: str | None = None,
+    superseded_by: str | None = None,
+    valid_to: str | None = None,
+    summary: str = "Run pytest before release",
+    body: str = "Release workflow must run pytest before publishing.",
+    entities: tuple[str, ...] = ("release", "pytest"),
+) -> str:
+    conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+    try:
+        run_migrations(conn)
+        insert_intent(
+            conn,
+            NewIntent(
+                id=intent_id,
+                repo_id="repo",
+                title="Release memory eval",
+                created_at="2026-04-30T00:00:00Z",
+                created_by_actor_type="agent",
+                created_by_actor_id="codex:main",
+                trigger_source="cli",
+            ),
+        )
+        insert_attempt(
+            conn,
+            NewAttempt(
+                id=attempt_id,
+                intent_id=intent_id,
+                agent_id="codex:main",
+                workspace_ref=str(repo_root / ".ait" / "workspaces" / attempt_id),
+                base_ref_oid="abc123",
+                started_at="2026-04-30T00:01:00Z",
+                ownership_token="token",
+                reported_status="finished",
+                verified_status="succeeded",
+            ),
+        )
+        _upsert_eval_fact(
+            repo_root,
+            fact_id=fact_id,
+            status=fact_status,
+            confidence=confidence,
+            summary=summary,
+            body=body,
+            source_trace_ref=source_trace_ref,
+            source_file_path=source_file_path,
+            superseded_by=superseded_by,
+            valid_to=valid_to,
+            entities=entities,
+        )
+        insert_memory_retrieval_event(
+            conn,
+            NewMemoryRetrievalEvent(
+                id=event_id,
+                attempt_id=attempt_id,
+                query=query,
+                selected_fact_ids=selected_fact_ids,
+                ranker_version="hybrid-v1",
+                budget_chars=4000,
+                created_at="2026-04-30T00:02:00Z",
+            ),
+        )
+    finally:
+        conn.close()
+    return attempt_id
+
+
+def _upsert_eval_fact(
+    repo_root: Path,
+    *,
+    fact_id: str,
+    status: str,
+    confidence: str,
+    summary: str,
+    body: str,
+    source_trace_ref: str | None = None,
+    source_file_path: str | None = None,
+    superseded_by: str | None = None,
+    valid_to: str | None = None,
+    entities: tuple[str, ...] = ("release", "pytest"),
+) -> None:
+    conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+    try:
+        run_migrations(conn)
+        upsert_memory_fact(
+            conn,
+            NewMemoryFact(
+                id=fact_id,
+                kind="rule",
+                topic="release",
+                body=body,
+                summary=summary,
+                status=status,
+                confidence=confidence,
+                source_trace_ref=source_trace_ref,
+                source_file_path=source_file_path,
+                valid_to=valid_to,
+                valid_from="2026-04-30T00:00:00Z",
+                created_at="2026-04-30T00:00:00Z",
+                updated_at="2026-04-30T00:00:00Z",
+                superseded_by=superseded_by,
+            ),
+        )
+        replace_memory_fact_entities(
+            conn,
+            memory_fact_id=fact_id,
+            entities=tuple(
+                MemoryFactEntityRecord(
+                    memory_fact_id=fact_id,
+                    entity=entity,
+                    entity_type="keyword",
+                    weight=1.0,
+                )
+                for entity in entities
+            ),
+        )
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
