@@ -51,7 +51,7 @@ from ait.app import (
     verify_attempt,
 )
 from ait.daemon import daemon_status, prune_daemon, serve_daemon, start_daemon, stop_daemon
-from ait.db import connect_db
+from ait.db import connect_db, list_memory_facts, run_migrations
 from ait.memory import (
     add_memory_note,
     agent_memory_status,
@@ -201,6 +201,13 @@ def build_parser() -> argparse.ArgumentParser:
     memory_parser.add_argument("--budget-chars", type=int)
     memory_parser.add_argument("--format", choices=("text", "json"), default="text")
     memory_subparsers = memory_parser.add_subparsers(dest="memory_command")
+    memory_facts = memory_subparsers.add_parser("facts")
+    memory_facts.add_argument("--status")
+    memory_facts.add_argument("--kind")
+    memory_facts.add_argument("--topic")
+    memory_facts.add_argument("--include-superseded", action="store_true")
+    memory_facts.add_argument("--limit", type=int, default=100)
+    memory_facts.add_argument("--format", choices=("text", "json"), default="text")
     memory_note = memory_subparsers.add_parser("note")
     memory_note_subparsers = memory_note.add_subparsers(dest="memory_note_command")
     memory_note_add = memory_note_subparsers.add_parser("add")
@@ -550,6 +557,26 @@ def main() -> int:
             print(render_agent_context_text(context), end="")
         return 0
     if args.command == "memory":
+        if args.memory_command == "facts":
+            root = resolve_repo_root(repo_root)
+            conn = connect_db(root / ".ait" / "state.sqlite3")
+            try:
+                run_migrations(conn)
+                facts = list_memory_facts(
+                    conn,
+                    status=args.status,
+                    kind=args.kind,
+                    topic=args.topic,
+                    include_superseded=args.include_superseded,
+                    limit=args.limit,
+                )
+            finally:
+                conn.close()
+            if args.format == "json":
+                print(json.dumps([asdict(fact) for fact in facts], indent=2))
+            else:
+                print(_format_memory_facts(facts), end="")
+            return 0
         if args.memory_command == "graph":
             if args.memory_graph_command == "build":
                 brain = write_repo_brain(repo_root)
@@ -1140,6 +1167,31 @@ def _format_memory_import(result) -> str:
         for item in result.skipped:
             lines.append(f"- {item.get('path')}: {item.get('reason')} ({item.get('source')})")
     return "\n".join(lines)
+
+
+def _format_memory_facts(facts) -> str:
+    lines = ["AIT Memory Facts"]
+    if not facts:
+        lines.append("- none")
+        return "\n".join(lines) + "\n"
+    for fact in facts:
+        lines.append(
+            f"- {fact.id} kind={fact.kind} topic={fact.topic} "
+            f"status={fact.status} confidence={fact.confidence}"
+        )
+        source_bits = [
+            value
+            for value in (
+                f"attempt={fact.source_attempt_id}" if fact.source_attempt_id else "",
+                f"commit={fact.source_commit_oid}" if fact.source_commit_oid else "",
+                f"file={fact.source_file_path}" if fact.source_file_path else "",
+            )
+            if value
+        ]
+        if source_bits:
+            lines.append("  source: " + " ".join(source_bits))
+        lines.append(f"  {fact.summary}")
+    return "\n".join(lines) + "\n"
 
 
 def _format_run_result(result) -> str:

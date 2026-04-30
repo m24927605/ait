@@ -278,6 +278,43 @@ class CliRunTests(unittest.TestCase):
         self.assertIn("Run tests before release.", payload[0]["text"])
         self.assertEqual("vector", payload[0]["metadata"]["ranker"])
 
+    def test_memory_facts_cli_lists_structured_memory_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            run_stdout = io.StringIO()
+            facts_stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "run",
+                        "--format",
+                        "json",
+                        "--intent",
+                        "Capture durable memory fact",
+                        "--",
+                        sys.executable,
+                        "-c",
+                        "print('以後所有 release 必須先跑 pytest。')",
+                    ],
+                ):
+                    with redirect_stdout(run_stdout):
+                        run_exit = cli.main()
+                with patch("sys.argv", ["ait", "memory", "facts", "--format", "json"]):
+                    with redirect_stdout(facts_stdout):
+                        facts_exit = cli.main()
+
+        payload = json.loads(facts_stdout.getvalue())
+        self.assertEqual(0, run_exit)
+        self.assertEqual(0, facts_exit)
+        self.assertEqual(1, len(payload))
+        self.assertEqual("rule", payload[0]["kind"])
+        self.assertIn(payload[0]["status"], {"accepted", "candidate"})
+        self.assertIn("release", payload[0]["body"])
+
     def test_memory_recall_cli_outputs_selected_memory_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
