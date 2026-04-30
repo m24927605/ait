@@ -47,7 +47,7 @@ than computing intent status inline.
 Allowed automatic transitions:
 
 - `open -> running`: any child attempt reaches `reported_status = running`
-- `open -> finished` or `running -> finished`: any child attempt reaches `verified_status = promoted`
+- `open -> finished` or `running -> finished`: any child attempt reaches `verified_status = succeeded` or `verified_status = promoted`
 
 Disallowed transitions (must be rejected or no-op):
 
@@ -62,11 +62,21 @@ Disallowed transitions (must be rejected or no-op):
 - expected artifacts exist
 - verification checks passed
 - but the result has not yet been promoted to a target branch
+- in v1, this is enough to close the parent intent as `finished`, because
+  ait's default wrapper flow should stay low-interruption for users who rely
+  on agent-owned commits before explicit branch promotion
 
 `verified_status=promoted` means:
 
 - the attempt already satisfied `succeeded`
 - and the verifier confirmed that the target Git ref moved to include the intended commit set
+
+The v1 choice intentionally treats success and promotion as separate attempt
+states but both as terminal evidence for the parent intent. Tightening intent
+completion to promotion-only would be a v2 behavior break: existing repos
+would see successful but unpromoted wrapped CLI sessions remain `running`,
+which changes graph summaries, memory recommendations, and automation that
+keys off terminal intent status.
 
 ### Abandoning An Intent
 

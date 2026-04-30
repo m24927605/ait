@@ -339,11 +339,11 @@ terminal status (`finished`, `abandoned`, `superseded`).
 | From | To | Trigger |
 | --- | --- | --- |
 | `open` | `running` | any child attempt reaches `reported_status=running` |
-| `open` or `running` | `finished` | any child attempt reaches `verified_status=promoted` |
+| `open` or `running` | `finished` | any child attempt reaches `verified_status=succeeded` or `verified_status=promoted` |
 | `open` or `running` | `abandoned` | user runs `ait intent abandon <intent-id>` |
 | `open` or `running` | `superseded` | user runs `ait intent supersede <intent-id> --by <new-intent-id>` and an `intent_edges` relation is written |
 
-If an intent has multiple attempts with mixed outcomes, intent status is still `finished` once at least one attempt is promoted. Failed or discarded sibling attempts remain queryable through their own attempt records. An intent whose attempts all end without a promotion stays in its current status until a user explicitly abandons or supersedes it.
+If an intent has multiple attempts with mixed outcomes, intent status is still `finished` once at least one attempt succeeds or is promoted. Failed or discarded sibling attempts remain queryable through their own attempt records. An intent whose attempts all end without a success or promotion stays in its current status until a user explicitly abandons or supersedes it.
 
 ### Attempt Lifecycle
 
