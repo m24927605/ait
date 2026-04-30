@@ -917,10 +917,11 @@ def main() -> int:
         result = doctor_automation(args.name or "claude-code", repo_root)
         payload = asdict(result)
         payload["installation"] = _installation_payload()
+        payload["daemon"] = _daemon_status_payload(repo_root)
         if args.format == "json":
             print(json.dumps(payload, indent=2))
         else:
-            print(_format_adapter_doctor(result, installation=payload["installation"]))
+            print(_format_adapter_doctor(result, installation=payload["installation"], daemon=payload["daemon"]))
         return 0 if result.ok else 2
     if args.command == "status":
         if args.all_adapters:
@@ -1191,7 +1192,12 @@ def _format_adapter(adapter) -> str:
     return "\n".join(lines)
 
 
-def _format_adapter_doctor(result, *, installation: dict[str, object] | None = None) -> str:
+def _format_adapter_doctor(
+    result,
+    *,
+    installation: dict[str, object] | None = None,
+    daemon: dict[str, object] | None = None,
+) -> str:
     lines = [
         f"Adapter: {result.adapter.name}",
         f"OK: {result.ok}",
@@ -1204,6 +1210,8 @@ def _format_adapter_doctor(result, *, installation: dict[str, object] | None = N
     if next_steps:
         lines.append("Next steps:")
         lines.extend(f"- {step}" for step in next_steps)
+    if daemon is not None:
+        lines.extend(_format_daemon_lines(daemon))
     if installation is not None:
         lines.extend(_format_installation_lines(installation))
     return "\n".join(lines)
@@ -1972,21 +1980,7 @@ def _format_status(payload: dict[str, object]) -> str:
         lines.extend(_format_installation_lines(installation, include_next_steps=False))
     daemon = payload.get("daemon", {})
     if isinstance(daemon, dict) and daemon:
-        if daemon.get("available", True):
-            lines.append(
-                "Daemon: "
-                f"{'running' if daemon.get('running') else 'stopped'} "
-                f"(socket_connectable={daemon.get('socket_connectable', False)}, "
-                f"pid_matches={daemon.get('pid_matches', False)})"
-            )
-            if daemon.get("pid") is not None:
-                lines.append(f"Daemon pid: {daemon.get('pid')}")
-            if daemon.get("stale_reason"):
-                lines.append(f"Daemon stale reason: {daemon.get('stale_reason')}")
-            if daemon.get("socket_path"):
-                lines.append(f"Daemon socket: {daemon.get('socket_path')}")
-        else:
-            lines.append(f"Daemon: unavailable ({daemon.get('reason', 'not initialized')})")
+        lines.extend(_format_daemon_lines(daemon))
     ait_health = payload.get("ait_health", {})
     if isinstance(ait_health, dict):
         lines.append(f"AIT health: {ait_health.get('status', 'unknown')}")
@@ -2101,6 +2095,24 @@ def _daemon_status_payload(repo_root: Path) -> dict[str, object]:
         "socket_path": str(status.socket_path),
         "pid_file": str(status.pid_file),
     }
+
+
+def _format_daemon_lines(daemon: dict[str, object]) -> list[str]:
+    if daemon.get("available", True):
+        lines = [
+            "Daemon: "
+            f"{'running' if daemon.get('running') else 'stopped'} "
+            f"(socket_connectable={daemon.get('socket_connectable', False)}, "
+            f"pid_matches={daemon.get('pid_matches', False)})"
+        ]
+        if daemon.get("pid") is not None:
+            lines.append(f"Daemon pid: {daemon.get('pid')}")
+        if daemon.get("stale_reason"):
+            lines.append(f"Daemon stale reason: {daemon.get('stale_reason')}")
+        if daemon.get("socket_path"):
+            lines.append(f"Daemon socket: {daemon.get('socket_path')}")
+        return lines
+    return [f"Daemon: unavailable ({daemon.get('reason', 'not initialized')})"]
 
 
 def _agent_cli_summary(payload: dict[str, object]) -> str:

@@ -590,6 +590,9 @@ class CliAdapterTests(unittest.TestCase):
             self.assertTrue(checks["wrapper_file"]["ok"])
             self.assertTrue(checks["path_wrapper_active"]["ok"])
             self.assertTrue(checks["real_claude_binary"]["ok"])
+            self.assertIn("daemon", payload)
+            self.assertFalse(payload["daemon"]["running"])
+            self.assertFalse(payload["daemon"]["socket_connectable"])
 
     def test_bootstrap_shell_outputs_eval_safe_path_export(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -679,6 +682,46 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(2, exit_code)
             self.assertIn("Next steps:", text)
             self.assertIn('eval "$(ait init --shell)"', text)
+            self.assertIn("Daemon: stopped", text)
+
+    def test_doctor_reports_daemon_stale_reason(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            daemon_dir = repo_root / ".ait"
+            daemon_dir.mkdir(parents=True, exist_ok=True)
+            (daemon_dir / "daemon.pid").write_text(f"{os.getpid()}\n", encoding="utf-8")
+            old_path = os.environ.get("PATH", "")
+            json_stdout = io.StringIO()
+            text_stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "doctor", "claude-code", "--format", "json"]):
+                        with redirect_stdout(json_stdout):
+                            json_exit = cli.main()
+                    with patch("sys.argv", ["ait", "doctor", "claude-code"]):
+                        with redirect_stdout(text_stdout):
+                            text_exit = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+        payload = json.loads(json_stdout.getvalue())
+        text = text_stdout.getvalue()
+
+        self.assertEqual(2, json_exit)
+        self.assertEqual(2, text_exit)
+        self.assertFalse(payload["daemon"]["running"])
+        self.assertTrue(payload["daemon"]["pid_running"])
+        self.assertFalse(payload["daemon"]["pid_matches"])
+        self.assertEqual("pid_not_ait_daemon", payload["daemon"]["stale_reason"])
+        self.assertIn("Daemon stale reason: pid_not_ait_daemon", text)
 
     def test_doctor_fix_outputs_eval_safe_shell_snippet_for_detected_agents(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

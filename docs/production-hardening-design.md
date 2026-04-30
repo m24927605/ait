@@ -579,8 +579,8 @@ Implemented status:
 - `ait daemon prune` removes stale pid/socket state without starting a
   daemon.
 - `stop_daemon` refuses to kill unrelated live pids.
-- `ait status` and `ait status --all` report daemon health without
-  writing `.ait/` in uninitialized repositories.
+- `ait doctor`, `ait status`, and `ait status --all` report daemon
+  health without writing `.ait/` in uninitialized repositories.
 - Real CLI smoke verifies stale cleanup, start/status/stop, and idle
   timeout shutdown.
 
