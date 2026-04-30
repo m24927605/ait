@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, asdict
 from datetime import UTC, datetime
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -11,7 +12,7 @@ import unicodedata
 import uuid
 
 from ait.db import connect_db, insert_memory_retrieval_event, run_migrations, utc_now
-from ait.db.repositories import NewMemoryFact, get_attempt_outcome, upsert_memory_fact
+from ait.db.repositories import NewMemoryFact, upsert_memory_fact
 from ait.db.repositories import NewMemoryRetrievalEvent
 from ait.memory_policy import (
     EXCLUDED_MARKER,
@@ -25,6 +26,7 @@ from ait.memory_policy import (
 )
 from ait.redaction import has_redactions, redact_text
 from ait.repo import resolve_repo_root
+from ait.workspace import commit_message
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,16 +285,30 @@ def build_repo_memory_with_connection(
     )
 
 
-def render_repo_memory_text(memory: RepoMemory, *, budget_chars: int | None = None) -> str:
+def render_repo_memory_text(
+    memory: RepoMemory,
+    *,
+    budget_chars: int | None = None,
+    include_advisory_attempt_memory: bool = True,
+) -> str:
+    notes = (
+        memory.notes
+        if include_advisory_attempt_memory
+        else tuple(
+            note
+            for note in memory.notes
+            if not _attempt_memory_note_advisory(note.source, note.body)
+        )
+    )
     lines = [
         "AIT Long-Term Repo Memory",
         f"Repo: {memory.repo_root}",
         "",
         "Curated Notes:",
     ]
-    if not memory.notes:
+    if not notes:
         lines.append("- none")
-    for note in memory.notes:
+    for note in notes:
         body, redacted = redact_text(note.body)
         topic = note.topic if note.topic else "general"
         lines.append(f"- {note.id} topic={topic} source={note.source}")
@@ -393,7 +409,7 @@ def add_attempt_memory_note(repo_root: str | Path, attempt_result) -> MemoryNote
     outcome_class = str(outcome.get("outcome_class") or "unclassified") if isinstance(outcome, dict) else "unclassified"
     outcome_confidence = str(outcome.get("confidence") or "") if isinstance(outcome, dict) else ""
     exit_code = attempt.get("result_exit_code")
-    confidence = "high" if verified_status in {"succeeded", "promoted"} else "advisory"
+    confidence = _attempt_memory_confidence(verified_status=verified_status, outcome_class=outcome_class)
     body = _attempt_memory_note_body(
         attempt=attempt,
         intent=intent,
@@ -414,6 +430,16 @@ def add_attempt_memory_note(repo_root: str | Path, attempt_result) -> MemoryNote
     return note
 
 
+def _attempt_memory_confidence(*, verified_status: str, outcome_class: str) -> str:
+    if verified_status == "promoted" or outcome_class == "promoted":
+        return "high"
+    if verified_status == "succeeded" and outcome_class == "succeeded":
+        return "high"
+    if verified_status == "succeeded" and outcome_class == "succeeded_noop":
+        return "medium"
+    return "advisory"
+
+
 def add_memory_candidates_for_attempt(repo_root: str | Path, attempt_result) -> tuple[MemoryNote, ...]:
     root = resolve_repo_root(repo_root)
     attempt = dict(attempt_result.attempt)
@@ -431,19 +457,19 @@ def add_memory_candidates_for_attempt(repo_root: str | Path, attempt_result) -> 
     if _trace_excluded(trace_text, policy=policy):
         return ()
     verified_status = str(attempt.get("verified_status") or "pending")
-    outcome_class = _attempt_result_outcome_class(root, attempt_id)
     candidates = extract_memory_candidates(
         trace_text,
         attempt_id=attempt_id,
         source_ref=raw_trace_ref,
         verified_status=verified_status,
     )
+    corroboration_messages = _candidate_corroboration_messages(root, attempt_result)
     notes: list[MemoryNote] = []
     for candidate in candidates:
         durable = (
             verified_status in {"succeeded", "promoted"}
-            and outcome_class in {"succeeded", "promoted"}
             and candidate.confidence == "high"
+            and _candidate_corroborated(candidate, corroboration_messages)
         )
         _upsert_memory_fact_for_candidate(
             root,
@@ -483,9 +509,11 @@ def _upsert_memory_fact_for_candidate(
                 body=candidate.body,
                 summary=_memory_fact_summary(candidate.body),
                 status="accepted" if durable else "candidate",
-                confidence=candidate.confidence if durable else "low",
+                confidence="medium" if durable else "low",
                 source_attempt_id=attempt_id,
                 source_trace_ref=candidate.source_ref,
+                human_review_state="pending" if durable else "pending",
+                provenance="commit" if durable else "transcript",
                 valid_from=now,
                 created_at=now,
                 updated_at=now,
@@ -493,18 +521,6 @@ def _upsert_memory_fact_for_candidate(
         )
     finally:
         conn.close()
-
-
-def _attempt_result_outcome_class(repo_root: Path, attempt_id: str) -> str:
-    conn = connect_db(repo_root / ".ait" / "state.sqlite3")
-    try:
-        run_migrations(conn)
-        outcome = get_attempt_outcome(conn, attempt_id)
-    finally:
-        conn.close()
-    if outcome is None:
-        return "succeeded"
-    return outcome.outcome_class
 
 
 def extract_memory_candidates(
@@ -527,12 +543,15 @@ def extract_memory_candidates(
             skip_next_role_payload = False
             continue
         cleaned = _candidate_line(line)
-        if not cleaned or cleaned in seen:
+        if not cleaned:
+            continue
+        seen_key = hashlib.sha256(cleaned.encode("utf-8")).hexdigest()
+        if seen_key in seen:
             continue
         kind = _candidate_kind(cleaned)
         if kind is None:
             continue
-        seen.add(cleaned)
+        seen.add(seen_key)
         candidates.append(
             MemoryCandidate(
                 kind=kind,
@@ -801,15 +820,42 @@ def _candidate_line(line: str) -> str:
     return cleaned[:600]
 
 
+def _candidate_corroboration_messages(root: Path, attempt_result) -> tuple[str, ...]:
+    messages: list[str] = []
+    workspace_ref = str(dict(getattr(attempt_result, "attempt", {}) or {}).get("workspace_ref") or "")
+    for commit in getattr(attempt_result, "commits", ()) or ():
+        if isinstance(commit, dict):
+            for key in ("message", "commit_message", "subject", "summary"):
+                value = commit.get(key)
+                if value:
+                    messages.append(str(value).lower())
+            commit_oid = str(commit.get("commit_oid") or "")
+            if workspace_ref and commit_oid:
+                try:
+                    messages.append(commit_message(workspace_ref, commit_oid).lower())
+                except Exception:
+                    continue
+    return tuple(messages)
+
+
+def _candidate_corroborated(candidate: MemoryCandidate, corroboration_messages: tuple[str, ...]) -> bool:
+    if not corroboration_messages:
+        return False
+    snippet = candidate.body[:60].lower()
+    return bool(snippet) and any(snippet in message for message in corroboration_messages)
+
+
 def _candidate_kind(line: str) -> str | None:
     lowered = line.lower()
+    if not re.match(r"^(decision|rule|workflow|test|failure|open question)\s*:", lowered):
+        return None
     markers: tuple[tuple[str, tuple[str, ...]], ...] = (
-        ("decision", ("決定", "decision:", "decide ", "decided ")),
-        ("constraint", ("以後", "規則", "不要", "必須", "不能", "must ", "should ", "do not ", "don't ")),
-        ("workflow", ("流程", "步驟", "workflow", "run ", "使用 ", "use ")),
-        ("test", ("測試", "pytest", "test command", "驗收")),
-        ("failure", ("失敗", "failed because", "root cause", "原因")),
-        ("open-question", ("待確認", "open question", "todo:", "follow up")),
+        ("decision", ("decision:",)),
+        ("constraint", ("rule:",)),
+        ("workflow", ("workflow:",)),
+        ("test", ("test:",)),
+        ("failure", ("failure:",)),
+        ("open-question", ("open question:",)),
     )
     for kind, candidates in markers:
         if any(marker in lowered or marker in line for marker in candidates):
@@ -1405,6 +1451,17 @@ def build_relevant_memory_recall(
                     }
                 )
                 continue
+            blocked_reason = _fact_recall_blocked_reason(result.metadata, policy)
+            if blocked_reason:
+                skipped.append(
+                    {
+                        "kind": result.kind,
+                        "id": result.id,
+                        "source": source,
+                        "reason": blocked_reason,
+                    }
+                )
+                continue
         elif result.kind != "note":
             skipped.append({"kind": result.kind, "id": result.id, "reason": "not a memory note"})
             continue
@@ -1439,8 +1496,23 @@ def build_relevant_memory_recall(
                 }
             )
             continue
+        if result.kind == "note" and (
+            _attempt_memory_note_advisory(source, result.text)
+            or str(result.metadata.get("attempt_memory_confidence") or "") == "advisory"
+            or str(result.metadata.get("attempt_memory_verified_status") or "")
+            in {"failed", "failed_interrupted", "needs_review"}
+        ):
+            skipped.append(
+                {
+                    "kind": result.kind,
+                    "id": result.id,
+                    "source": source,
+                    "reason": "attempt memory is advisory",
+                }
+            )
+            continue
         eligible.append(result)
-    ranked = _apply_temporal_recall_ranking(eligible)
+    ranked = _apply_temporal_recall_ranking(_normalize_recall_ranker_scores(eligible))
     selected_results = ranked[:limit]
     for result in ranked[limit:]:
         skipped.append(
@@ -1501,24 +1573,98 @@ def _apply_temporal_recall_ranking(results: list[MemorySearchResult]) -> list[Me
     return ranked
 
 
+def _normalize_recall_ranker_scores(results: list[MemorySearchResult]) -> list[MemorySearchResult]:
+    by_ranker: dict[str, list[MemorySearchResult]] = {}
+    for result in results:
+        by_ranker.setdefault(str(result.metadata.get("ranker") or "unknown"), []).append(result)
+
+    normalized: list[MemorySearchResult] = []
+    for ranker_results in by_ranker.values():
+        scores = [result.score for result in ranker_results]
+        minimum = min(scores)
+        maximum = max(scores)
+        for result in ranker_results:
+            if maximum == minimum:
+                score = 1.0
+            else:
+                score = (result.score - minimum) / (maximum - minimum)
+            metadata = dict(result.metadata)
+            metadata["ranker_raw_score"] = round(result.score, 6)
+            metadata["ranker_normalized_score"] = round(score, 6)
+            normalized.append(
+                MemorySearchResult(
+                    kind=result.kind,
+                    id=result.id,
+                    score=score,
+                    title=result.title,
+                    text=result.text,
+                    metadata=metadata,
+                )
+            )
+    return normalized
+
+
+def _attempt_memory_note_advisory(source: str, text: str) -> bool:
+    if not source.startswith("attempt-memory:"):
+        return False
+    return "confidence=advisory" in text or any(
+        f"verified_status={status}" in text
+        for status in ("failed", "failed_interrupted", "needs_review")
+    )
+
+
+def _attempt_memory_note_field(text: str, key: str) -> str:
+    match = re.search(rf"(?:^|\s){re.escape(key)}=([^\s]+)", text)
+    return match.group(1) if match else ""
+
+
+def _fact_recall_blocked_reason(metadata: dict[str, object], policy: MemoryPolicy) -> str:
+    sources = tuple(
+        str(metadata.get(key) or "")
+        for key in ("source_file_path", "source_trace_ref")
+        if metadata.get(key)
+    )
+    if any(recall_source_blocked(source, policy) for source in sources):
+        return "fact source blocked by memory policy"
+    if any(_looks_like_logical_source(source) and not recall_source_allowed(source, policy) for source in sources):
+        return "fact source not allowed by memory policy"
+    source_file_path = str(metadata.get("source_file_path") or "")
+    if source_file_path and path_excluded(source_file_path, policy):
+        return "fact source path excluded by memory policy"
+    return ""
+
+
+def _looks_like_logical_source(source: str) -> bool:
+    if "/" in source or "\\" in source:
+        return False
+    return ":" in source
+
+
 def _temporal_ranked_result(result: MemorySearchResult, *, now: datetime) -> MemorySearchResult:
     metadata = dict(result.metadata)
     temporal_kind = str(metadata.get("kind") or result.kind or "note")
+    normalized_kind, unknown_kind = _normalize_temporal_kind(temporal_kind)
     anchor = _parse_memory_time(str(metadata.get("updated_at") or metadata.get("valid_from") or ""))
-    age_days = max(0.0, (now - anchor).total_seconds() / 86400.0) if anchor else None
-    time_factor = _temporal_time_factor(temporal_kind, age_days)
+    age_days = (now - anchor).total_seconds() / 86400.0 if anchor else None
+    if age_days is not None and age_days < 0:
+        metadata["temporal_future_anchor"] = True
+        age_days = None
+    time_factor = _temporal_time_factor(normalized_kind, age_days)
     confidence_factor = _temporal_confidence_factor(str(metadata.get("confidence") or ""))
-    kind_factor = _temporal_kind_factor(temporal_kind)
+    kind_factor = _temporal_kind_factor(normalized_kind)
     temporal_score = result.score * time_factor * confidence_factor * kind_factor
     metadata.update(
         {
             "temporal_ranker": "temporal-v1",
             "temporal_kind": temporal_kind,
+            "temporal_effective_kind": normalized_kind,
             "temporal_base_score": round(result.score, 6),
             "temporal_factor": round(time_factor * confidence_factor * kind_factor, 6),
             "temporal_score": round(temporal_score, 6),
         }
     )
+    if unknown_kind:
+        metadata["temporal_unknown_kind"] = True
     if age_days is not None:
         metadata["temporal_age_days"] = round(age_days, 3)
     return MemorySearchResult(
@@ -1566,6 +1712,20 @@ def _temporal_kind_factor(kind: str) -> float:
         "entity": 0.96,
         "failure": 0.88,
     }.get(kind, 1.00)
+
+
+def _normalize_temporal_kind(kind: str) -> tuple[str, bool]:
+    known = {
+        "current_state",
+        "workflow",
+        "failure",
+        "entity",
+        "rule",
+        "decision",
+        "manual",
+        "note",
+    }
+    return (kind, False) if kind in known else ("note", True)
 
 
 def _parse_memory_time(value: str) -> datetime | None:
@@ -1828,10 +1988,15 @@ def _search_documents(
         SELECT
             id, kind, topic, body, summary, status, confidence,
             source_attempt_id, source_trace_ref, source_commit_oid,
-            source_file_path, valid_from, valid_to, superseded_by, updated_at
+            source_file_path, valid_from, valid_to, superseded_by,
+            human_review_state, provenance, updated_at
         FROM memory_facts
         WHERE status = 'accepted'
-        """
+          AND superseded_by IS NULL
+          AND (valid_to IS NULL OR valid_to > ?)
+          AND NOT (confidence = 'high' AND human_review_state != 'approved')
+        """,
+        (utc_now(),),
     ).fetchall()
     for row in fact_rows:
         body, redacted = redact_text(str(row["body"]))
@@ -1871,6 +2036,8 @@ def _search_documents(
                     "valid_from": str(row["valid_from"]),
                     "valid_to": str(row["valid_to"] or ""),
                     "superseded_by": str(row["superseded_by"] or ""),
+                    "human_review_state": str(row["human_review_state"]),
+                    "provenance": str(row["provenance"]),
                     "updated_at": str(row["updated_at"]),
                     "redacted": redacted or summary_redacted,
                 },
@@ -1894,9 +2061,12 @@ def _search_documents(
                 "title": topic,
                 "text": body,
                 "metadata": {
+                    "kind": "manual" if str(row["source"]) == "manual" or str(row["source"]).startswith("manual:") else "note",
                     "topic": topic,
                     "source": str(row["source"]),
                     "updated_at": str(row["updated_at"]),
+                    "attempt_memory_confidence": _attempt_memory_note_field(body, "confidence"),
+                    "attempt_memory_verified_status": _attempt_memory_note_field(body, "verified_status"),
                     "redacted": redacted,
                 },
             }
@@ -2036,7 +2206,7 @@ def _score_document_lexical(
         count = term_counts.get(term, 0)
         if count:
             score += 2.0 + count
-        elif any(candidate.startswith(term) or term.startswith(candidate) for candidate in term_counts):
+        elif len(term) >= 3 and any(candidate.startswith(term) or term.startswith(candidate) for candidate in term_counts):
             score += 0.75
     if score <= 0:
         return None
@@ -2126,7 +2296,11 @@ def _dot(left: dict[str, float], right: dict[str, float]) -> float:
 
 
 def _terms(text: str) -> tuple[str, ...]:
-    return tuple(re.findall(r"[A-Za-z0-9_./:-]+", text.lower()))
+    lowered = text.lower()
+    tokens = re.findall(r"[A-Za-z0-9_./:-]+|[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af]", lowered)
+    cjk_chars = [token for token in tokens if len(token) == 1 and re.fullmatch(r"[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af]", token)]
+    bigrams = [left + right for left, right in zip(cjk_chars, cjk_chars[1:])]
+    return tuple(tokens + bigrams)
 
 
 def _normalize_search_text(text: str) -> str:

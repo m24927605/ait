@@ -23,8 +23,11 @@ DEFAULT_EXCLUDE_TRANSCRIPT_PATTERNS = (
     "BEGIN OPENSSH PRIVATE KEY",
 )
 DEFAULT_RECALL_SOURCE_ALLOW = (
+    "manual",
+    "manual:*",
     "attempt-memory:*",
     "agent-memory:*",
+    "durable-memory:*",
 )
 DEFAULT_RECALL_SOURCE_BLOCK: tuple[str, ...] = ()
 DEFAULT_RECALL_LINT_BLOCK_SEVERITIES = ("error",)

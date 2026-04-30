@@ -4,6 +4,7 @@ import subprocess
 import tempfile
 import unittest
 import json
+from datetime import datetime
 from pathlib import Path
 
 from ait.app import create_commit_for_attempt, create_attempt, create_intent, show_attempt
@@ -20,9 +21,12 @@ from ait.memory import (
     import_agent_memory,
     lint_memory_notes,
     list_memory_notes,
+    MemorySearchResult,
     remove_memory_note,
     render_repo_memory_text,
     search_repo_memory,
+    _normalize_recall_ranker_scores,
+    _temporal_ranked_result,
 )
 from ait.memory_policy import init_memory_policy
 
@@ -72,51 +76,54 @@ class MemoryTests(unittest.TestCase):
             self.assertTrue(remove_memory_note(repo_root, note_id=note.id))
             self.assertEqual((), list_memory_notes(repo_root))
 
-    def test_memory_candidates_promote_high_confidence_successful_rules(self) -> None:
+    def test_memory_candidates_keep_uncorroborated_rules_as_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
             _init_git_repo(repo_root)
             attempt_id = _record_trace_attempt(
                 repo_root,
                 title="Project rule",
-                trace_text="以後所有 API route 必須使用 zod 驗證。\nToken usage: total=1\n",
+                trace_text="Rule: 以後所有 API route 必須使用 zod 驗證。\nToken usage: total=1\n",
             )
             attempt_result = show_attempt(repo_root, attempt_id=attempt_id)
 
             notes = add_memory_candidates_for_attempt(repo_root, attempt_result)
             durable_notes = list_memory_notes(repo_root, topic="durable-memory")
+            candidate_notes = list_memory_notes(repo_root, topic="memory-candidate")
             conn = connect_db(repo_root / ".ait" / "state.sqlite3")
             self.addCleanup(conn.close)
             facts = list_memory_facts(conn, status="accepted", kind="rule")
 
             self.assertEqual(1, len(notes))
-            self.assertEqual(1, len(durable_notes))
-            self.assertEqual(1, len(facts))
-            self.assertIn("kind=constraint", durable_notes[0].body)
-            self.assertIn("status=accepted", durable_notes[0].body)
-            self.assertIn("以後所有 API route 必須使用 zod 驗證", durable_notes[0].body)
-            self.assertIn("以後所有 API route 必須使用 zod 驗證", facts[0].body)
-            self.assertEqual(attempt_id, facts[0].source_attempt_id)
-            self.assertEqual("project-rule", facts[0].topic)
-            self.assertNotIn("Token usage", durable_notes[0].body)
+            self.assertEqual((), durable_notes)
+            self.assertEqual(1, len(candidate_notes))
+            self.assertEqual(0, len(facts))
+            self.assertIn("kind=constraint", candidate_notes[0].body)
+            self.assertIn("status=candidate", candidate_notes[0].body)
+            self.assertIn("以後所有 API route 必須使用 zod 驗證", candidate_notes[0].body)
+            self.assertNotIn("Token usage", candidate_notes[0].body)
 
     def test_memory_search_and_recall_use_accepted_structured_facts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
             _init_git_repo(repo_root)
-            attempt_id = _record_trace_attempt(
-                repo_root,
-                title="Release rule",
-                trace_text="以後所有 release 必須先跑 pytest。\n",
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            self.addCleanup(conn.close)
+            run_migrations(conn)
+            _upsert_test_fact(
+                conn,
+                fact_id="release-rule",
+                kind="rule",
+                body="以後所有 release 必須先跑 pytest。",
+                updated_at="2026-04-23T00:00:00Z",
             )
-            attempt_result = show_attempt(repo_root, attempt_id=attempt_id)
-            add_memory_candidates_for_attempt(repo_root, attempt_result)
 
             results = search_repo_memory(repo_root, "release pytest")
             recall = build_relevant_memory_recall(repo_root, "release pytest")
 
-            self.assertEqual("fact", results[0].kind)
-            self.assertEqual("accepted", results[0].metadata["status"])
+            fact_results = [result for result in results if result.kind == "fact"]
+            self.assertTrue(fact_results)
+            self.assertEqual("accepted", fact_results[0].metadata["status"])
             self.assertEqual("fact", recall.selected[0].kind)
             self.assertIn("release 必須先跑 pytest", recall.selected[0].text)
             self.assertEqual("temporal-v1", recall.selected[0].metadata["temporal_ranker"])
@@ -149,6 +156,129 @@ class MemoryTests(unittest.TestCase):
             self.assertEqual(("fact:recent-state",), tuple(item.id for item in recall.selected))
             self.assertEqual("temporal-v1", recall.selected[0].metadata["temporal_ranker"])
             self.assertIn("temporal_age_days", recall.selected[0].metadata)
+
+    def test_relevant_memory_recall_skips_superseded_accepted_facts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            self.addCleanup(conn.close)
+            run_migrations(conn)
+            _upsert_test_fact(
+                conn,
+                fact_id="fact:current-state",
+                kind="current_state",
+                body="Billing retry cache mode uses durable queue.",
+                updated_at="2026-04-20T00:00:00Z",
+            )
+            _upsert_test_fact(
+                conn,
+                fact_id="fact:superseded-state",
+                kind="current_state",
+                body="Billing retry cache mode uses legacy queue.",
+                updated_at="2026-04-20T00:00:00Z",
+                superseded_by="fact:current-state",
+            )
+
+            recall = build_relevant_memory_recall(repo_root, "billing retry cache mode", limit=6)
+
+            selected_ids = tuple(item.id for item in recall.selected)
+            self.assertIn("fact:current-state", selected_ids)
+            self.assertNotIn("fact:superseded-state", selected_ids)
+
+    def test_relevant_memory_recall_skips_expired_accepted_facts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            self.addCleanup(conn.close)
+            run_migrations(conn)
+            _upsert_test_fact(
+                conn,
+                fact_id="fact:expired-state",
+                kind="current_state",
+                body="Billing retry cache mode uses legacy queue.",
+                updated_at="2024-01-01T00:00:00Z",
+                valid_to="2024-01-02T00:00:00Z",
+            )
+            _upsert_test_fact(
+                conn,
+                fact_id="fact:active-state",
+                kind="current_state",
+                body="Billing retry cache mode uses durable queue.",
+                updated_at="2026-04-20T00:00:00Z",
+            )
+
+            recall = build_relevant_memory_recall(repo_root, "billing retry cache mode", limit=6)
+
+            selected_ids = tuple(item.id for item in recall.selected)
+            self.assertIn("fact:active-state", selected_ids)
+            self.assertNotIn("fact:expired-state", selected_ids)
+
+    def test_relevant_memory_recall_skips_policy_blocked_facts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            (repo_root / ".ait").mkdir()
+            (repo_root / ".ait" / "memory-policy.json").write_text(
+                json.dumps(
+                    {
+                        "exclude_paths": ["secret/**"],
+                        "exclude_transcript_patterns": [],
+                        "recall_source_allow": ["trusted:*"],
+                        "recall_source_block": ["blocked:*"],
+                        "recall_lint_block_severities": ["error"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            self.addCleanup(conn.close)
+            run_migrations(conn)
+            _upsert_test_fact(
+                conn,
+                fact_id="fact:trusted",
+                kind="rule",
+                body="Release workflow must run pytest.",
+                updated_at="2026-04-20T00:00:00Z",
+                source_trace_ref="trusted:release",
+            )
+            _upsert_test_fact(
+                conn,
+                fact_id="fact:blocked-source",
+                kind="rule",
+                body="Release workflow must run pytest.",
+                updated_at="2026-04-20T00:00:00Z",
+                source_trace_ref="blocked:release",
+            )
+            _upsert_test_fact(
+                conn,
+                fact_id="fact:excluded-path",
+                kind="rule",
+                body="Release workflow must run pytest.",
+                updated_at="2026-04-20T00:00:00Z",
+                source_file_path="secret/release.md",
+            )
+            _upsert_test_fact(
+                conn,
+                fact_id="fact:untrusted-logical",
+                kind="rule",
+                body="Release workflow must run pytest.",
+                updated_at="2026-04-20T00:00:00Z",
+                source_trace_ref="untrusted:release",
+            )
+
+            recall = build_relevant_memory_recall(repo_root, "release workflow pytest", limit=6)
+
+            selected_ids = {item.id for item in recall.selected}
+            skipped = {item["id"]: item["reason"] for item in recall.skipped}
+            self.assertIn("fact:trusted", selected_ids)
+            self.assertNotIn("fact:blocked-source", selected_ids)
+            self.assertNotIn("fact:excluded-path", selected_ids)
+            self.assertNotIn("fact:untrusted-logical", selected_ids)
+            self.assertEqual("fact source blocked by memory policy", skipped["fact:blocked-source"])
+            self.assertEqual("fact source path excluded by memory policy", skipped["fact:excluded-path"])
+            self.assertEqual("fact source not allowed by memory policy", skipped["fact:untrusted-logical"])
 
     def test_relevant_memory_recall_keeps_old_decision_ahead_of_old_current_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -204,6 +334,102 @@ class MemoryTests(unittest.TestCase):
 
             self.assertEqual(("fact:rule",), tuple(item.id for item in recall.selected))
 
+    def test_recall_ranker_scores_are_normalized_per_ranker(self) -> None:
+        results = _normalize_recall_ranker_scores(
+            [
+                MemorySearchResult(
+                    kind="fact",
+                    id="literal",
+                    score=15.0,
+                    title="literal",
+                    text="literal",
+                    metadata={"ranker": "literal"},
+                ),
+                MemorySearchResult(
+                    kind="fact",
+                    id="vector-low",
+                    score=0.25,
+                    title="vector",
+                    text="vector",
+                    metadata={"ranker": "vector"},
+                ),
+                MemorySearchResult(
+                    kind="fact",
+                    id="vector-high",
+                    score=0.75,
+                    title="vector",
+                    text="vector",
+                    metadata={"ranker": "vector"},
+                ),
+            ]
+        )
+
+        by_id = {result.id: result for result in results}
+        self.assertEqual(1.0, by_id["literal"].score)
+        self.assertEqual(0.0, by_id["vector-low"].score)
+        self.assertEqual(1.0, by_id["vector-high"].score)
+        self.assertEqual(15.0, by_id["literal"].metadata["ranker_raw_score"])
+        self.assertEqual(0.75, by_id["vector-high"].metadata["ranker_raw_score"])
+
+    def test_manual_notes_are_allowed_and_ranked_as_manual_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            add_memory_note(
+                repo_root,
+                topic="release",
+                source="manual",
+                body="Release checklist must include package smoke tests.",
+            )
+
+            recall = build_relevant_memory_recall(repo_root, "release package smoke tests")
+
+            self.assertEqual("manual", recall.selected[0].metadata["temporal_kind"])
+            self.assertEqual("manual", recall.selected[0].metadata["kind"])
+
+    def test_temporal_ranking_formula_uses_expected_factors(self) -> None:
+        result = MemorySearchResult(
+            kind="fact",
+            id="fact:rule",
+            score=2.0,
+            title="release",
+            text="release rule",
+            metadata={
+                "kind": "rule",
+                "confidence": "high",
+                "updated_at": "2026-04-20T00:00:00Z",
+            },
+        )
+
+        ranked = _temporal_ranked_result(
+            result,
+            now=datetime.fromisoformat("2026-04-20T00:00:00+00:00"),
+        )
+
+        self.assertAlmostEqual(2.0 * 1.0 * 1.05 * 1.03, ranked.score, places=4)
+
+    def test_temporal_ranking_marks_future_anchor_as_unknown_age(self) -> None:
+        result = MemorySearchResult(
+            kind="fact",
+            id="fact:future",
+            score=2.0,
+            title="future",
+            text="future",
+            metadata={
+                "kind": "current_state",
+                "confidence": "high",
+                "updated_at": "2026-05-20T00:00:00Z",
+            },
+        )
+
+        ranked = _temporal_ranked_result(
+            result,
+            now=datetime.fromisoformat("2026-04-20T00:00:00+00:00"),
+        )
+
+        self.assertTrue(ranked.metadata["temporal_future_anchor"])
+        self.assertNotIn("temporal_age_days", ranked.metadata)
+
     def test_memory_candidates_keep_failed_attempts_as_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
@@ -211,7 +437,7 @@ class MemoryTests(unittest.TestCase):
             attempt_id = _record_trace_attempt(
                 repo_root,
                 title="Failed project rule",
-                trace_text="以後部署流程必須先跑 pytest。\n",
+                trace_text="Rule: 以後部署流程必須先跑 pytest。\n",
                 verified_status="failed",
                 result_exit_code=1,
             )
@@ -245,27 +471,29 @@ class MemoryTests(unittest.TestCase):
                 title="Codex echo cleanup",
                 trace_text=(
                     "user\n"
-                    "Create file codex-real.txt. Then print: 以後 Codex 驗收必須檢查 AIT graph。\n"
+                    "Create file codex-real.txt. Then print: Rule: 以後 Codex 驗收必須檢查 AIT graph。\n"
                     "codex\n"
                     "I will write the file and print the rule.\n"
                     "exec\n"
-                    "/bin/zsh -lc \"printf '%s' 'ok' > codex-real.txt && printf '以後 Codex 驗收必須檢查 AIT graph。'\"\n"
+                    "/bin/zsh -lc \"printf '%s' 'ok' > codex-real.txt && printf 'Rule: 以後 Codex 驗收必須檢查 AIT graph。'\"\n"
                     "succeeded in 0ms:\n"
-                    "以後 Codex 驗收必須檢查 AIT graph。\n"
+                    "Rule: 以後 Codex 驗收必須檢查 AIT graph。\n"
                     "codex\n"
-                    "以後 Codex 驗收必須檢查 AIT graph。\n"
+                    "Rule: 以後 Codex 驗收必須檢查 AIT graph。\n"
                 ),
             )
             attempt_result = show_attempt(repo_root, attempt_id=attempt_id)
 
             notes = add_memory_candidates_for_attempt(repo_root, attempt_result)
             durable_notes = list_memory_notes(repo_root, topic="durable-memory")
+            candidate_notes = list_memory_notes(repo_root, topic="memory-candidate")
 
             self.assertEqual(1, len(notes))
-            self.assertEqual(1, len(durable_notes))
-            self.assertIn("以後 Codex 驗收必須檢查 AIT graph", durable_notes[0].body)
-            self.assertNotIn("Create file", durable_notes[0].body)
-            self.assertNotIn("/bin/zsh", durable_notes[0].body)
+            self.assertEqual((), durable_notes)
+            self.assertEqual(1, len(candidate_notes))
+            self.assertIn("以後 Codex 驗收必須檢查 AIT graph", candidate_notes[0].body)
+            self.assertNotIn("Create file", candidate_notes[0].body)
+            self.assertNotIn("/bin/zsh", candidate_notes[0].body)
 
     def test_memory_lint_reports_bad_notes_without_flagging_healthy_notes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -747,6 +975,10 @@ def _upsert_test_fact(
     body: str,
     updated_at: str,
     confidence: str = "high",
+    valid_to: str | None = None,
+    superseded_by: str | None = None,
+    source_trace_ref: str | None = None,
+    source_file_path: str | None = None,
 ) -> None:
     upsert_memory_fact(
         conn,
@@ -758,8 +990,11 @@ def _upsert_test_fact(
             summary=body,
             status="accepted",
             confidence=confidence,
-            source_trace_ref=f".ait/traces/{fact_id}.txt",
+            source_trace_ref=source_trace_ref or f".ait/traces/{fact_id}.txt",
+            source_file_path=source_file_path,
             valid_from=updated_at,
+            valid_to=valid_to,
+            superseded_by=superseded_by,
             created_at=updated_at,
             updated_at=updated_at,
         ),

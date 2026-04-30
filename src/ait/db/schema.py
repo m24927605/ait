@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 @dataclass(frozen=True)
@@ -139,6 +139,10 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(
         version=3,
         name="drop_result_patch_refs_json",
+        # Retired migration slot. Early development builds used this version
+        # number while removing a draft JSON patch-ref column before the public
+        # schema stabilized. Keep the no-op so databases that recorded v3 stay
+        # forward-compatible and migrations remain monotonic.
         sql="""
         SELECT 1;
         """,
@@ -285,6 +289,22 @@ MIGRATIONS: tuple[Migration, ...] = (
 
         CREATE INDEX IF NOT EXISTS idx_memory_retrieval_events_attempt
             ON memory_retrieval_events(attempt_id, created_at);
+        """,
+    ),
+    Migration(
+        version=7,
+        name="memory_fact_review_provenance",
+        sql="""
+        ALTER TABLE memory_facts
+            ADD COLUMN human_review_state TEXT NOT NULL DEFAULT 'approved'
+                CHECK (human_review_state IN ('pending', 'approved', 'rejected'));
+
+        ALTER TABLE memory_facts
+            ADD COLUMN provenance TEXT NOT NULL DEFAULT 'manual'
+                CHECK (provenance IN ('manual', 'transcript', 'commit', 'file'));
+
+        CREATE INDEX IF NOT EXISTS idx_memory_facts_review_status
+            ON memory_facts(human_review_state, status, confidence);
         """,
     ),
 )

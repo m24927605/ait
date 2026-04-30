@@ -9,8 +9,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 from ait.db import connect_db, list_memory_retrieval_events
-from ait.memory import list_memory_notes, search_repo_memory
-from ait.runner import _run_command_with_pty_transcript, _strip_terminal_control, run_agent_command
+from ait.memory import add_memory_note, list_memory_notes, search_repo_memory
+from ait.runner import (
+    AIT_CONTEXT_BUDGET_CHARS,
+    _run_command_with_pty_transcript,
+    _strip_terminal_control,
+    run_agent_command,
+)
 
 
 class RunnerTests(unittest.TestCase):
@@ -192,6 +197,41 @@ class RunnerTests(unittest.TestCase):
             self.assertIn("agent:", copied.read_text(encoding="utf-8"))
             self.assertNotIn("Edges:", copied.read_text(encoding="utf-8"))
 
+    def test_run_agent_command_caps_context_file_total_budget(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            for index in range(80):
+                add_memory_note(
+                    repo_root,
+                    topic="budget",
+                    body=f"Budget note {index}: " + ("context overflow " * 40),
+                    source="manual",
+                )
+
+            long_title = "Context budget " + ("title overflow " * 1400)
+            result = run_agent_command(
+                repo_root,
+                intent_title=long_title,
+                agent_id="shell:test",
+                command=[
+                    sys.executable,
+                    "-c",
+                    (
+                        "import os;"
+                        "from pathlib import Path;"
+                        "p=Path(os.environ['AIT_CONTEXT_FILE']);"
+                        "Path('context-copy.txt').write_text(p.read_text())"
+                    ),
+                ],
+                with_context=True,
+            )
+
+            copied_text = (Path(result.workspace_ref) / "context-copy.txt").read_text(encoding="utf-8")
+            self.assertEqual(0, result.exit_code)
+            self.assertLessEqual(len(copied_text), AIT_CONTEXT_BUDGET_CHARS)
+            self.assertIn("ait context truncated", copied_text)
+
     def test_run_agent_command_records_memory_retrieval_events_for_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
@@ -203,9 +243,15 @@ class RunnerTests(unittest.TestCase):
                 command=[
                     sys.executable,
                     "-c",
-                    "print('以後所有 release 必須先跑 pytest。')",
+                    (
+                        "from pathlib import Path;"
+                        "Path('docs').mkdir(exist_ok=True);"
+                        "Path('docs/release.md').write_text('Rule: 以後所有 release 必須先跑 pytest。\\n');"
+                        "print('Rule: 以後所有 release 必須先跑 pytest。')"
+                    ),
                 ],
                 capture_command_output=True,
+                commit_message="Rule: 以後所有 release 必須先跑 pytest。",
             )
             second = run_agent_command(
                 repo_root,
@@ -356,6 +402,41 @@ class RunnerTests(unittest.TestCase):
             self.assertIn("confidence=advisory", notes[0].body)
             self.assertIn("verified_status=failed", notes[0].body)
             self.assertIn("exit_code=5", notes[0].body)
+
+    def test_failed_attempt_memory_is_not_injected_into_default_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            failed = run_agent_command(
+                repo_root,
+                intent_title="Failed billing retry memory",
+                agent_id="shell:test",
+                command=[sys.executable, "-c", "print('billing retry failed'); raise SystemExit(5)"],
+                capture_command_output=True,
+            )
+            followup = run_agent_command(
+                repo_root,
+                intent_title="Use billing retry memory",
+                agent_id="shell:test",
+                command=[
+                    sys.executable,
+                    "-c",
+                    (
+                        "import os;"
+                        "from pathlib import Path;"
+                        "Path('context-copy.txt').write_text(Path(os.environ['AIT_CONTEXT_FILE']).read_text())"
+                    ),
+                ],
+                with_context=True,
+            )
+
+            copied = (Path(followup.workspace_ref) / "context-copy.txt").read_text(encoding="utf-8")
+            self.assertEqual(5, failed.exit_code)
+            self.assertEqual(0, followup.exit_code)
+            self.assertIn("AIT Relevant Memory", copied)
+            self.assertNotIn(f"attempt-memory:{failed.attempt_id}", copied)
+            self.assertNotIn("billing retry failed", copied)
 
     def test_claude_code_adapter_defaults_to_context_and_env(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -585,6 +666,9 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual("succeeded_noop", result.attempt.outcome["outcome_class"])
             self.assertEqual([], result.attempt.commits)
             self.assertEqual({}, result.attempt.files)
+            notes = list_memory_notes(repo_root, topic="attempt-memory")
+            self.assertEqual(1, len(notes))
+            self.assertIn("confidence=medium", notes[0].body)
             self.assertFalse((Path(result.workspace_ref) / ".ait-context.md").exists())
             self.assertFalse(_git_stdout(Path(result.workspace_ref), "status", "--short"))
 
@@ -602,7 +686,7 @@ class RunnerTests(unittest.TestCase):
 
             self.assertEqual((), list_memory_notes(repo_root, topic="durable-memory"))
 
-    def test_run_agent_command_promotes_rule_memory_without_file_changes(self) -> None:
+    def test_run_agent_command_keeps_uncorroborated_rule_memory_as_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
             _init_git_repo(repo_root)
@@ -610,8 +694,38 @@ class RunnerTests(unittest.TestCase):
             result = run_agent_command(
                 repo_root,
                 intent_title="Rule only",
-                command=[sys.executable, "-c", "print('以後所有 API route 必須使用 zod 驗證。')"],
+                command=[sys.executable, "-c", "print('Rule: 以後所有 API route 必須使用 zod 驗證。')"],
                 capture_command_output=True,
+            )
+
+            durable_notes = list_memory_notes(repo_root, topic="durable-memory")
+            candidate_notes = list_memory_notes(repo_root, topic="memory-candidate")
+
+            self.assertEqual("succeeded_noop", result.attempt.outcome["outcome_class"])
+            self.assertEqual((), durable_notes)
+            self.assertEqual(1, len(candidate_notes))
+            self.assertIn("API route", candidate_notes[0].body)
+
+    def test_run_agent_command_promotes_corroborated_rule_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="Corroborated rule",
+                command=[
+                    sys.executable,
+                    "-c",
+                    (
+                        "from pathlib import Path; "
+                        "Path('docs/rules.md').parent.mkdir(exist_ok=True); "
+                        "Path('docs/rules.md').write_text('Rule: 以後所有 API route 必須使用 zod 驗證。\\n'); "
+                        "print('Rule: 以後所有 API route 必須使用 zod 驗證。')"
+                    ),
+                ],
+                capture_command_output=True,
+                commit_message="Rule: 以後所有 API route 必須使用 zod 驗證。",
             )
 
             durable_notes = list_memory_notes(repo_root, topic="durable-memory")

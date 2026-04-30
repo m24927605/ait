@@ -311,10 +311,12 @@ class CliRunTests(unittest.TestCase):
                         "json",
                         "--intent",
                         "Capture durable memory fact",
+                        "--commit-message",
+                        "Rule: 以後所有 release 必須先跑 pytest。",
                         "--",
                         sys.executable,
                         "-c",
-                        "print('以後所有 release 必須先跑 pytest。')",
+                        "print('Rule: 以後所有 release 必須先跑 pytest。')",
                     ],
                 ):
                     with redirect_stdout(run_stdout):
@@ -672,10 +674,12 @@ class CliRunTests(unittest.TestCase):
                         "json",
                         "--intent",
                         "Build graph report",
+                        "--commit-message",
+                        "Rule: 以後所有 graph report 必須顯示 outcome badge。",
                         "--",
                         sys.executable,
                         "-c",
-                        "from pathlib import Path; Path('graph.txt').write_text('ok\\n'); print('AIT_GRAPH_TRANSCRIPT_TOKEN'); print('以後所有 graph report 必須顯示 outcome badge。')",
+                        "from pathlib import Path; Path('graph.txt').write_text('ok\\n'); print('AIT_GRAPH_TRANSCRIPT_TOKEN'); print('Rule: 以後所有 graph report 必須顯示 outcome badge。')",
                     ],
                 ):
                     with redirect_stdout(run_stdout):
@@ -788,10 +792,17 @@ class CliRunTests(unittest.TestCase):
                         "json",
                         "--intent",
                         "Seed release memory",
+                        "--commit-message",
+                        "Rule: 以後所有 release 必須先跑 pytest。",
                         "--",
                         sys.executable,
                         "-c",
-                        "print('以後所有 release 必須先跑 pytest。')",
+                        (
+                            "from pathlib import Path;"
+                            "Path('docs').mkdir(exist_ok=True);"
+                            "Path('docs/release.md').write_text('Rule: 以後所有 release 必須先跑 pytest。\\n');"
+                            "print('Rule: 以後所有 release 必須先跑 pytest。')"
+                        ),
                     ],
                 ):
                     with redirect_stdout(seed_stdout):
@@ -1366,7 +1377,7 @@ class CliRunTests(unittest.TestCase):
         self.assertTrue(init_payload["path"].endswith(".ait/memory-policy.json"))
         self.assertIn(".env", show_payload["exclude_paths"])
         self.assertIn("BEGIN PRIVATE KEY", show_payload["exclude_transcript_patterns"])
-        self.assertEqual(["attempt-memory:*", "agent-memory:*"], show_payload["recall_source_allow"])
+        self.assertEqual(["manual", "manual:*", "attempt-memory:*", "agent-memory:*", "durable-memory:*"], show_payload["recall_source_allow"])
         self.assertEqual([], show_payload["recall_source_block"])
         self.assertEqual(["error"], show_payload["recall_lint_block_severities"])
 

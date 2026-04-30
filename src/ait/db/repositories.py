@@ -150,6 +150,8 @@ class NewMemoryFact:
     source_file_path: str | None = None
     valid_to: str | None = None
     superseded_by: str | None = None
+    human_review_state: str = "approved"
+    provenance: str = "manual"
 
 
 @dataclass(frozen=True)
@@ -171,6 +173,8 @@ class MemoryFactRecord:
     superseded_by: str | None
     created_at: str
     updated_at: str
+    human_review_state: str
+    provenance: str
 
 
 @dataclass(frozen=True)
@@ -441,9 +445,10 @@ def upsert_memory_fact(conn: sqlite3.Connection, fact: NewMemoryFact) -> MemoryF
                 id, schema_version, kind, topic, body, summary, status,
                 confidence, source_attempt_id, source_trace_ref,
                 source_commit_oid, source_file_path, valid_from, valid_to,
-                superseded_by, created_at, updated_at
+                superseded_by, created_at, updated_at, human_review_state,
+                provenance
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 schema_version = excluded.schema_version,
                 kind = excluded.kind,
@@ -459,6 +464,8 @@ def upsert_memory_fact(conn: sqlite3.Connection, fact: NewMemoryFact) -> MemoryF
                 valid_from = excluded.valid_from,
                 valid_to = excluded.valid_to,
                 superseded_by = excluded.superseded_by,
+                human_review_state = excluded.human_review_state,
+                provenance = excluded.provenance,
                 updated_at = excluded.updated_at
             """,
             (
@@ -479,6 +486,8 @@ def upsert_memory_fact(conn: sqlite3.Connection, fact: NewMemoryFact) -> MemoryF
                 fact.superseded_by,
                 fact.created_at,
                 fact.updated_at,
+                fact.human_review_state,
+                fact.provenance,
             ),
         )
     row = get_memory_fact(conn, fact.id)
@@ -997,6 +1006,8 @@ def _row_to_memory_fact(row: sqlite3.Row) -> MemoryFactRecord:
         superseded_by=_str_or_none(row["superseded_by"]),
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
+        human_review_state=str(row["human_review_state"]),
+        provenance=str(row["provenance"]),
     )
 
 
