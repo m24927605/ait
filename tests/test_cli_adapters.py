@@ -1059,6 +1059,7 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual("pass", payload["memory"]["eval_status"])
             self.assertEqual(0, payload["memory"]["eval_event_count"])
             self.assertEqual(100, payload["memory"]["eval_average_score"])
+            self.assertEqual([], payload["memory"]["eval_next_steps"])
 
     def test_status_reports_memory_eval_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1090,8 +1091,11 @@ class CliAdapterTests(unittest.TestCase):
         self.assertEqual("fail", payload["memory"]["eval_status"])
         self.assertEqual(1, payload["memory"]["eval_event_count"])
         self.assertLess(payload["memory"]["eval_average_score"], 100)
+        self.assertEqual(["ait memory eval", "ait graph --html"], payload["memory"]["eval_next_steps"])
         self.assertIn("Memory eval: fail", text)
-        self.assertIn("Memory eval next: ait memory eval", text)
+        self.assertIn("Memory eval next:", text)
+        self.assertIn("- ait memory eval", text)
+        self.assertIn("- ait graph --html", text)
 
     def test_status_text_emits_one_time_automation_hint_to_stderr(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1196,6 +1200,29 @@ class CliAdapterTests(unittest.TestCase):
             self.assertIn("- gemini: install gemini", text)
             self.assertIn("details: adapter=aider", text)
             self.assertIn("run ait init once", stderr.getvalue())
+
+    def test_status_all_text_reports_memory_eval_next_steps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            _seed_status_memory_eval(
+                repo_root,
+                fact_id="fact:rejected",
+                fact_status="rejected",
+                selected_fact_ids=("fact:rejected",),
+            )
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "status", "--all"]):
+                    with redirect_stdout(stdout), redirect_stderr(io.StringIO()):
+                        exit_code = cli.main()
+
+        text = stdout.getvalue()
+        self.assertEqual(0, exit_code)
+        self.assertIn("memory_eval=fail", text)
+        self.assertIn("memory next: ait memory eval, ait graph --html", text)
 
     def test_repair_named_adapter_rebuilds_damaged_wrapper_and_envrc(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
