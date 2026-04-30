@@ -794,6 +794,9 @@ class CliRunTests(unittest.TestCase):
             self.assertIn("release 必須先跑 pytest", retrieval_text)
             self.assertIn("hybrid-v1", retrieval_text)
             self.assertIn("Memory Used", html)
+            self.assertIn("Memory Eval", html)
+            self.assertIn("score=", html)
+            self.assertIn("pass", html)
             self.assertIn("release 必須先跑 pytest", html)
             self.assertIn("Use release memory", html)
 
@@ -814,6 +817,35 @@ class CliRunTests(unittest.TestCase):
         self.assertEqual(0, payload["event_count"])
         self.assertEqual(100, payload["average_score"])
         self.assertEqual([], payload["events"])
+
+    def test_work_graph_html_shows_memory_eval_failures(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            stdout = io.StringIO()
+            _seed_memory_eval_state(
+                repo_root,
+                fact_id="fact:rejected",
+                fact_status="rejected",
+                confidence="high",
+                selected_fact_ids=("fact:rejected",),
+                query="release pytest workflow",
+                source_trace_ref=".ait/traces/release.txt",
+            )
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "graph", "--html"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+            html = (repo_root / ".ait" / "report" / "graph.html").read_text(encoding="utf-8")
+
+        self.assertEqual(0, exit_code)
+        self.assertIn("Memory Eval", html)
+        self.assertIn("score=", html)
+        self.assertIn("Issues", html)
+        self.assertIn("selected fact is not accepted", html)
+        self.assertIn("fact:rejected", html)
 
     def test_memory_eval_rejects_negative_limit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

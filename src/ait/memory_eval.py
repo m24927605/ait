@@ -96,7 +96,7 @@ def evaluate_memory_retrievals(
         run_migrations(conn)
         policy = load_memory_policy(root)
         events = list_memory_retrieval_events(conn, attempt_id=attempt_id, limit=limit)
-        eval_events = tuple(_evaluate_event(conn, event, policy=policy) for event in events)
+        eval_events = evaluate_memory_retrieval_event_records(conn, events, policy=policy)
     finally:
         conn.close()
     if not eval_events:
@@ -116,6 +116,15 @@ def evaluate_memory_retrievals(
         average_score=average_score,
         events=eval_events,
     )
+
+
+def evaluate_memory_retrieval_event_records(
+    conn: sqlite3.Connection,
+    events: tuple[MemoryRetrievalEventRecord, ...] | list[MemoryRetrievalEventRecord],
+    *,
+    policy: MemoryPolicy,
+) -> tuple[MemoryEvalEvent, ...]:
+    return tuple(_evaluate_event(conn, event, policy=policy) for event in events)
 
 
 def render_memory_eval_report(report: MemoryEvalReport) -> str:

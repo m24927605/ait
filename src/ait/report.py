@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from html import escape
 import json
 from pathlib import Path
 import sqlite3
 
 from ait.db import connect_db, utc_now
+from ait.db import list_memory_retrieval_events
+from ait.memory_eval import evaluate_memory_retrieval_event_records
+from ait.memory_policy import load_memory_policy
 from ait.repo import resolve_repo_root
 
 
@@ -43,6 +47,7 @@ def build_work_graph(
 
     conn = connect_db(db_path)
     try:
+        policy = load_memory_policy(root)
         intents = _query_intents(conn, limit=limit)
         filtered_intents: list[dict[str, object]] = []
         for intent in intents:
@@ -53,6 +58,7 @@ def build_work_graph(
                 attempt["memory_notes"] = _query_attempt_memory_notes(conn, str(attempt["id"]))
                 attempt["memory_facts"] = _query_attempt_memory_facts(conn, str(attempt["id"]))
                 attempt["memory_retrievals"] = _query_attempt_memory_retrievals(conn, str(attempt["id"]))
+                attempt["memory_eval"] = _query_attempt_memory_eval(conn, str(attempt["id"]), policy=policy)
             attempts = [
                 attempt
                 for attempt in attempts
@@ -167,6 +173,15 @@ def render_work_graph_text(graph: dict[str, object]) -> str:
                     )
                 if len(retrievals) > 5:
                     lines.append(detail_prefix + f"- ... {len(retrievals) - 5} more")
+            memory_eval = attempt.get("memory_eval", {})
+            if isinstance(memory_eval, dict) and int(memory_eval.get("event_count", 0) or 0):
+                lines.append(
+                    detail_prefix
+                    + "Memory Eval: "
+                    + f"{memory_eval.get('status')} "
+                    + f"score={memory_eval.get('average_score')} "
+                    + f"events={memory_eval.get('event_count')}"
+                )
     return "\n".join(lines)
 
 
@@ -538,6 +553,9 @@ def _attempt_html(attempt: dict[str, object], *, open_by_default: bool) -> str:
     memory_notes = [item for item in attempt.get("memory_notes", []) if isinstance(item, dict)]
     memory_facts = [item for item in attempt.get("memory_facts", []) if isinstance(item, dict)]
     memory_retrievals = [item for item in attempt.get("memory_retrievals", []) if isinstance(item, dict)]
+    memory_eval = attempt.get("memory_eval", {})
+    if isinstance(memory_eval, dict) and int(memory_eval.get("event_count", 0) or 0):
+        children.append(_memory_eval_html(memory_eval))
     if memory_retrievals:
         children.append(_memory_retrievals_html(memory_retrievals))
     if memory_facts:
@@ -564,6 +582,19 @@ def _attempt_html(attempt: dict[str, object], *, open_by_default: bool) -> str:
         *(str(note.get("body", "")) for note in memory_notes),
         *(str(fact.get("body", "")) for fact in memory_facts),
         *(str(retrieval.get("query", "")) for retrieval in memory_retrievals),
+        str(memory_eval.get("status", "")) if isinstance(memory_eval, dict) else "",
+        *(
+            str(issue)
+            for event in memory_eval.get("events", [])
+            for issue in event.get("issues", [])
+            if isinstance(memory_eval, dict) and isinstance(event, dict)
+        ),
+        *(
+            str(warning)
+            for event in memory_eval.get("events", [])
+            for warning in event.get("warnings", [])
+            if isinstance(memory_eval, dict) and isinstance(event, dict)
+        ),
         *(
             str(fact.get("body", ""))
             for retrieval in memory_retrievals
@@ -690,6 +721,55 @@ def _memory_retrievals_html(retrievals: list[dict[str, object]]) -> str:
     return f"<details open><summary>Memory Used <span class=\"muted\">{len(retrievals)}</span></summary>{''.join(items)}</details>"
 
 
+def _memory_eval_html(memory_eval: dict[str, object]) -> str:
+    events = [item for item in memory_eval.get("events", []) if isinstance(item, dict)]
+    items: list[str] = []
+    for event in events:
+        issues = [str(item) for item in event.get("issues", [])]
+        warnings = [str(item) for item in event.get("warnings", [])]
+        missing = [str(item) for item in event.get("missing_relevant_fact_ids", [])]
+        selected = [item for item in event.get("selected_facts", []) if isinstance(item, dict)]
+        issue_items = "".join(f"<li>{escape(issue)}</li>" for issue in issues)
+        warning_items = "".join(f"<li>{escape(warning)}</li>" for warning in warnings)
+        missing_items = "".join(f"<li><code>{escape(fact_id)}</code></li>" for fact_id in missing)
+        selected_items = "".join(
+            "<li>"
+            f"<code>{escape(str(fact.get('id', '')))}</code> "
+            f"{escape(str(fact.get('summary', '')))} "
+            f"<span class=\"muted\">relevance={escape(str(fact.get('relevance_score', '')))}</span>"
+            "</li>"
+            for fact in selected[:8]
+        )
+        sections = []
+        if issues:
+            sections.append(f"<div><strong>Issues</strong><ul class=\"mini-list\">{issue_items}</ul></div>")
+        if warnings:
+            sections.append(f"<div><strong>Warnings</strong><ul class=\"mini-list\">{warning_items}</ul></div>")
+        if missing:
+            sections.append(f"<div><strong>Missing Relevant Facts</strong><ul class=\"mini-list\">{missing_items}</ul></div>")
+        if selected:
+            sections.append(f"<div><strong>Selected Facts</strong><ul class=\"mini-list\">{selected_items}</ul></div>")
+        items.append(
+            "<div class=\"memory-note\">"
+            f"{_badge(str(event.get('status') or 'unknown'), kind='memory-eval')}"
+            f" <code>{escape(str(event.get('event_id', '')))}</code>"
+            f"<div class=\"muted\">score={escape(str(event.get('score', '')))} "
+            f"selected={escape(str(event.get('selected_count', '')))} "
+            f"issues={escape(str(event.get('issue_count', '')))} "
+            f"warnings={escape(str(event.get('warning_count', '')))}</div>"
+            f"<pre>{escape(str(event.get('query', '')))}</pre>"
+            + "".join(sections)
+            + "</div>"
+        )
+    return (
+        "<details open><summary>Memory Eval "
+        f"{_badge(str(memory_eval.get('status') or 'unknown'), kind='memory-eval')} "
+        f"<span class=\"muted\">score={escape(str(memory_eval.get('average_score', '')))} "
+        f"events={escape(str(memory_eval.get('event_count', '')))}</span>"
+        f"</summary>{''.join(items)}</details>"
+    )
+
+
 def _badge(value: str, *, kind: str) -> str:
     if not value:
         return ""
@@ -708,6 +788,13 @@ def _badge(value: str, *, kind: str) -> str:
         elif lowered in {"pending", "discarded"}:
             css += " badge-warn"
         elif lowered == "failed":
+            css += " badge-bad"
+    elif kind == "memory-eval":
+        if lowered == "pass":
+            css += " badge-ok"
+        elif lowered == "warn":
+            css += " badge-warn"
+        elif lowered == "fail":
             css += " badge-bad"
     return f"<span class=\"{css}\">{escape(value)}</span>"
 
@@ -1021,6 +1108,37 @@ def _query_attempt_memory_retrievals(conn: sqlite3.Connection, attempt_id: str) 
             }
         )
     return retrievals
+
+
+def _query_attempt_memory_eval(conn: sqlite3.Connection, attempt_id: str, *, policy) -> dict[str, object]:
+    events = list_memory_retrieval_events(conn, attempt_id=attempt_id, limit=10000)
+    eval_events = evaluate_memory_retrieval_event_records(conn, events, policy=policy)
+    if not eval_events:
+        return {
+            "status": "pass",
+            "event_count": 0,
+            "average_score": 100,
+            "events": [],
+        }
+    status = "fail" if any(event.status == "fail" for event in eval_events) else (
+        "warn" if any(event.status == "warn" for event in eval_events) else "pass"
+    )
+    return {
+        "status": status,
+        "event_count": len(eval_events),
+        "average_score": round(sum(event.score for event in eval_events) / len(eval_events)),
+        "events": [
+            {
+                **asdict(event),
+                "selected_fact_ids": list(event.selected_fact_ids),
+                "missing_relevant_fact_ids": list(event.missing_relevant_fact_ids),
+                "issues": list(event.issues),
+                "warnings": list(event.warnings),
+                "selected_facts": [asdict(fact) for fact in event.selected_facts],
+            }
+            for event in eval_events
+        ],
+    }
 
 
 def _query_memory_facts_by_ids(conn: sqlite3.Connection, fact_ids: tuple[str, ...]) -> list[dict[str, object]]:
