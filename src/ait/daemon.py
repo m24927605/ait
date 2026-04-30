@@ -284,9 +284,9 @@ def _handle_client_safely(
 ) -> None:
     try:
         _handle_client(conn, db_lock, client, repo_root)
-    except Exception:
+    except Exception as exc:
         # Per-client errors must not crash the whole daemon.
-        pass
+        print(f"ait daemon client warning: {exc}", file=sys.stderr)
     finally:
         try:
             client.close()
@@ -336,9 +336,9 @@ def _verify_attempt_in_background(repo_root: Path, attempt_id: str) -> threading
     def run() -> None:
         try:
             verify_attempt(repo_root, attempt_id)
-        except Exception:
+        except Exception as exc:
             # Verification can be retried by explicit `ait attempt verify`.
-            pass
+            print(f"ait daemon verifier warning: {exc}", file=sys.stderr)
         finally:
             current = threading.current_thread()
             with _VERIFIER_THREADS_LOCK:

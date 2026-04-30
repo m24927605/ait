@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import socket
 import sys
@@ -12,7 +14,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from ait.daemon import run_accept_loop
+from ait.daemon import _handle_client_safely, run_accept_loop
 from ait.daemon_transport import bind_unix_socket, remove_socket_file
 from ait.db import (
     NewAttempt,
@@ -161,6 +163,18 @@ class DaemonConcurrencyTests(unittest.TestCase):
 
         self.assertFalse(thread.is_alive())
         self.assertTrue(stop_event.is_set())
+
+    def test_client_handler_logs_unexpected_failures(self) -> None:
+        server_sock, client_sock = socket.socketpair()
+        stderr = io.StringIO()
+        try:
+            with patch("ait.daemon._handle_client", side_effect=RuntimeError("client exploded")):
+                with contextlib.redirect_stderr(stderr):
+                    _handle_client_safely(self.conn, self._db_lock, server_sock, Path(self._tmp.name))
+        finally:
+            client_sock.close()
+
+        self.assertIn("ait daemon client warning: client exploded", stderr.getvalue())
 
 
     def test_duplicate_finished_event_schedules_verifier_once(self) -> None:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import sys
 import threading
 import time
@@ -45,6 +47,19 @@ class DaemonVerifierThreadTests(unittest.TestCase):
         self.assertFalse(joiner.is_alive())
         self.assertFalse(verifier.is_alive())
         self.assertTrue(finished.is_set())
+
+    def test_background_verifier_logs_failures(self) -> None:
+        def fake_verify(repo_root: Path, attempt_id: str) -> None:
+            del repo_root, attempt_id
+            raise RuntimeError("verify exploded")
+
+        stderr = io.StringIO()
+        with patch("ait.daemon.verify_attempt", fake_verify), contextlib.redirect_stderr(stderr):
+            verifier = _verify_attempt_in_background(Path("."), "repo:01ATTEMPT")
+            verifier.join(timeout=2.0)
+
+        self.assertFalse(verifier.is_alive())
+        self.assertIn("ait daemon verifier warning: verify exploded", stderr.getvalue())
 
 
 if __name__ == "__main__":
