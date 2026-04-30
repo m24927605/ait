@@ -10,7 +10,7 @@ import unicodedata
 import uuid
 
 from ait.db import connect_db, run_migrations, utc_now
-from ait.db.repositories import get_attempt_outcome
+from ait.db.repositories import NewMemoryFact, get_attempt_outcome, upsert_memory_fact
 from ait.memory_policy import (
     EXCLUDED_MARKER,
     MemoryPolicy,
@@ -443,6 +443,12 @@ def add_memory_candidates_for_attempt(repo_root: str | Path, attempt_result) -> 
             and outcome_class in {"succeeded", "promoted"}
             and candidate.confidence == "high"
         )
+        _upsert_memory_fact_for_candidate(
+            root,
+            attempt_id=attempt_id,
+            candidate=candidate,
+            durable=durable,
+        )
         notes.append(
             add_memory_note(
                 root,
@@ -452,6 +458,39 @@ def add_memory_candidates_for_attempt(repo_root: str | Path, attempt_result) -> 
             )
         )
     return tuple(notes)
+
+
+def _upsert_memory_fact_for_candidate(
+    repo_root: Path,
+    *,
+    attempt_id: str,
+    candidate: MemoryCandidate,
+    durable: bool,
+) -> None:
+    now = utc_now()
+    fact_id = f"{attempt_id}:memory-fact:{uuid.uuid5(uuid.NAMESPACE_URL, attempt_id + ':' + candidate.body).hex}"
+    conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+    try:
+        run_migrations(conn)
+        upsert_memory_fact(
+            conn,
+            NewMemoryFact(
+                id=fact_id,
+                kind=_memory_fact_kind(candidate.kind),
+                topic=candidate.topic,
+                body=candidate.body,
+                summary=_memory_fact_summary(candidate.body),
+                status="accepted" if durable else "candidate",
+                confidence=candidate.confidence if durable else "low",
+                source_attempt_id=attempt_id,
+                source_trace_ref=candidate.source_ref,
+                valid_from=now,
+                created_at=now,
+                updated_at=now,
+            ),
+        )
+    finally:
+        conn.close()
 
 
 def _attempt_result_outcome_class(repo_root: Path, attempt_id: str) -> str:
@@ -785,6 +824,22 @@ def _candidate_topic(kind: str) -> str:
         "failure": "failure",
         "open-question": "open-question",
     }.get(kind, "project-knowledge")
+
+
+def _memory_fact_kind(candidate_kind: str) -> str:
+    return {
+        "constraint": "rule",
+        "decision": "decision",
+        "workflow": "workflow",
+        "test": "workflow",
+        "failure": "failure",
+        "open-question": "current_state",
+    }.get(candidate_kind, "entity")
+
+
+def _memory_fact_summary(body: str) -> str:
+    compacted = " ".join(body.split())
+    return compacted[:160]
 
 
 def list_memory_notes(

@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 from ait.app import create_commit_for_attempt, create_attempt, create_intent, show_attempt
-from ait.db import connect_db, run_migrations
+from ait.db import connect_db, list_memory_facts, run_migrations
 from ait.db.repositories import update_attempt
 from ait.memory import (
     add_memory_note,
@@ -85,12 +85,19 @@ class MemoryTests(unittest.TestCase):
 
             notes = add_memory_candidates_for_attempt(repo_root, attempt_result)
             durable_notes = list_memory_notes(repo_root, topic="durable-memory")
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            self.addCleanup(conn.close)
+            facts = list_memory_facts(conn, status="accepted", kind="rule")
 
             self.assertEqual(1, len(notes))
             self.assertEqual(1, len(durable_notes))
+            self.assertEqual(1, len(facts))
             self.assertIn("kind=constraint", durable_notes[0].body)
             self.assertIn("status=accepted", durable_notes[0].body)
             self.assertIn("以後所有 API route 必須使用 zod 驗證", durable_notes[0].body)
+            self.assertIn("以後所有 API route 必須使用 zod 驗證", facts[0].body)
+            self.assertEqual(attempt_id, facts[0].source_attempt_id)
+            self.assertEqual("project-rule", facts[0].topic)
             self.assertNotIn("Token usage", durable_notes[0].body)
 
     def test_memory_candidates_keep_failed_attempts_as_candidates(self) -> None:
@@ -108,10 +115,17 @@ class MemoryTests(unittest.TestCase):
 
             notes = add_memory_candidates_for_attempt(repo_root, attempt_result)
             candidates = list_memory_notes(repo_root, topic="memory-candidate")
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            self.addCleanup(conn.close)
+            facts = list_memory_facts(conn, status="candidate")
 
             self.assertEqual(1, len(notes))
             self.assertEqual(1, len(candidates))
+            self.assertEqual(1, len(facts))
             self.assertIn("status=candidate", candidates[0].body)
+            self.assertEqual("candidate", facts[0].status)
+            self.assertEqual("low", facts[0].confidence)
+            self.assertEqual("rule", facts[0].kind)
             self.assertIn("部署流程", candidates[0].body)
             self.assertEqual((), list_memory_notes(repo_root, topic="durable-memory"))
 
