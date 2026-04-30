@@ -21,39 +21,48 @@ from __future__ import annotations
 
 import sqlite3
 
-from ait.db import update_intent_status
-
 _TERMINAL_STATUSES: frozenset[str] = frozenset({"finished", "abandoned", "superseded"})
 
 
 def refresh_intent_status(conn: sqlite3.Connection, intent_id: str) -> None:
     """Apply forward-only intent status transitions based on child attempts."""
-    row = conn.execute(
-        "SELECT status FROM intents WHERE id = ?",
-        (intent_id,),
-    ).fetchone()
-    if row is None:
-        return
+    with conn:
+        row = conn.execute(
+            "SELECT status FROM intents WHERE id = ?",
+            (intent_id,),
+        ).fetchone()
+        if row is None:
+            return
 
-    current = str(row["status"])
-    if current in _TERMINAL_STATUSES:
-        return
+        current = str(row["status"])
+        if current in _TERMINAL_STATUSES:
+            return
 
-    attempts = conn.execute(
-        """
-        SELECT reported_status, verified_status
-        FROM attempts
-        WHERE intent_id = ?
-        """,
-        (intent_id,),
-    ).fetchall()
+        attempts = conn.execute(
+            """
+            SELECT reported_status, verified_status
+            FROM attempts
+            WHERE intent_id = ?
+            """,
+            (intent_id,),
+        ).fetchall()
 
-    if any(str(item["verified_status"]) in {"succeeded", "promoted"} for item in attempts):
-        update_intent_status(conn, intent_id, "finished")
-        return
+        next_status: str | None = None
+        if any(str(item["verified_status"]) in {"succeeded", "promoted"} for item in attempts):
+            next_status = "finished"
+        elif current == "open" and any(
+            str(item["reported_status"]) == "running" for item in attempts
+        ):
+            next_status = "running"
 
-    if current == "open" and any(
-        str(item["reported_status"]) == "running" for item in attempts
-    ):
-        update_intent_status(conn, intent_id, "running")
-        return
+        if next_status is None:
+            return
+        conn.execute(
+            """
+            UPDATE intents
+            SET status = ?
+            WHERE id = ?
+              AND status NOT IN ('finished', 'abandoned', 'superseded')
+            """,
+            (next_status, intent_id),
+        )

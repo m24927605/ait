@@ -116,6 +116,18 @@ class IntentLifecycleForwardOnlyTests(unittest.TestCase):
 
         self.assertEqual("abandoned", self._intent_status("repo:01INTENT"))
 
+    def test_terminal_abandoned_intent_is_not_reopened_by_succeeded_attempt(self) -> None:
+        update_intent_status(self.conn, "repo:01INTENT", "abandoned")
+        self._seed_attempt(
+            "repo:01ATT1",
+            reported_status="finished",
+            verified_status="succeeded",
+        )
+
+        refresh_intent_status(self.conn, "repo:01INTENT")
+
+        self.assertEqual("abandoned", self._intent_status("repo:01INTENT"))
+
     def test_terminal_superseded_intent_is_not_mutated(self) -> None:
         update_intent_status(self.conn, "repo:01INTENT", "superseded")
         self._seed_attempt(
