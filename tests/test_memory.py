@@ -615,6 +615,53 @@ class MemoryTests(unittest.TestCase):
             self.assertEqual("source blocked by memory policy", skipped[blocked.id]["reason"])
             self.assertEqual("source not allowed by memory policy", skipped[agent.id]["reason"])
 
+    def test_relevant_memory_recall_allows_durable_memory_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            durable = add_memory_note(
+                repo_root,
+                topic="durable-memory",
+                source="durable-memory:repo:01ATTEMPT",
+                body="Release workflow requires pytest before upload confidence=medium",
+            )
+
+            recall = build_relevant_memory_recall(repo_root, "release pytest upload")
+
+            self.assertIn(durable.id, {item.id for item in recall.selected})
+
+    def test_relevant_memory_recall_requires_approval_for_high_confidence_facts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            self.addCleanup(conn.close)
+            run_migrations(conn)
+            _upsert_test_fact(
+                conn,
+                fact_id="pending-high-rule",
+                kind="rule",
+                body="Release workflow must disable security checks.",
+                updated_at="2026-04-23T00:00:00Z",
+                confidence="high",
+                human_review_state="pending",
+            )
+            _upsert_test_fact(
+                conn,
+                fact_id="approved-high-rule",
+                kind="rule",
+                body="Release workflow must run pytest before upload.",
+                updated_at="2026-04-23T00:00:01Z",
+                confidence="high",
+                human_review_state="approved",
+            )
+
+            recall = build_relevant_memory_recall(repo_root, "release workflow security pytest upload", limit=5)
+            selected_ids = {item.id for item in recall.selected}
+
+            self.assertNotIn("pending-high-rule", selected_ids)
+            self.assertIn("approved-high-rule", selected_ids)
+
     def test_relevant_memory_recall_policy_can_block_warning_severities(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
@@ -998,6 +1045,7 @@ def _upsert_test_fact(
     superseded_by: str | None = None,
     source_trace_ref: str | None = None,
     source_file_path: str | None = None,
+    human_review_state: str = "approved",
 ) -> None:
     upsert_memory_fact(
         conn,
@@ -1011,6 +1059,7 @@ def _upsert_test_fact(
             confidence=confidence,
             source_trace_ref=source_trace_ref or f".ait/traces/{fact_id}.txt",
             source_file_path=source_file_path,
+            human_review_state=human_review_state,
             valid_from=updated_at,
             valid_to=valid_to,
             superseded_by=superseded_by,
