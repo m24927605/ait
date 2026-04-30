@@ -256,14 +256,11 @@ def run_agent_command(
             shown = verify_attempt(root, attempt_id=attempt.attempt_id)
         else:
             shown = verify_attempt(root, attempt_id=attempt.attempt_id)
-        add_attempt_memory_note(root, shown)
+        _add_attempt_memory_note_with_warning(root, shown)
     except KeyboardInterrupt:
         effective_exit_code = 130
         shown = verify_attempt(root, attempt_id=attempt.attempt_id)
-        try:
-            add_attempt_memory_note(root, shown)
-        except Exception:
-            pass
+        _add_attempt_memory_note_with_warning(root, shown)
     try:
         refresh_run_reports(root, latest_attempt_id=attempt.attempt_id)
     except Exception:
@@ -278,6 +275,13 @@ def run_agent_command(
         command_stderr=completed.stderr if completed is not None and capture_command_output else None,
         attempt=shown,
     )
+
+
+def _add_attempt_memory_note_with_warning(repo_root: Path, shown: AttemptShowResult) -> None:
+    try:
+        add_attempt_memory_note(repo_root, shown)
+    except Exception as exc:
+        print(f"ait warning: add_attempt_memory_note failed: {exc}", file=sys.stderr)
 
 
 def _stdio_is_tty() -> bool:

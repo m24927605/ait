@@ -375,6 +375,27 @@ class RunnerTests(unittest.TestCase):
             self.assertIn("changed_files=agent.txt", notes[0].body)
             self.assertIn(result.attempt.commits[0]["commit_oid"], notes[0].body)
 
+    def test_run_agent_command_logs_attempt_memory_note_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            stderr = io.StringIO()
+
+            with (
+                patch("ait.runner.add_attempt_memory_note", side_effect=RuntimeError("memory write failed")),
+                patch("sys.stderr", stderr),
+            ):
+                result = run_agent_command(
+                    repo_root,
+                    intent_title="Memory warning",
+                    agent_id="shell:test",
+                    command=[sys.executable, "-c", "print('ok')"],
+                    capture_command_output=True,
+                )
+
+            self.assertEqual(0, result.exit_code)
+            self.assertIn("ait warning: add_attempt_memory_note failed: memory write failed", stderr.getvalue())
+
     def test_next_context_includes_relevant_attempt_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
@@ -680,6 +701,32 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual("succeeded", result.attempt.attempt["verified_status"])
             self.assertEqual(0, result.attempt.attempt["result_exit_code"])
             self.assertEqual([], result.attempt.commits)
+
+    def test_run_agent_command_logs_attempt_memory_note_failure_after_keyboard_interrupt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            stderr = io.StringIO()
+
+            with (
+                patch("ait.runner._stage_all_changes", side_effect=KeyboardInterrupt),
+                patch("ait.runner.add_attempt_memory_note", side_effect=RuntimeError("memory write failed")),
+                patch("sys.stderr", stderr),
+            ):
+                result = run_agent_command(
+                    repo_root,
+                    intent_title="Interrupted memory warning",
+                    adapter_name="claude-code",
+                    command=[
+                        sys.executable,
+                        "-c",
+                        "from pathlib import Path; Path('agent.txt').write_text('ok\\n')",
+                    ],
+                    commit_message="commit generated change",
+                )
+
+            self.assertEqual(130, result.exit_code)
+            self.assertIn("ait warning: add_attempt_memory_note failed: memory write failed", stderr.getvalue())
 
     def test_run_agent_command_commit_message_allows_no_change_session(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
