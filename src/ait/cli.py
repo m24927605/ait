@@ -1569,6 +1569,7 @@ def _memory_status_payload(repo_root: Path) -> dict[str, object]:
         if state_db_path.exists():
             lint_result = lint_memory_notes(repo_root)
             health = memory_health_from_lint(lint_result)
+            eval_report = evaluate_memory_retrievals(repo_root)
             status.update(
                 {
                     "health": health.status,
@@ -1577,6 +1578,9 @@ def _memory_status_payload(repo_root: Path) -> dict[str, object]:
                     "lint_error_count": health.error_count,
                     "lint_warning_count": health.warning_count,
                     "lint_info_count": health.info_count,
+                    "eval_status": eval_report.status,
+                    "eval_event_count": eval_report.event_count,
+                    "eval_average_score": eval_report.average_score,
                 }
             )
         else:
@@ -1589,6 +1593,9 @@ def _memory_status_payload(repo_root: Path) -> dict[str, object]:
                     "lint_error_count": 0,
                     "lint_warning_count": 0,
                     "lint_info_count": 0,
+                    "eval_status": "pass",
+                    "eval_event_count": 0,
+                    "eval_average_score": 100,
                 }
             )
         return status
@@ -1605,6 +1612,9 @@ def _memory_status_payload(repo_root: Path) -> dict[str, object]:
             "lint_error_count": 0,
             "lint_warning_count": 0,
             "lint_info_count": 0,
+            "eval_status": "unavailable",
+            "eval_event_count": 0,
+            "eval_average_score": 0,
         }
 
 
@@ -1937,6 +1947,14 @@ def _format_status(payload: dict[str, object]) -> str:
             f"info={memory.get('lint_info_count', 0)})"
         )
         lines.append(f"Memory imported sources: {len(imported) if isinstance(imported, list) else 0}")
+        lines.append(
+            "Memory eval: "
+            f"{memory.get('eval_status', 'unknown')} "
+            f"(events={memory.get('eval_event_count', 0)}, "
+            f"average_score={memory.get('eval_average_score', 0)})"
+        )
+        if memory.get("eval_status") in {"warn", "fail"}:
+            lines.append("Memory eval next: ait memory eval")
         if pending:
             lines.append("Memory pending:")
             lines.extend(f"- {path}" for path in pending)
@@ -1988,7 +2006,8 @@ def _format_status_all(payload: list[dict[str, object]]) -> str:
             f"path={item['path_wrapper_active']} "
             f"real_binary={item['real_agent_binary']} "
             f"memory={item.get('memory', {}).get('initialized', False) if isinstance(item.get('memory'), dict) else False} "
-            f"memory_health={item.get('memory', {}).get('health', 'unknown') if isinstance(item.get('memory'), dict) else 'unknown'}"
+            f"memory_health={item.get('memory', {}).get('health', 'unknown') if isinstance(item.get('memory'), dict) else 'unknown'} "
+            f"memory_eval={item.get('memory', {}).get('eval_status', 'unknown') if isinstance(item.get('memory'), dict) else 'unknown'}"
         )
         next_steps = item.get("next_steps", [])
         if next_steps:

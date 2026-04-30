@@ -12,6 +12,15 @@ from pathlib import Path
 from unittest.mock import patch
 
 from ait import cli
+from ait.db import (
+    connect_db,
+    insert_attempt,
+    insert_intent,
+    insert_memory_retrieval_event,
+    run_migrations,
+    upsert_memory_fact,
+)
+from ait.db.repositories import NewAttempt, NewIntent, NewMemoryFact, NewMemoryRetrievalEvent
 from ait.memory import add_memory_note, list_memory_notes
 
 
@@ -1047,6 +1056,42 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual("error", payload["memory"]["health"])
             self.assertEqual(1, payload["memory"]["lint_error_count"])
             self.assertGreaterEqual(payload["memory"]["lint_issue_count"], 1)
+            self.assertEqual("pass", payload["memory"]["eval_status"])
+            self.assertEqual(0, payload["memory"]["eval_event_count"])
+            self.assertEqual(100, payload["memory"]["eval_average_score"])
+
+    def test_status_reports_memory_eval_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            _seed_status_memory_eval(
+                repo_root,
+                fact_id="fact:rejected",
+                fact_status="rejected",
+                selected_fact_ids=("fact:rejected",),
+            )
+            json_stdout = io.StringIO()
+            text_stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "status", "--format", "json"]):
+                    with redirect_stdout(json_stdout):
+                        json_exit = cli.main()
+                with patch("sys.argv", ["ait", "status"]):
+                    with redirect_stdout(text_stdout):
+                        text_exit = cli.main()
+
+        payload = json.loads(json_stdout.getvalue())
+        text = text_stdout.getvalue()
+
+        self.assertEqual(0, json_exit)
+        self.assertEqual(0, text_exit)
+        self.assertEqual("fail", payload["memory"]["eval_status"])
+        self.assertEqual(1, payload["memory"]["eval_event_count"])
+        self.assertLess(payload["memory"]["eval_average_score"], 100)
+        self.assertIn("Memory eval: fail", text)
+        self.assertIn("Memory eval next: ait memory eval", text)
 
     def test_status_text_emits_one_time_automation_hint_to_stderr(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1417,6 +1462,74 @@ def _git_commit_initial(repo_root: Path) -> None:
     (repo_root / "README.md").write_text("initial\n", encoding="utf-8")
     subprocess.run(["git", "add", "README.md"], cwd=repo_root, check=True)
     subprocess.run(["git", "commit", "-m", "init"], cwd=repo_root, check=True, capture_output=True)
+
+
+def _seed_status_memory_eval(
+    repo_root: Path,
+    *,
+    fact_id: str,
+    fact_status: str,
+    selected_fact_ids: tuple[str, ...],
+) -> None:
+    conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+    try:
+        run_migrations(conn)
+        insert_intent(
+            conn,
+            NewIntent(
+                id="intent:status-memory-eval",
+                repo_id="repo",
+                title="Status memory eval",
+                created_at="2026-04-30T00:00:00Z",
+                created_by_actor_type="agent",
+                created_by_actor_id="codex:main",
+                trigger_source="cli",
+            ),
+        )
+        insert_attempt(
+            conn,
+            NewAttempt(
+                id="attempt:status-memory-eval",
+                intent_id="intent:status-memory-eval",
+                agent_id="codex:main",
+                workspace_ref=str(repo_root / ".ait" / "workspaces" / "attempt-status-memory-eval"),
+                base_ref_oid="abc123",
+                started_at="2026-04-30T00:01:00Z",
+                ownership_token="token",
+                reported_status="finished",
+                verified_status="succeeded",
+            ),
+        )
+        upsert_memory_fact(
+            conn,
+            NewMemoryFact(
+                id=fact_id,
+                kind="rule",
+                topic="release",
+                body="Release workflow must run pytest before publishing.",
+                summary="Run pytest before release",
+                status=fact_status,
+                confidence="high",
+                source_trace_ref=".ait/traces/release.txt",
+                valid_from="2026-04-30T00:00:00Z",
+                created_at="2026-04-30T00:00:00Z",
+                updated_at="2026-04-30T00:00:00Z",
+            ),
+        )
+        insert_memory_retrieval_event(
+            conn,
+            NewMemoryRetrievalEvent(
+                id="retrieval:status-memory-eval",
+                attempt_id="attempt:status-memory-eval",
+                query="release pytest workflow",
+                selected_fact_ids=selected_fact_ids,
+                ranker_version="hybrid-v1",
+                budget_chars=4000,
+                created_at="2026-04-30T00:02:00Z",
+            ),
+        )
+    finally:
+        conn.close()
 
 
 def _git_stdout(repo_root: Path, *args: str) -> str:
