@@ -1097,6 +1097,55 @@ class CliAdapterTests(unittest.TestCase):
         self.assertIn("- ait memory eval", text)
         self.assertIn("- ait graph --html", text)
 
+    def test_status_reports_last_background_report_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            report_dir = repo_root / ".ait" / "report"
+            report_dir.mkdir(parents=True)
+            status_path = report_dir / "status.json"
+            graph_path = report_dir / "graph.html"
+            graph_path.write_text("<!doctype html>\n", encoding="utf-8")
+            status_path.write_text(
+                json.dumps(
+                    {
+                        "generated_at": "2026-04-30T00:00:00Z",
+                        "repo_root": str(repo_root),
+                        "graph_html_path": str(graph_path),
+                        "memory_eval": {
+                            "status": "pass",
+                            "event_count": 0,
+                            "average_score": 100,
+                            "next_steps": [],
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            json_stdout = io.StringIO()
+            text_stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "status", "--format", "json"]):
+                    with redirect_stdout(json_stdout):
+                        json_exit = cli.main()
+                with patch("sys.argv", ["ait", "status"]):
+                    with redirect_stdout(text_stdout):
+                        text_exit = cli.main()
+
+        payload = json.loads(json_stdout.getvalue())
+        text = text_stdout.getvalue()
+        self.assertEqual(0, json_exit)
+        self.assertEqual(0, text_exit)
+        self.assertEqual(status_path.resolve(), Path(payload["memory"]["report"]["status_path"]).resolve())
+        self.assertEqual(graph_path.resolve(), Path(payload["memory"]["report"]["graph_html_path"]).resolve())
+        self.assertIn("Last report:", text)
+        self.assertIn("status.json", text)
+        self.assertIn("Graph report:", text)
+        self.assertIn("graph.html", text)
+
     def test_status_text_emits_one_time_automation_hint_to_stderr(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp) / "repo"

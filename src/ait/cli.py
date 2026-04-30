@@ -1565,6 +1565,7 @@ def _agent_cli_message(payload: dict[str, object]) -> str:
 def _memory_status_payload(repo_root: Path) -> dict[str, object]:
     try:
         status = agent_memory_status(repo_root).to_dict()
+        report_status = _report_status_payload(repo_root)
         state_db_path = repo_root / ".ait" / "state.sqlite3"
         if state_db_path.exists():
             lint_result = lint_memory_notes(repo_root)
@@ -1583,6 +1584,7 @@ def _memory_status_payload(repo_root: Path) -> dict[str, object]:
                     "eval_event_count": eval_report.event_count,
                     "eval_average_score": eval_report.average_score,
                     "eval_next_steps": eval_next_steps,
+                    "report": report_status,
                 }
             )
         else:
@@ -1600,6 +1602,7 @@ def _memory_status_payload(repo_root: Path) -> dict[str, object]:
                     "eval_event_count": 0,
                     "eval_average_score": 100,
                     "eval_next_steps": eval_next_steps,
+                    "report": report_status,
                 }
             )
         return status
@@ -1620,11 +1623,26 @@ def _memory_status_payload(repo_root: Path) -> dict[str, object]:
             "eval_event_count": 0,
             "eval_average_score": 0,
             "eval_next_steps": [],
+            "report": {},
         }
 
 
 def _memory_eval_next_steps(status: str) -> list[str]:
     return ["ait memory eval", "ait graph --html"] if status in {"warn", "fail"} else []
+
+
+def _report_status_payload(repo_root: Path) -> dict[str, object]:
+    status_path = repo_root / ".ait" / "report" / "status.json"
+    if not status_path.exists():
+        return {}
+    try:
+        payload = json.loads(status_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {"status_path": str(status_path)}
+    if isinstance(payload, dict):
+        payload.setdefault("status_path", str(status_path))
+        return payload
+    return {"status_path": str(status_path)}
 
 
 def _installation_payload() -> dict[str, object]:
@@ -1966,6 +1984,11 @@ def _format_status(payload: dict[str, object]) -> str:
         if eval_next_steps:
             lines.append("Memory eval next:")
             lines.extend(f"- {step}" for step in eval_next_steps)
+        report = memory.get("report", {})
+        if isinstance(report, dict) and report.get("status_path"):
+            lines.append(f"Last report: {report.get('status_path')}")
+            if report.get("graph_html_path"):
+                lines.append(f"Graph report: {report.get('graph_html_path')}")
         if pending:
             lines.append("Memory pending:")
             lines.extend(f"- {path}" for path in pending)

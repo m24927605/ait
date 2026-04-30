@@ -40,6 +40,14 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(1, len(result.attempt.commits))
             self.assertFalse(_git_stdout(Path(result.workspace_ref), "status", "--short"))
             self.assertTrue((repo_root / ".ait" / "memory-policy.json").exists())
+            status_path = repo_root / ".ait" / "report" / "status.json"
+            graph_path = repo_root / ".ait" / "report" / "graph.html"
+            report = json.loads(status_path.read_text(encoding="utf-8"))
+            self.assertTrue(status_path.exists())
+            self.assertTrue(graph_path.exists())
+            self.assertEqual(result.attempt_id, report["latest_attempt"]["attempt_id"])
+            self.assertEqual(graph_path.resolve(), Path(report["graph_html_path"]).resolve())
+            self.assertIn("memory_eval", report)
 
     def test_run_agent_command_self_repairs_memory_policy_and_imports_agent_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

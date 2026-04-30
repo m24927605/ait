@@ -31,6 +31,7 @@ from ait.memory import (
 )
 from ait.memory_policy import EXCLUDED_MARKER, init_memory_policy, load_memory_policy, transcript_excluded
 from ait.redaction import redact_text
+from ait.run_report import refresh_run_reports
 from ait.transcript import normalize_transcript, strip_terminal_control
 from ait.workspace import WorkspaceError, create_attempt_commit
 
@@ -230,6 +231,10 @@ def run_agent_command(
             add_attempt_memory_note(root, shown)
         except Exception:
             pass
+    try:
+        refresh_run_reports(root, latest_attempt_id=attempt.attempt_id)
+    except Exception:
+        pass
 
     return RunResult(
         intent_id=intent.intent_id,
