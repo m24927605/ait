@@ -20,6 +20,7 @@ class HookTests(unittest.TestCase):
             self.assertTrue(hook_path.stat().st_mode & 0o111)
             content = hook_path.read_text(encoding="utf-8")
             self.assertIn("ait post-rewrite hook", content)
+            self.assertIn('>> "$REPO_ROOT/.ait/post-rewrite.last"', content)
 
     def test_install_post_rewrite_hook_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -71,6 +72,34 @@ class HookTests(unittest.TestCase):
             hook_path = install_post_rewrite_hook(repo_root)
 
             self.assertEqual(hook_path.parent.resolve(), custom_hooks.resolve())
+
+    def test_post_rewrite_hook_appends_not_overwrites(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _git(repo_root, "init")
+            _git(repo_root, "config", "user.email", "test@example.com")
+            _git(repo_root, "config", "user.name", "Test User")
+            install_post_rewrite_hook(repo_root)
+            tracked = repo_root / "tracked.txt"
+            tracked.write_text("v1\n", encoding="utf-8")
+            _git(repo_root, "add", "tracked.txt")
+            _git(repo_root, "commit", "-m", "tracked v1")
+
+            for value in ("v2", "v3"):
+                tracked.write_text(f"{value}\n", encoding="utf-8")
+                _git(repo_root, "add", "tracked.txt")
+                _git(repo_root, "commit", "--amend", "-m", f"tracked {value}")
+
+            rewrite_path = repo_root / ".ait" / "post-rewrite.last"
+            mappings = [
+                line
+                for line in rewrite_path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+
+            self.assertEqual(2, len(mappings))
+            for mapping in mappings:
+                self.assertEqual(2, len(mapping.split()))
 
 
 def _git(repo_root: Path, *args: str) -> None:
