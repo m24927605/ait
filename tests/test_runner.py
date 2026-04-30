@@ -438,7 +438,7 @@ class RunnerTests(unittest.TestCase):
             self.assertIn("Billing adapter retry path", copied)
             self.assertIn("changed_files=billing_retry.py", copied)
 
-    def test_run_agent_command_adds_failed_attempt_memory_note(self) -> None:
+    def test_run_agent_command_does_not_add_failed_attempt_memory_note(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
             _init_git_repo(repo_root)
@@ -453,11 +453,7 @@ class RunnerTests(unittest.TestCase):
             notes = list_memory_notes(repo_root, topic="attempt-memory")
 
             self.assertEqual(5, result.exit_code)
-            self.assertEqual(1, len(notes))
-            self.assertEqual(f"attempt-memory:{result.attempt_id}", notes[0].source)
-            self.assertIn("confidence=advisory", notes[0].body)
-            self.assertIn("verified_status=failed", notes[0].body)
-            self.assertIn("exit_code=5", notes[0].body)
+            self.assertEqual((), notes)
 
     def test_failed_attempt_memory_is_not_injected_into_default_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -405,6 +405,8 @@ def add_attempt_memory_note(repo_root: str | Path, attempt_result) -> MemoryNote
     commits = tuple(str(commit.get("commit_oid")) for commit in getattr(attempt_result, "commits", []) if commit.get("commit_oid"))
     intent = _attempt_memory_intent_fields(root, str(attempt.get("intent_id") or ""))
     verified_status = str(attempt.get("verified_status") or "pending")
+    if verified_status in {"failed", "failed_interrupted", "needs_review"}:
+        return None
     outcome = getattr(attempt_result, "outcome", None) or {}
     outcome_class = str(outcome.get("outcome_class") or "unclassified") if isinstance(outcome, dict) else "unclassified"
     outcome_confidence = str(outcome.get("confidence") or "") if isinstance(outcome, dict) else ""

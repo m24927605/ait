@@ -734,6 +734,25 @@ class MemoryTests(unittest.TestCase):
             self.assertEqual(f"attempt-memory:{attempt_id}", notes[0].source)
             self.assertIn("changed_files=src/app.py", notes[0].body)
 
+    def test_add_attempt_memory_note_skips_failed_attempt_source_side(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            attempt_id = _record_trace_attempt(
+                repo_root,
+                title="Failed attempt memory",
+                trace_text="failure should not become reusable attempt memory",
+                verified_status="failed",
+                result_exit_code=5,
+            )
+
+            shown = show_attempt(repo_root, attempt_id=attempt_id)
+            note = add_attempt_memory_note(repo_root, shown)
+            notes = list_memory_notes(repo_root, topic="attempt-memory")
+
+            self.assertIsNone(note)
+            self.assertEqual((), notes)
+
     def test_memory_filters_attempts_by_path_and_promoted_status(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
