@@ -282,6 +282,103 @@ class AppFlowTests(unittest.TestCase):
             self.assertEqual("", porcelain)
             self.assertEqual("promoted", promoted.attempt["verified_status"])
 
+    def test_verify_treats_squash_equivalent_promotion_as_promoted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            original_branch = _git_stdout(repo_root, "symbolic-ref", "--short", "HEAD")
+            base_oid = _git_stdout(repo_root, "rev-parse", "--verify", "HEAD")
+
+            intent = create_intent(repo_root, title="Squash", description=None, kind="chore")
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+            worktree = Path(attempt.workspace_ref)
+            _git(worktree, "config", "user.email", "test@example.com")
+            _git(worktree, "config", "user.name", "Test User")
+            (worktree / "squash_a.py").write_text("a = 1\n", encoding="utf-8")
+            _git(worktree, "add", "squash_a.py")
+            create_commit_for_attempt(
+                repo_root,
+                attempt_id=attempt.attempt_id,
+                message="attempt commit 1",
+            )
+            (worktree / "squash_b.py").write_text("b = 2\n", encoding="utf-8")
+            _git(worktree, "add", "squash_b.py")
+            create_commit_for_attempt(
+                repo_root,
+                attempt_id=attempt.attempt_id,
+                message="attempt commit 2",
+            )
+
+            _git(repo_root, "checkout", "-b", "squashed", base_oid)
+            (repo_root / "squash_a.py").write_text("a = 1\n", encoding="utf-8")
+            (repo_root / "squash_b.py").write_text("b = 2\n", encoding="utf-8")
+            _git(repo_root, "add", "squash_a.py", "squash_b.py")
+            _git(repo_root, "commit", "-m", "squashed equivalent")
+            _git(repo_root, "checkout", original_branch)
+
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            try:
+                update_attempt(
+                    conn,
+                    attempt.attempt_id,
+                    reported_status="finished",
+                    ended_at="2026-04-23T00:10:00Z",
+                    result_exit_code=0,
+                    result_promotion_ref="refs/heads/squashed",
+                )
+            finally:
+                conn.close()
+
+            verified = verify_attempt(repo_root, attempt_id=attempt.attempt_id)
+
+            self.assertEqual("promoted", verified.attempt["verified_status"])
+
+    def test_verify_treats_cherry_pick_conflict_resolution_as_promoted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            original_branch = _git_stdout(repo_root, "symbolic-ref", "--short", "HEAD")
+            base_oid = _git_stdout(repo_root, "rev-parse", "--verify", "HEAD")
+
+            intent = create_intent(repo_root, title="Cherry", description=None, kind="chore")
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+            worktree = Path(attempt.workspace_ref)
+            _git(worktree, "config", "user.email", "test@example.com")
+            _git(worktree, "config", "user.name", "Test User")
+            (worktree / "README.md").write_text("attempt version\n", encoding="utf-8")
+            _git(worktree, "add", "README.md")
+            create_commit_for_attempt(
+                repo_root,
+                attempt_id=attempt.attempt_id,
+                message="attempt conflict resolution",
+            )
+
+            _git(repo_root, "checkout", "-b", "cherry-resolved", base_oid)
+            (repo_root / "README.md").write_text("target version\n", encoding="utf-8")
+            _git(repo_root, "add", "README.md")
+            _git(repo_root, "commit", "-m", "target conflict")
+            (repo_root / "README.md").write_text("attempt version\n", encoding="utf-8")
+            _git(repo_root, "add", "README.md")
+            _git(repo_root, "commit", "-m", "manual conflict resolution")
+            _git(repo_root, "checkout", original_branch)
+
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            try:
+                update_attempt(
+                    conn,
+                    attempt.attempt_id,
+                    reported_status="finished",
+                    ended_at="2026-04-23T00:10:00Z",
+                    result_exit_code=0,
+                    result_promotion_ref="refs/heads/cherry-resolved",
+                )
+            finally:
+                conn.close()
+
+            verified = verify_attempt(repo_root, attempt_id=attempt.attempt_id)
+
+            self.assertEqual("promoted", verified.attempt["verified_status"])
+
     def test_promote_to_head_branch_refuses_when_main_working_tree_dirty(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

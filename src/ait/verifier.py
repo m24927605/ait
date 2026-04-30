@@ -26,6 +26,9 @@ from ait.workspace import (
     commit_stats,
     list_attempt_commit_oids,
     ref_contains_commits,
+    ref_head_oid,
+    ref_matches_cumulative_patch,
+    ref_matches_commit_patches,
 )
 
 
@@ -137,6 +140,23 @@ def _determine_verified_status(repo_root: Path, intent_status: str, attempt, evi
         if intent_status == "abandoned":
             return "failed"
         if commit_oids and ref_contains_commits(repo_root, attempt.result_promotion_ref, commit_oids):
+            return "promoted"
+        if ref_matches_commit_patches(
+            repo_root,
+            attempt.result_promotion_ref,
+            base_ref_oid=attempt.base_ref_oid,
+            commit_oids=commit_oids,
+        ):
+            return "promoted"
+        if commit_oids and ref_matches_cumulative_patch(
+            repo_root,
+            attempt.result_promotion_ref,
+            base_ref_oid=attempt.base_ref_oid,
+            attempt_head_oid=commit_oids[-1],
+        ):
+            return "promoted"
+        promotion_oid = ref_head_oid(repo_root, attempt.result_promotion_ref)
+        if not commit_oids and promotion_oid and promotion_oid != attempt.base_ref_oid:
             return "promoted"
         return "failed"
     return "succeeded"

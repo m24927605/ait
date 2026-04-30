@@ -12,6 +12,7 @@ from ait.workspace import (
     get_attempt_worktree_name,
     get_base_ref,
     get_workspaces_root,
+    ref_contains_commits,
 )
 
 
@@ -97,6 +98,14 @@ class WorkspaceTests(unittest.TestCase):
                     attempt_id="repo:01ARZ3NDEKTSV4RRFFQ69G5FAA",
                     ordinal=1,
                 )
+
+    def test_ref_contains_commits_returns_false_for_empty_commit_list(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            branch = _git_stdout(repo_root, "symbolic-ref", "--quiet", "HEAD")
+
+            self.assertFalse(ref_contains_commits(repo_root, branch, ()))
 
 
 def _init_git_repo(repo_root: Path) -> None:

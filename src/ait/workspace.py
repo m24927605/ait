@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import shutil
 import subprocess
 
 
@@ -98,14 +99,18 @@ def create_attempt_workspace(
             f"attempt workspace path already exists: {location.worktree_path}"
         )
 
-    _git_run(
-        root,
-        "worktree",
-        "add",
-        "--detach",
-        str(location.worktree_path),
-        base_ref_oid,
-    )
+    try:
+        _git_run(
+            root,
+            "worktree",
+            "add",
+            "--detach",
+            str(location.worktree_path),
+            base_ref_oid,
+        )
+    except WorkspaceError:
+        _cleanup_failed_worktree_add(root, location.worktree_path)
+        raise
 
     return AttemptWorkspaceResult(
         attempt_id=attempt_id,
@@ -117,6 +122,12 @@ def create_attempt_workspace(
         base_ref_oid=base_ref_oid,
         base_ref_name=base_ref_name,
     )
+
+
+def _cleanup_failed_worktree_add(repo_root: Path, worktree_path: Path) -> None:
+    _git_run(repo_root, "worktree", "prune", allow_failure=True)
+    if worktree_path.exists():
+        shutil.rmtree(worktree_path, ignore_errors=True)
 
 
 def remove_attempt_workspace(workspace_ref: str | Path) -> None:
@@ -189,8 +200,10 @@ def commit_stats(
 
 
 def ref_contains_commits(repo_root: str | Path, ref_name: str, commit_oids: tuple[str, ...]) -> bool:
+    if not commit_oids:
+        return False
     root = Path(repo_root).resolve()
-    ref_oid = _git_stdout(root, "rev-parse", "--verify", ref_name, allow_failure=True)
+    ref_oid = ref_head_oid(root, ref_name)
     if not ref_oid:
         return False
     for commit_oid in commit_oids:
@@ -198,6 +211,100 @@ def ref_contains_commits(repo_root: str | Path, ref_name: str, commit_oids: tupl
         if merge_base != commit_oid:
             return False
     return True
+
+
+def ref_head_oid(repo_root: str | Path, ref_name: str) -> str | None:
+    root = Path(repo_root).resolve()
+    return _git_stdout(root, "rev-parse", "--verify", ref_name, allow_failure=True) or None
+
+
+def ref_matches_commit_patches(
+    repo_root: str | Path,
+    ref_name: str,
+    *,
+    base_ref_oid: str,
+    commit_oids: tuple[str, ...],
+) -> bool:
+    if not commit_oids:
+        return False
+    root = Path(repo_root).resolve()
+    ref_oid = ref_head_oid(root, ref_name)
+    if not ref_oid:
+        return False
+    attempt_patch_ids = {
+        patch_id
+        for commit_oid in commit_oids
+        if (patch_id := _commit_patch_id(root, commit_oid))
+    }
+    if not attempt_patch_ids:
+        return False
+    ref_commits = _git_stdout(
+        root,
+        "rev-list",
+        "--reverse",
+        f"{base_ref_oid}..{ref_name}",
+        allow_failure=True,
+    )
+    ref_patch_ids = {
+        patch_id
+        for commit_oid in ref_commits.splitlines()
+        if (patch_id := _commit_patch_id(root, commit_oid.strip()))
+    }
+    return attempt_patch_ids.issubset(ref_patch_ids)
+
+
+def ref_matches_cumulative_patch(
+    repo_root: str | Path,
+    ref_name: str,
+    *,
+    base_ref_oid: str,
+    attempt_head_oid: str,
+) -> bool:
+    root = Path(repo_root).resolve()
+    ref_oid = ref_head_oid(root, ref_name)
+    if not ref_oid:
+        return False
+    attempt_patch_id = _diff_patch_id(root, base_ref_oid, attempt_head_oid)
+    ref_patch_id = _diff_patch_id(root, base_ref_oid, ref_name)
+    return bool(attempt_patch_id and ref_patch_id and attempt_patch_id == ref_patch_id)
+
+
+def _commit_patch_id(repo_root: Path, commit_oid: str) -> str | None:
+    if not commit_oid:
+        return None
+    show = _git_run(repo_root, "show", "--format=", commit_oid, allow_failure=True)
+    if show.returncode != 0 or not show.stdout.strip():
+        return None
+    patch_id = subprocess.run(
+        ["git", "patch-id", "--stable"],
+        cwd=repo_root,
+        input=show.stdout,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if patch_id.returncode != 0 or not patch_id.stdout.strip():
+        return None
+    return patch_id.stdout.split()[0]
+
+
+def _diff_patch_id(repo_root: Path, base_oid: str, target_ref: str) -> str | None:
+    if not base_oid or not target_ref:
+        return None
+    diff = _git_run(repo_root, "diff", f"{base_oid}..{target_ref}", allow_failure=True)
+    if diff.returncode != 0 or not diff.stdout.strip():
+        return None
+    patch_id = subprocess.run(
+        ["git", "patch-id", "--stable"],
+        cwd=repo_root,
+        input=diff.stdout,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if patch_id.returncode != 0 or not patch_id.stdout.strip():
+        return None
+    return patch_id.stdout.split()[0]
 
 
 def update_ref_to_workspace_head(repo_root: str | Path, ref_name: str, workspace_ref: str | Path) -> str:
