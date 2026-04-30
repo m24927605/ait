@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import io
+import json
 import subprocess
 import sys
 import tempfile
 import unittest
-import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from ait.db import connect_db, list_memory_retrieval_events
@@ -116,6 +118,39 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual("failed", result.attempt.attempt["verified_status"])
             self.assertEqual("failed_infra", result.attempt.outcome["outcome_class"])
             self.assertEqual(1, result.attempt.evidence_summary["observed_commands_run"])
+
+    def test_run_agent_command_continues_local_only_when_daemon_does_not_start(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            stderr = io.StringIO()
+
+            with (
+                patch(
+                    "ait.runner.start_daemon",
+                    return_value=SimpleNamespace(
+                        running=False,
+                        socket_path=repo_root / ".ait" / "daemon.sock",
+                    ),
+                ),
+                patch("sys.stderr", stderr),
+            ):
+                result = run_agent_command(
+                    repo_root,
+                    intent_title="Daemon unavailable",
+                    command=[
+                        sys.executable,
+                        "-c",
+                        "from pathlib import Path; Path('local-only.txt').write_text('ok\\n')",
+                    ],
+                    capture_command_output=True,
+                )
+
+            self.assertEqual(0, result.exit_code)
+            self.assertEqual("finished", result.attempt.attempt["reported_status"])
+            self.assertEqual("succeeded", result.attempt.attempt["verified_status"])
+            self.assertTrue((Path(result.workspace_ref) / "local-only.txt").exists())
+            self.assertIn("continuing in local-only mode", stderr.getvalue())
 
     def test_run_agent_command_can_capture_command_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -55,6 +55,29 @@ class _PtyCompletedProcess:
     stderr: str = ""
 
 
+class _LocalRunHarness:
+    def __init__(self, repo_root: Path, attempt_id: str) -> None:
+        self._repo_root = repo_root
+        self._attempt_id = attempt_id
+
+    def __enter__(self) -> _LocalRunHarness:
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+        return False
+
+    def record_tool(self, **kwargs: object) -> None:
+        del kwargs
+
+    def finish(self, *, exit_code: int, raw_trace_ref: str | None = None) -> None:
+        _finish_attempt_locally(
+            self._repo_root,
+            self._attempt_id,
+            exit_code=exit_code,
+            raw_trace_ref=raw_trace_ref,
+        )
+
+
 def run_agent_command(
     repo_root: str | Path,
     *,
@@ -81,8 +104,13 @@ def run_agent_command(
     init_memory_policy(root)
     ensure_agent_memory_imported(root)
     daemon = start_daemon(root)
+    local_only = False
     if not daemon.running:
-        raise RuntimeError(f"ait daemon did not start at {daemon.socket_path}")
+        local_only = True
+        print(
+            f"ait warning: daemon did not start at {daemon.socket_path}; continuing in local-only mode",
+            file=sys.stderr,
+        )
 
     intent = create_intent(
         root,
@@ -121,16 +149,21 @@ def run_agent_command(
     should_capture_tty = not should_capture_output and _stdio_is_tty()
     raw_trace_ref: str | None = None
     raw_trace_text: str = ""
-    with AitHarness.open(
-        attempt_id=attempt.attempt_id,
-        ownership_token=attempt.ownership_token,
-        socket_path=daemon.socket_path,
-        agent={
-            "agent_id": resolved_agent_id,
-            "harness": resolved_agent_id.split(":", 1)[0],
-            "harness_version": "ait-run",
-        },
-    ) as harness:
+    harness_context = (
+        _LocalRunHarness(root, attempt.attempt_id)
+        if local_only
+        else AitHarness.open(
+            attempt_id=attempt.attempt_id,
+            ownership_token=attempt.ownership_token,
+            socket_path=daemon.socket_path,
+            agent={
+                "agent_id": resolved_agent_id,
+                "harness": resolved_agent_id.split(":", 1)[0],
+                "harness_version": "ait-run",
+            },
+        )
+    )
+    with harness_context as harness:
         try:
             if should_capture_tty:
                 completed = _run_command_with_pty_transcript(command, cwd=workspace, env=env)
