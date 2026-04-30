@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import threading
 import time
 import unittest
@@ -18,6 +19,7 @@ from ait.db import (
     insert_intent,
     run_migrations,
 )
+from ait.events import reap_stale_attempts
 
 
 class ReaperLoopTests(unittest.TestCase):
@@ -125,6 +127,84 @@ class ReaperLoopTests(unittest.TestCase):
         thread.join(timeout=1.0)
 
         self.assertFalse(thread.is_alive())
+
+    def test_reaper_waits_for_concurrent_writer_before_reading_stale_attempts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "state.sqlite3"
+            seed = connect_db(db_path)
+            try:
+                run_migrations(seed)
+                insert_intent(
+                    seed,
+                    NewIntent(
+                        id="repo:01FILEINTENT",
+                        repo_id="repo",
+                        title="File-backed reaper",
+                        created_at="2026-04-23T00:00:00Z",
+                        created_by_actor_type="agent",
+                        created_by_actor_id="codex:worker",
+                        trigger_source="cli",
+                    ),
+                )
+                insert_attempt(
+                    seed,
+                    NewAttempt(
+                        id="repo:01FILEATTEMPT",
+                        intent_id="repo:01FILEINTENT",
+                        agent_id="codex:worker",
+                        workspace_ref="/tmp/reaper-file-backed",
+                        base_ref_oid="0" * 40,
+                        started_at="2026-04-23T00:00:00Z",
+                        heartbeat_at="2000-01-01T00:00:00Z",
+                        ownership_token="token",
+                        reported_status="running",
+                    ),
+                )
+            finally:
+                seed.close()
+
+            writer = connect_db(db_path)
+            reaper_conn = connect_db(db_path, check_same_thread=False)
+            result: list[tuple[str, ...]] = []
+            try:
+                writer.execute("BEGIN IMMEDIATE")
+                writer.execute(
+                    """
+                    UPDATE attempts
+                    SET heartbeat_at = ?
+                    WHERE id = ?
+                    """,
+                    ("2026-04-23T00:00:10Z", "repo:01FILEATTEMPT"),
+                )
+
+                thread = threading.Thread(
+                    target=lambda: result.append(
+                        reap_stale_attempts(
+                            reaper_conn,
+                            now="2026-04-23T00:00:10Z",
+                            heartbeat_ttl_seconds=1,
+                        )
+                    ),
+                    daemon=True,
+                )
+                thread.start()
+                time.sleep(0.1)
+                self.assertTrue(thread.is_alive())
+
+                writer.commit()
+                thread.join(timeout=2.0)
+                self.assertFalse(thread.is_alive())
+                self.assertEqual([()], result)
+
+                attempt = get_attempt(reaper_conn, "repo:01FILEATTEMPT")
+                assert attempt is not None
+                self.assertEqual("running", attempt.reported_status)
+                self.assertEqual("pending", attempt.verified_status)
+            finally:
+                if writer.in_transaction:
+                    writer.rollback()
+                writer.close()
+                reaper_conn.close()
 
     def _insert_running_attempt(self, *, attempt_id: str, heartbeat_at: str) -> None:
         insert_attempt(
