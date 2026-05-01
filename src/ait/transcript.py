@@ -100,6 +100,6 @@ def _is_codex_noise(line: str) -> bool:
 
 
 def _dedupe_repeated_words(line: str) -> str:
-    line = re.sub(r"\b(Working)(?:\1)+\b", r"\1", line)
-    line = re.sub(r"\b(Starting)(?:\1)+\b", r"\1", line)
+    for word in ("Working", "Starting", "Generating", "Loading", "Thinking"):
+        line = re.sub(rf"\b({word})(?:\1)+\b", r"\1", line)
     return line

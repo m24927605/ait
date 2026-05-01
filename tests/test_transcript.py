@@ -26,6 +26,16 @@ class TranscriptTests(unittest.TestCase):
         self.assertIn("我是 Codex", normalized)
         self.assertIn("codex resume 019dd9ba", normalized)
 
+    def test_codex_normalization_dedupes_common_progress_words(self) -> None:
+        raw = "GeneratingGenerating\nLoadingLoading\nThinkingThinking\nanswer\n"
+
+        normalized = normalize_transcript(raw, adapter="codex")
+
+        self.assertNotIn("GeneratingGenerating", normalized)
+        self.assertNotIn("LoadingLoading", normalized)
+        self.assertNotIn("ThinkingThinking", normalized)
+        self.assertIn("answer", normalized)
+
 
 if __name__ == "__main__":
     unittest.main()
