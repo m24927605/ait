@@ -14,7 +14,7 @@ import sqlite3
 
 from ait.db import connect_db, list_memory_retrieval_events, utc_now
 
-from ait.memory_eval import evaluate_memory_retrieval_event_records
+from ait.memory.eval import evaluate_memory_retrieval_event_records
 
 from ait.memory_policy import load_memory_policy
 

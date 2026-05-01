@@ -33,7 +33,7 @@ from ait.memory import (
     list_memory_notes,
     memory_health_from_lint,
 )
-from ait.memory_eval import evaluate_memory_retrievals, render_memory_eval_report
+from ait.memory.eval import evaluate_memory_retrievals, render_memory_eval_report
 from ait.memory_policy import load_memory_policy
 from ait.query import QueryError, execute_query, list_shortcut_expression, parse_blame_target
 from ait.repo import resolve_repo_root

@@ -72,7 +72,7 @@ from ait.memory import (
     render_memory_lint_result,
     search_repo_memory,
 )
-from ait.memory_eval import evaluate_memory_retrievals, render_memory_eval_report
+from ait.memory.eval import evaluate_memory_retrievals, render_memory_eval_report
 from ait.memory_policy import init_memory_policy, load_memory_policy
 from ait.query import QueryError, blame_path, execute_query, list_shortcut_expression, parse_blame_target
 from ait.reconcile import reconcile_repo

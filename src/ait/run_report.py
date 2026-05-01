@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ait.app import show_attempt
 from ait.db.core import utc_now
-from ait.memory_eval import evaluate_memory_retrievals
+from ait.memory.eval import evaluate_memory_retrievals
 from ait.report import build_work_graph, write_work_graph_html
 from ait.repo import resolve_repo_root
 

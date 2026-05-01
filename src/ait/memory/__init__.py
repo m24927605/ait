@@ -5,6 +5,14 @@ from .candidates import (
     add_memory_candidates_for_attempt,
     extract_memory_candidates,
 )
+from .eval import (
+    MemoryEvalEvent,
+    MemoryEvalFact,
+    MemoryEvalReport,
+    evaluate_memory_retrieval_event_records,
+    evaluate_memory_retrievals,
+    render_memory_eval_report,
+)
 from .importers import (
     AGENT_MEMORY_CANDIDATES,
     agent_memory_status,
@@ -51,6 +59,9 @@ __all__ = [
     "AgentMemoryStatus",
     "MemoryAttempt",
     "MemoryCandidate",
+    "MemoryEvalEvent",
+    "MemoryEvalFact",
+    "MemoryEvalReport",
     "MemoryHealth",
     "MemoryImportResult",
     "MemoryLintFix",
@@ -69,6 +80,8 @@ __all__ = [
     "build_repo_memory",
     "build_repo_memory_with_connection",
     "ensure_agent_memory_imported",
+    "evaluate_memory_retrieval_event_records",
+    "evaluate_memory_retrievals",
     "extract_memory_candidates",
     "import_agent_memory",
     "lint_memory_notes",
@@ -76,6 +89,7 @@ __all__ = [
     "memory_health_from_lint",
     "remove_memory_note",
     "render_memory_lint_result",
+    "render_memory_eval_report",
     "render_memory_search_results",
     "render_relevant_memory_recall",
     "render_repo_memory_text",

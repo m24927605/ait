@@ -1,49 +1,23 @@
 from __future__ import annotations
 
-from dataclasses import asdict
-from datetime import UTC, datetime
 import hashlib
-import json
-import math
 from pathlib import Path
 import re
-import sqlite3
-import unicodedata
-import uuid
 
-from ait.db import connect_db, insert_memory_retrieval_event, run_migrations, utc_now
-from ait.db.repositories import NewMemoryFact, NewMemoryRetrievalEvent, upsert_memory_fact
 from ait.memory_policy import (
-    EXCLUDED_MARKER,
-    MemoryPolicy,
-    default_memory_policy,
     load_memory_policy,
     path_excluded,
-    recall_source_allowed,
-    recall_source_blocked,
-    transcript_excluded,
 )
-from ait.redaction import has_redactions, redact_text
 from ait.repo import resolve_repo_root
 from ait.workspace import commit_message
 
 from .models import (
-    AgentMemoryStatus,
-    MemoryAttempt,
     MemoryCandidate,
-    MemoryHealth,
-    MemoryImportResult,
-    MemoryLintFix,
-    MemoryLintIssue,
-    MemoryLintResult,
     MemoryNote,
-    MemorySearchResult,
-    RelevantMemoryItem,
-    RelevantMemoryRecall,
-    RepoMemory,
 )
 
 from .common import _read_trace_text, _trace_excluded
+from .facts import upsert_memory_fact_for_candidate
 from .notes import _active_memory_source_exists, add_memory_note_with_repository
 from .repository import MemoryRepository, open_memory_repository
 
@@ -141,7 +115,7 @@ def _add_memory_candidates_for_attempt(repo: MemoryRepository, attempt_result) -
             and candidate.confidence == "high"
             and _candidate_corroborated(candidate, corroboration_messages)
         )
-        _upsert_memory_fact_for_candidate(
+        upsert_memory_fact_for_candidate(
             repo,
             attempt_id=attempt_id,
             candidate=candidate,
@@ -156,34 +130,6 @@ def _add_memory_candidates_for_attempt(repo: MemoryRepository, attempt_result) -
             )
         )
     return tuple(notes)
-
-def _upsert_memory_fact_for_candidate(
-    repo: MemoryRepository,
-    *,
-    attempt_id: str,
-    candidate: MemoryCandidate,
-    durable: bool,
-) -> None:
-    now = utc_now()
-    fact_id = f"{attempt_id}:memory-fact:{uuid.uuid5(uuid.NAMESPACE_URL, attempt_id + ':' + candidate.body).hex}"
-    repo.upsert_candidate_fact(
-        NewMemoryFact(
-            id=fact_id,
-            kind=_memory_fact_kind(candidate.kind),
-            topic=candidate.topic,
-            body=candidate.body,
-            summary=_memory_fact_summary(candidate.body),
-            status="accepted" if durable else "candidate",
-            confidence="medium" if durable else "low",
-            source_attempt_id=attempt_id,
-            source_trace_ref=candidate.source_ref,
-            human_review_state="pending" if durable else "pending",
-            provenance="commit" if durable else "transcript",
-            valid_from=now,
-            created_at=now,
-            updated_at=now,
-        )
-    )
 
 def extract_memory_candidates(
     text: str,
@@ -375,17 +321,3 @@ def _candidate_topic(kind: str) -> str:
         "failure": "failure",
         "open-question": "open-question",
     }.get(kind, "project-knowledge")
-
-def _memory_fact_kind(candidate_kind: str) -> str:
-    return {
-        "constraint": "rule",
-        "decision": "decision",
-        "workflow": "workflow",
-        "test": "workflow",
-        "failure": "failure",
-        "open-question": "current_state",
-    }.get(candidate_kind, "entity")
-
-def _memory_fact_summary(body: str) -> str:
-    compacted = " ".join(body.split())
-    return compacted[:160]
