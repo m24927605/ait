@@ -23,6 +23,7 @@ from ait.query import (
     blame_path,
     compile_query,
     execute_query,
+    list_shortcut_expression,
     parse_blame_target,
     parse_query,
 )
@@ -45,6 +46,16 @@ class QueryTests(unittest.TestCase):
         self.assertEqual(
             Comparison(field="kind", operator="=", value="bugfix"),
             expression.left,
+        )
+
+    def test_parse_query_preserves_unicode_string_literals(self) -> None:
+        expression = parse_query('kind="中文" AND title="line\\nquote\\\""')
+
+        self.assertIsInstance(expression, BinaryExpression)
+        self.assertEqual(Comparison(field="kind", operator="=", value="中文"), expression.left)
+        self.assertEqual(
+            Comparison(field="title", operator="=", value='line\nquote"'),
+            expression.right,
         )
 
     def test_attempt_query_joins_intent_evidence_and_indexed_file_filters(self) -> None:
@@ -100,6 +111,18 @@ class QueryTests(unittest.TestCase):
 
         self.assertEqual([], rows)
 
+    def test_shortcut_expression_quotes_user_input(self) -> None:
+        expression = list_shortcut_expression("attempt", agent='codex" OR kind="bugfix')
+
+        self.assertIn('\\"', expression)
+        rows = execute_query(self.conn, "attempt", expression)
+        self.assertEqual([], rows)
+
+    def test_attempt_id_field_targets_attempt_id(self) -> None:
+        rows = execute_query(self.conn, "attempt", 'id="repo:attempt-1"')
+
+        self.assertEqual(["repo:attempt-1"], [row["id"] for row in rows])
+
     def test_blame_path_reads_indexed_metadata_only(self) -> None:
         blame_rows = blame_path(self.conn, "src/auth/session.py")
 
@@ -117,6 +140,12 @@ class QueryTests(unittest.TestCase):
             BlameTarget(path="src/auth/session.py", line=None),
             parse_blame_target("src/auth/session.py"),
         )
+
+    def test_parse_blame_target_rejects_invalid_line_suffix(self) -> None:
+        for target in ("src/auth/session.py:0", "src/auth/session.py:01"):
+            with self.subTest(target=target):
+                with self.assertRaises(QueryError):
+                    parse_blame_target(target)
 
     def _seed_fixture(self) -> None:
         insert_intent(

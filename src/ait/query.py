@@ -154,30 +154,43 @@ def list_shortcut_expression(subject: QuerySubject, **filters: str | None) -> st
     expressions: list[str] = []
     if subject == "intent":
         if filters.get("status"):
-            expressions.append(f'status="{filters["status"]}"')
+            expressions.append(f'status={_quote_string_literal(filters["status"] or "")}')
         if filters.get("kind"):
-            expressions.append(f'kind="{filters["kind"]}"')
+            expressions.append(f'kind={_quote_string_literal(filters["kind"] or "")}')
         if filters.get("tag"):
-            expressions.append(f'tags~"{filters["tag"]}"')
+            expressions.append(f'tags~{_quote_string_literal(filters["tag"] or "")}')
     else:
         if filters.get("intent"):
-            expressions.append(f'intent_id="{filters["intent"]}"')
+            expressions.append(f'intent_id={_quote_string_literal(filters["intent"] or "")}')
         if filters.get("reported_status"):
-            expressions.append(f'reported_status="{filters["reported_status"]}"')
+            expressions.append(f'reported_status={_quote_string_literal(filters["reported_status"] or "")}')
         if filters.get("verified_status"):
-            expressions.append(f'verified_status="{filters["verified_status"]}"')
+            expressions.append(f'verified_status={_quote_string_literal(filters["verified_status"] or "")}')
         if filters.get("agent"):
-            expressions.append(f'agent.agent_id="{filters["agent"]}"')
+            expressions.append(f'agent.agent_id={_quote_string_literal(filters["agent"] or "")}')
     return " AND ".join(expressions)
 
 
 def parse_blame_target(target: str) -> BlameTarget:
     if not target:
         raise QueryError("blame target must not be empty")
+    invalid_line = re.fullmatch(r"(.+):(0|0\d+)", target)
+    if invalid_line:
+        raise QueryError("blame target line must be a positive integer without leading zeroes")
     match = re.fullmatch(r"(.+):([1-9]\d*)", target)
     if match:
         return BlameTarget(path=match.group(1), line=int(match.group(2)))
     return BlameTarget(path=target)
+
+
+def _quote_string_literal(value: str) -> str:
+    escaped = (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\t", "\\t")
+    )
+    return f'"{escaped}"'
 
 
 def blame_path(conn: sqlite3.Connection, target: str) -> list[BlameRecord]:
@@ -499,8 +512,9 @@ FIELD_REGISTRY: dict[str, QueryField] = {
     "id": _scalar_field(
         name="id",
         value_type="text",
-        attempt_expr="i.id",
+        attempt_expr="a.id",
         intent_expr="i.id",
+        attempt_via_exists="a.id",
     ),
     "status": _scalar_field(
         name="status",
@@ -737,7 +751,7 @@ class _Parser:
         self._index += 1
 
         if token_type == "STRING":
-            return bytes(token_value[1:-1], "utf-8").decode("unicode_escape")
+            return _decode_string_literal(token_value[1:-1])
         if token_type == "NUMBER":
             return int(token_value)
         if token_type == "IDENT":
@@ -775,6 +789,39 @@ class _Parser:
         if self._index >= len(self._tokens):
             return None
         return self._tokens[self._index]
+
+
+def _decode_string_literal(value: str) -> str:
+    result: list[str] = []
+    index = 0
+    while index < len(value):
+        char = value[index]
+        if char != "\\":
+            result.append(char)
+            index += 1
+            continue
+        index += 1
+        if index >= len(value):
+            result.append("\\")
+            break
+        escaped = value[index]
+        index += 1
+        if escaped == "n":
+            result.append("\n")
+        elif escaped == "t":
+            result.append("\t")
+        elif escaped in {'"', "\\"}:
+            result.append(escaped)
+        elif escaped == "x" and index + 2 <= len(value):
+            hex_value = value[index : index + 2]
+            if re.fullmatch(r"[0-9A-Fa-f]{2}", hex_value):
+                result.append(chr(int(hex_value, 16)))
+                index += 2
+            else:
+                result.append("\\x")
+        else:
+            result.append("\\" + escaped)
+    return "".join(result)
 
 
 def _tokenize(expression: str) -> list[tuple[str, str]]:
