@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 import json
 from pathlib import Path
 import re
@@ -14,112 +14,19 @@ from ait.memory_policy import EXCLUDED_MARKER, MemoryPolicy, load_memory_policy,
 from ait.redaction import redact_text
 from ait.repo import compose_repo_id, derive_repo_identity, ensure_initial_commit, resolve_repo_root
 
+from .models import (
+    AutoBriefingQuery,
+    BrainEdge,
+    BrainNode,
+    BrainQueryResult,
+    BriefingQuerySource,
+    RepoBrain,
+    RepoBrainBriefing,
+)
 
-@dataclass(frozen=True, slots=True)
-class BrainNode:
-    id: str
-    kind: str
-    title: str
-    text: str
-    confidence: str
-    metadata: dict[str, object]
-
-
-@dataclass(frozen=True, slots=True)
-class BrainEdge:
-    source: str
-    target: str
-    kind: str
-    confidence: str
-    metadata: dict[str, object]
-
-
-@dataclass(frozen=True, slots=True)
-class RepoBrain:
-    repo_root: str
-    generated_at: str
-    nodes: tuple[BrainNode, ...]
-    edges: tuple[BrainEdge, ...]
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "repo_root": self.repo_root,
-            "generated_at": self.generated_at,
-            "nodes": [asdict(node) for node in self.nodes],
-            "edges": [asdict(edge) for edge in self.edges],
-        }
-
-
-@dataclass(frozen=True, slots=True)
-class BrainQueryResult:
-    node: BrainNode
-    score: float
-    neighbors: tuple[BrainNode, ...]
-    edges: tuple[BrainEdge, ...]
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "node": asdict(self.node),
-            "score": self.score,
-            "neighbors": [asdict(node) for node in self.neighbors],
-            "edges": [asdict(edge) for edge in self.edges],
-        }
-
-
-@dataclass(frozen=True, slots=True)
-class BriefingQuerySource:
-    source: str
-    value: str
-
-
-@dataclass(frozen=True, slots=True)
-class AutoBriefingQuery:
-    query: str
-    sources: tuple[BriefingQuerySource, ...]
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "query": self.query,
-            "sources": [asdict(source) for source in self.sources],
-        }
-
-
-@dataclass(frozen=True, slots=True)
-class RepoBrainBriefing:
-    query: str
-    generated_at: str
-    results: tuple[BrainQueryResult, ...]
-    sources: tuple[BriefingQuerySource, ...] = ()
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "query": self.query,
-            "generated_at": self.generated_at,
-            "sources": [asdict(source) for source in self.sources],
-            "results": [result.to_dict() for result in self.results],
-        }
-
-
-def _ensure_brain_repo(repo_root: str | Path) -> tuple[Path, Path]:
-    root = resolve_repo_root(repo_root)
-    ait_dir = bootstrap_ait_dir(root)
-    config = ensure_local_config(root)
-    ensure_ait_ignored(root)
-    ensure_initial_commit(root)
-    if not config.repo_identity:
-        config = ensure_repo_identity(root, derive_repo_identity(root))
-    db_path = ait_dir / "state.sqlite3"
-    conn = connect_db(db_path)
-    try:
-        run_migrations(conn)
-    finally:
-        conn.close()
-    install_post_rewrite_hook(root)
-    # Keep repo identity composition exercised here so this helper preserves
-    # init-time validation without exposing another public result type.
-    compose_repo_id(str(config.repo_identity), config.install_nonce)
-    return root, db_path
-
+from .common import _compact_line, _safe_node_fragment
+from .render import render_repo_brain_text
+from .setup import _ensure_brain_repo
 
 def build_repo_brain(repo_root: str | Path) -> RepoBrain:
     root, db_path = _ensure_brain_repo(repo_root)
@@ -130,7 +37,6 @@ def build_repo_brain(repo_root: str | Path) -> RepoBrain:
         return build_repo_brain_with_connection(conn, repo_root=root, policy=policy)
     finally:
         conn.close()
-
 
 def build_repo_brain_with_connection(
     conn: sqlite3.Connection,
@@ -167,7 +73,6 @@ def build_repo_brain_with_connection(
         edges=tuple(sorted(edges.values(), key=lambda edge: (edge.source, edge.kind, edge.target))),
     )
 
-
 def write_repo_brain(repo_root: str | Path) -> RepoBrain:
     root, _ = _ensure_brain_repo(repo_root)
     brain = build_repo_brain(root)
@@ -189,7 +94,6 @@ def write_repo_brain(repo_root: str | Path) -> RepoBrain:
     (brain_dir / "REPORT.md").write_text(render_repo_brain_text(brain), encoding="utf-8")
     return brain
 
-
 def _load_existing_graph(path: Path) -> dict[str, object] | None:
     if not path.exists():
         return None
@@ -199,267 +103,10 @@ def _load_existing_graph(path: Path) -> dict[str, object] | None:
         return None
     return data if isinstance(data, dict) else None
 
-
 def _same_graph(left: dict[str, object], right: dict[str, object]) -> bool:
     comparable_left = {key: value for key, value in left.items() if key != "generated_at"}
     comparable_right = {key: value for key, value in right.items() if key != "generated_at"}
     return comparable_left == comparable_right
-
-
-def query_repo_brain(
-    repo_root: str | Path,
-    query: str,
-    *,
-    limit: int = 8,
-) -> tuple[BrainQueryResult, ...]:
-    brain = build_repo_brain(repo_root)
-    return query_repo_brain_graph(brain, query, limit=limit)
-
-
-def build_repo_brain_briefing(
-    repo_root: str | Path,
-    query: str,
-    *,
-    limit: int = 6,
-) -> RepoBrainBriefing:
-    brain = write_repo_brain(repo_root)
-    return build_repo_brain_briefing_from_graph(brain, query, limit=limit)
-
-
-def build_auto_repo_brain_briefing(
-    repo_root: str | Path,
-    *,
-    intent_title: str | None = None,
-    description: str | None = None,
-    kind: str | None = None,
-    command: tuple[str, ...] = (),
-    agent_id: str | None = None,
-    limit: int = 6,
-) -> RepoBrainBriefing:
-    auto_query = build_auto_briefing_query(
-        repo_root,
-        intent_title=intent_title,
-        description=description,
-        kind=kind,
-        command=command,
-        agent_id=agent_id,
-    )
-    brain = write_repo_brain(repo_root)
-    return build_repo_brain_briefing_from_graph(
-        brain,
-        auto_query.query,
-        limit=limit,
-        sources=auto_query.sources,
-    )
-
-
-def build_auto_briefing_query(
-    repo_root: str | Path,
-    *,
-    intent_title: str | None = None,
-    description: str | None = None,
-    kind: str | None = None,
-    command: tuple[str, ...] = (),
-    agent_id: str | None = None,
-) -> AutoBriefingQuery:
-    root, db_path = _ensure_brain_repo(repo_root)
-    policy = load_memory_policy(root)
-    conn = connect_db(db_path)
-    try:
-        run_migrations(conn)
-        sources: list[BriefingQuerySource] = []
-        _append_source(sources, "intent_title", intent_title)
-        _append_source(sources, "intent_description", description)
-        _append_source(sources, "intent_kind", kind)
-        _append_source(sources, "agent", agent_id)
-        if command:
-            _append_source(sources, "command_args", " ".join(command))
-        for title in _recent_failed_attempt_titles(conn, limit=3):
-            _append_source(sources, "recent_failed_attempt", title)
-        for file_path in _hot_file_paths(conn, policy=policy, limit=5):
-            _append_source(sources, "hot_file", file_path)
-        for topic in _memory_note_topics(conn, limit=5):
-            _append_source(sources, "memory_topic", topic)
-    finally:
-        conn.close()
-    query = _compact_query(" ".join(source.value for source in sources))
-    if not query:
-        query = Path(root).name
-        sources = [BriefingQuerySource("repo", query)]
-    return AutoBriefingQuery(query=query, sources=tuple(sources))
-
-
-def build_repo_brain_briefing_from_graph(
-    brain: RepoBrain,
-    query: str,
-    *,
-    limit: int = 6,
-    sources: tuple[BriefingQuerySource, ...] = (),
-) -> RepoBrainBriefing:
-    return RepoBrainBriefing(
-        query=query,
-        generated_at=brain.generated_at,
-        results=query_repo_brain_graph(brain, query, limit=limit),
-        sources=sources,
-    )
-
-
-def query_repo_brain_graph(
-    brain: RepoBrain,
-    query: str,
-    *,
-    limit: int = 8,
-) -> tuple[BrainQueryResult, ...]:
-    if limit < 0:
-        raise ValueError("repo brain query limit must be non-negative")
-    terms = _terms(query)
-    if not terms:
-        return ()
-    node_by_id = {node.id: node for node in brain.nodes}
-    results: list[BrainQueryResult] = []
-    for node in brain.nodes:
-        score = _score_node(node, terms)
-        if score <= 0:
-            continue
-        connected_edges = tuple(edge for edge in brain.edges if edge.source == node.id or edge.target == node.id)
-        neighbor_ids = {
-            edge.target if edge.source == node.id else edge.source
-            for edge in connected_edges
-        }
-        neighbors = tuple(sorted((node_by_id[node_id] for node_id in neighbor_ids), key=lambda item: item.id))
-        results.append(
-            BrainQueryResult(
-                node=node,
-                score=score,
-                neighbors=neighbors,
-                edges=connected_edges,
-            )
-        )
-    results.sort(key=lambda result: (-result.score, result.node.kind, result.node.id))
-    return tuple(results[:limit])
-
-
-def render_repo_brain_text(brain: RepoBrain, *, budget_chars: int | None = None) -> str:
-    grouped: dict[str, list[BrainNode]] = {}
-    for node in brain.nodes:
-        grouped.setdefault(node.kind, []).append(node)
-    lines = [
-        "AIT Repo Brain",
-        f"Repo: {brain.repo_root}",
-        f"Generated: {brain.generated_at}",
-        f"Nodes: {len(brain.nodes)}",
-        f"Edges: {len(brain.edges)}",
-        "",
-    ]
-    for kind in sorted(grouped):
-        lines.append(f"{kind.title()} Nodes:")
-        for node in grouped[kind]:
-            lines.append(f"- {node.id} confidence={node.confidence} title={node.title!r}")
-            if node.text:
-                lines.append(f"  {_compact_line(node.text)}")
-        lines.append("")
-    lines.append("Edges:")
-    if not brain.edges:
-        lines.append("- none")
-    for edge in brain.edges:
-        lines.append(f"- {edge.source} -[{edge.kind}/{edge.confidence}]-> {edge.target}")
-    text = "\n".join(lines).rstrip() + "\n"
-    if budget_chars is None or budget_chars <= 0 or len(text) <= budget_chars:
-        return text
-    marker = "\n[ait repo brain compacted to configured budget]\n"
-    keep = max(0, budget_chars - len(marker))
-    return text[:keep].rstrip() + marker
-
-
-def render_brain_query_results(results: tuple[BrainQueryResult, ...]) -> str:
-    if not results:
-        return "No repo brain query results.\n"
-    lines = ["AIT Repo Brain Query Results"]
-    for result in results:
-        node = result.node
-        lines.append(
-            f"- {node.kind} {node.id} score={result.score:.2f} "
-            f"confidence={node.confidence} title={node.title!r}"
-        )
-        if node.text:
-            lines.append(f"  {_compact_line(node.text)}")
-        if result.neighbors:
-            neighbor_text = ", ".join(f"{neighbor.kind}:{neighbor.title}" for neighbor in result.neighbors[:8])
-            lines.append(f"  neighbors: {neighbor_text}")
-    return "\n".join(lines) + "\n"
-
-
-def render_repo_brain_briefing(briefing: RepoBrainBriefing, *, budget_chars: int | None = 5000) -> str:
-    lines = [
-        "AIT Repo Brain Briefing",
-        f"Query: {briefing.query}",
-        f"Generated: {briefing.generated_at}",
-        "",
-        "Briefing Query Sources:",
-    ]
-    if not briefing.sources:
-        lines.append("- manual query")
-    for source in briefing.sources:
-        lines.append(f"- {source.source}: {_compact_line(source.value)}")
-    lines.extend(
-        [
-            "",
-            "Relevant Project Facts:",
-        ]
-    )
-    if not briefing.results:
-        lines.append("- none found; inspect the repository normally")
-    for result in briefing.results:
-        node = result.node
-        if node.kind in {"repo", "topic"}:
-            lines.append(f"- {node.kind}:{node.title} confidence={node.confidence}")
-            if node.text:
-                lines.append(f"  {_compact_line(node.text)}")
-
-    lines.append("")
-    lines.append("Relevant Attempts:")
-    attempt_lines = _briefing_node_lines(briefing, kinds={"attempt"})
-    lines.extend(attempt_lines or ["- none"])
-
-    lines.append("")
-    lines.append("Likely Files:")
-    file_lines = _briefing_node_lines(briefing, kinds={"file"})
-    lines.extend(file_lines or ["- none"])
-
-    lines.append("")
-    lines.append("Relevant Docs And Notes:")
-    doc_note_lines = _briefing_node_lines(briefing, kinds={"doc", "note"})
-    lines.extend(doc_note_lines or ["- none"])
-
-    lines.append("")
-    lines.append("Connected Evidence:")
-    evidence_lines = _briefing_node_lines(briefing, kinds={"intent", "agent", "commit", "trace"})
-    lines.extend(evidence_lines or ["- none"])
-
-    lines.append("")
-    lines.append("Use this as advisory memory; verify current files before editing.")
-    text = "\n".join(lines).rstrip() + "\n"
-    if budget_chars is None or budget_chars <= 0 or len(text) <= budget_chars:
-        return text
-    marker = "\n[ait repo brain briefing compacted to configured budget]\n"
-    keep = max(0, budget_chars - len(marker))
-    return text[:keep].rstrip() + marker
-
-
-def _briefing_node_lines(briefing: RepoBrainBriefing, *, kinds: set[str]) -> list[str]:
-    seen: set[str] = set()
-    lines: list[str] = []
-    for result in briefing.results:
-        candidates = (result.node, *result.neighbors)
-        for node in candidates:
-            if node.kind not in kinds or node.id in seen:
-                continue
-            seen.add(node.id)
-            lines.append(f"- {node.kind}:{node.title} confidence={node.confidence}")
-            if node.text:
-                lines.append(f"  {_compact_line(node.text)}")
-    return lines
-
 
 def _add_doc_nodes(
     root: Path,
@@ -492,7 +139,6 @@ def _add_doc_nodes(
             ),
         )
         _add_edge(edges, BrainEdge(repo_id, node_id, "has_doc", "extracted", {}))
-
 
 def _add_note_nodes(
     conn: sqlite3.Connection,
@@ -546,7 +192,6 @@ def _add_note_nodes(
         )
         _add_edge(edges, BrainEdge(repo_id, note_id, "has_note", "extracted", {}))
         _add_edge(edges, BrainEdge(note_id, topic_id, "about_topic", "inferred", {}))
-
 
 def _add_attempt_nodes(
     conn: sqlite3.Connection,
@@ -700,16 +345,13 @@ def _add_attempt_nodes(
             )
             _add_edge(edges, BrainEdge(attempt_id, commit_id, "produced_commit", "extracted", {}))
 
-
 def _add_node(nodes: dict[str, BrainNode], node: BrainNode) -> None:
     existing = nodes.get(node.id)
     if existing is None or (not existing.text and node.text):
         nodes[node.id] = node
 
-
 def _add_edge(edges: dict[tuple[str, str, str], BrainEdge], edge: BrainEdge) -> None:
     edges.setdefault((edge.source, edge.kind, edge.target), edge)
-
 
 def _append_source(sources: list[BriefingQuerySource], source: str, value: str | None) -> None:
     if value is None or not str(value).strip():
@@ -717,51 +359,6 @@ def _append_source(sources: list[BriefingQuerySource], source: str, value: str |
     redacted, _ = redact_text(str(value).strip())
     if redacted:
         sources.append(BriefingQuerySource(source=source, value=redacted))
-
-
-def _recent_failed_attempt_titles(conn: sqlite3.Connection, *, limit: int) -> tuple[str, ...]:
-    rows = conn.execute(
-        """
-        SELECT i.title
-        FROM attempts AS a
-        JOIN intents AS i ON i.id = a.intent_id
-        WHERE a.verified_status = 'failed'
-        ORDER BY a.started_at DESC, a.ordinal DESC
-        LIMIT ?
-        """,
-        (limit,),
-    ).fetchall()
-    return tuple(str(row["title"]) for row in rows)
-
-
-def _hot_file_paths(conn: sqlite3.Connection, *, policy: MemoryPolicy, limit: int) -> tuple[str, ...]:
-    rows = conn.execute(
-        """
-        SELECT file_path, COUNT(*) AS touch_count
-        FROM evidence_files
-        WHERE kind IN ('changed', 'touched')
-        GROUP BY file_path
-        ORDER BY touch_count DESC, file_path ASC
-        LIMIT ?
-        """,
-        (limit,),
-    ).fetchall()
-    return tuple(str(row["file_path"]) for row in rows if not path_excluded(str(row["file_path"]), policy))
-
-
-def _memory_note_topics(conn: sqlite3.Connection, *, limit: int) -> tuple[str, ...]:
-    rows = conn.execute(
-        """
-        SELECT DISTINCT topic
-        FROM memory_notes
-        WHERE active = 1 AND topic IS NOT NULL
-        ORDER BY updated_at DESC
-        LIMIT ?
-        """,
-        (limit,),
-    ).fetchall()
-    return tuple(str(row["topic"]) for row in rows if row["topic"] is not None)
-
 
 def _tracked_markdown_paths(root: Path) -> tuple[str, ...]:
     completed = subprocess.run(
@@ -779,18 +376,15 @@ def _tracked_markdown_paths(root: Path) -> tuple[str, ...]:
             paths.add(extra)
     return tuple(sorted(paths))
 
-
 def _read_text_head(path: Path, *, limit: int) -> str:
     try:
         return path.read_text(encoding="utf-8", errors="replace")[:limit]
     except OSError:
         return ""
 
-
 def _doc_summary(text: str) -> str:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     return " ".join(lines[:8])
-
 
 def _changed_files(
     conn: sqlite3.Connection,
@@ -809,7 +403,6 @@ def _changed_files(
     ).fetchall()
     return tuple(str(row["file_path"]) for row in rows if not path_excluded(str(row["file_path"]), policy))
 
-
 def _commit_oids(conn: sqlite3.Connection, attempt_id: str) -> tuple[str, ...]:
     rows = conn.execute(
         """
@@ -821,7 +414,6 @@ def _commit_oids(conn: sqlite3.Connection, attempt_id: str) -> tuple[str, ...]:
         (attempt_id,),
     ).fetchall()
     return tuple(str(row["commit_oid"]) for row in rows)
-
 
 def _read_trace_text(raw_trace_ref: str, *, repo_root: Path, limit: int = 1400) -> str:
     if not raw_trace_ref:
@@ -836,30 +428,6 @@ def _read_trace_text(raw_trace_ref: str, *, repo_root: Path, limit: int = 1400) 
     except OSError:
         return ""
 
-
-def _score_node(node: BrainNode, query_terms: tuple[str, ...]) -> float:
-    haystack = _terms(" ".join([node.kind, node.title, node.text, " ".join(str(v) for v in node.metadata.values())]))
-    if not haystack:
-        return 0.0
-    counts = {term: haystack.count(term) for term in set(haystack)}
-    score = 0.0
-    for term in query_terms:
-        if term in counts:
-            score += 2.0 + counts[term]
-        elif any(candidate.startswith(term) or term.startswith(candidate) for candidate in counts):
-            score += 0.75
-    return score
-
-
-def _terms(text: str) -> tuple[str, ...]:
-    return tuple(re.findall(r"[A-Za-z0-9_./:-]+", text.lower()))
-
-
-def _safe_node_fragment(value: str) -> str:
-    compacted = re.sub(r"[^A-Za-z0-9_.:-]+", "-", value.strip().lower()).strip("-")
-    return compacted or "general"
-
-
 def _advisory_attempt_memory_note(source: str, body: str) -> bool:
     if not source.startswith("attempt-memory:"):
         return False
@@ -867,17 +435,3 @@ def _advisory_attempt_memory_note(source: str, body: str) -> bool:
         f"verified_status={status}" in body
         for status in ("failed", "failed_interrupted", "needs_review")
     )
-
-
-def _compact_query(text: str, *, limit: int = 1200) -> str:
-    compacted = " ".join(text.split())
-    if len(compacted) <= limit:
-        return compacted
-    return compacted[:limit].rstrip()
-
-
-def _compact_line(text: str, *, limit: int = 180) -> str:
-    compacted = " ".join(text.split())
-    if len(compacted) <= limit:
-        return compacted
-    return compacted[: limit - 3].rstrip() + "..."
