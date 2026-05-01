@@ -215,12 +215,15 @@ class RunnerTests(unittest.TestCase):
                     capture_command_output=True,
                 )
 
-            _finish_attempt_locally(
-                repo_root,
-                result.attempt_id,
-                exit_code=0,
-                raw_trace_ref=result.attempt.attempt["raw_trace_ref"],
-            )
+            first_ended_at = result.attempt.attempt["ended_at"]
+            first_trace_ref = result.attempt.attempt["raw_trace_ref"]
+            with patch("ait.runner.utc_now", return_value="2099-01-01T00:00:00Z"):
+                _finish_attempt_locally(
+                    repo_root,
+                    result.attempt_id,
+                    exit_code=9,
+                    raw_trace_ref=".ait/traces/second-finish.txt",
+                )
             conn = connect_db(repo_root / ".ait" / "state.sqlite3")
             try:
                 count = conn.execute(
@@ -231,10 +234,21 @@ class RunnerTests(unittest.TestCase):
                     """,
                     (f"event_seen:ait-run-local-finish:{result.attempt_id}:%",),
                 ).fetchone()[0]
+                attempt_row = conn.execute(
+                    """
+                    SELECT ended_at, raw_trace_ref, result_exit_code
+                    FROM attempts
+                    WHERE id = ?
+                    """,
+                    (result.attempt_id,),
+                ).fetchone()
             finally:
                 conn.close()
 
             self.assertEqual(2, count)
+            self.assertEqual(first_ended_at, attempt_row["ended_at"])
+            self.assertEqual(first_trace_ref, attempt_row["raw_trace_ref"])
+            self.assertEqual(0, attempt_row["result_exit_code"])
 
     def test_run_agent_command_can_write_context_file_for_wrapped_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

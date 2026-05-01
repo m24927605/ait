@@ -343,6 +343,49 @@ class EventProcessingTests(unittest.TestCase):
         self.assertEqual(".ait/objects/trace", evidence.raw_trace_ref)
         self.assertEqual(".ait/objects/logs", evidence.logs_ref)
 
+    def test_second_finished_event_does_not_overwrite_first_result(self) -> None:
+        first = process_event(
+            self.conn,
+            {
+                "schema_version": 1,
+                "event_id": "repo:01EVENTFINFIRST",
+                "event_type": "attempt_finished",
+                "sent_at": "2026-04-23T00:05:00Z",
+                "attempt_id": "repo:01ATTEMPT1",
+                "ownership_token": "token-1",
+                "payload": {
+                    "exit_code": 0,
+                    "raw_trace_ref": ".ait/objects/first-trace",
+                },
+            },
+        )
+        second = process_event(
+            self.conn,
+            {
+                "schema_version": 1,
+                "event_id": "repo:01EVENTFINSECOND",
+                "event_type": "attempt_finished",
+                "sent_at": "2026-04-23T00:06:00Z",
+                "attempt_id": "repo:01ATTEMPT1",
+                "ownership_token": "token-1",
+                "payload": {
+                    "exit_code": 9,
+                    "raw_trace_ref": ".ait/objects/second-trace",
+                },
+            },
+        )
+
+        attempt = get_attempt(self.conn, "repo:01ATTEMPT1")
+        evidence = get_evidence_summary(self.conn, "repo:01ATTEMPT1")
+        assert attempt is not None
+        assert evidence is not None
+        self.assertTrue(first.mutated)
+        self.assertFalse(second.mutated)
+        self.assertEqual("2026-04-23T00:05:00Z", attempt.ended_at)
+        self.assertEqual(0, attempt.result_exit_code)
+        self.assertEqual(".ait/objects/first-trace", attempt.raw_trace_ref)
+        self.assertEqual(".ait/objects/first-trace", evidence.raw_trace_ref)
+
     def test_promoted_then_discarded_is_a_no_op_for_discard(self) -> None:
         process_event(
             self.conn,

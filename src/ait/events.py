@@ -232,7 +232,9 @@ def handle_tool_event(
 
 def handle_attempt_finished(
     conn: sqlite3.Connection, *, attempt: AttemptRecord, sent_at: str, payload: Mapping[str, Any]
-) -> None:
+) -> bool:
+    if attempt.reported_status == "finished" and attempt.result_exit_code is not None:
+        return False
     raw_trace_ref = _nullable_str(payload.get("raw_trace_ref"), fallback=attempt.raw_trace_ref)
     logs_ref = _nullable_str(payload.get("logs_ref"), fallback=attempt.logs_ref)
     exit_code = payload.get("exit_code")
@@ -280,6 +282,7 @@ def handle_attempt_finished(
     )
     if verification is not None:
         _apply_verification_metrics(conn, attempt_id=attempt.id, metrics=verification)
+    return True
 
 
 def _apply_verification_metrics(
@@ -467,8 +470,7 @@ def _dispatch_event(
         handle_tool_event(conn, attempt=attempt, sent_at=event.sent_at, payload=event.payload)
         return True
     if event.event_type == "attempt_finished":
-        handle_attempt_finished(conn, attempt=attempt, sent_at=event.sent_at, payload=event.payload)
-        return True
+        return handle_attempt_finished(conn, attempt=attempt, sent_at=event.sent_at, payload=event.payload)
     if event.event_type == "attempt_promoted":
         return handle_attempt_promoted(conn, attempt=attempt, sent_at=event.sent_at, payload=event.payload)
     if event.event_type == "attempt_discarded":
