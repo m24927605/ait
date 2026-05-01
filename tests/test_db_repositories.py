@@ -38,6 +38,16 @@ from ait.db.repositories import (
 
 
 class RepositoryTests(unittest.TestCase):
+    def test_split_repository_modules_reexport_current_public_symbols(self) -> None:
+        from ait.db import core_repositories, memory_repositories, records
+
+        self.assertIs(records.NewIntent, NewIntent)
+        self.assertIs(records.NewMemoryFact, NewMemoryFact)
+        self.assertIs(core_repositories.insert_intent, insert_intent)
+        self.assertIs(core_repositories.get_attempt, get_attempt)
+        self.assertIs(memory_repositories.upsert_memory_fact, upsert_memory_fact)
+        self.assertIs(memory_repositories.list_memory_facts, list_memory_facts)
+
     def setUp(self) -> None:
         self.conn = connect_db(":memory:")
         run_migrations(self.conn)

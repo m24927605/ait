@@ -7,11 +7,12 @@ import re
 import sqlite3
 import subprocess
 
-from ait.app import init_repo
+from ait.config import bootstrap_ait_dir, ensure_ait_ignored, ensure_local_config, ensure_repo_identity
 from ait.db import connect_db, run_migrations, utc_now
+from ait.hooks import install_post_rewrite_hook
 from ait.memory_policy import EXCLUDED_MARKER, MemoryPolicy, load_memory_policy, path_excluded, transcript_excluded
 from ait.redaction import redact_text
-from ait.repo import resolve_repo_root
+from ait.repo import compose_repo_id, derive_repo_identity, ensure_initial_commit, resolve_repo_root
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,11 +100,31 @@ class RepoBrainBriefing:
         }
 
 
+def _ensure_brain_repo(repo_root: str | Path) -> tuple[Path, Path]:
+    root = resolve_repo_root(repo_root)
+    ait_dir = bootstrap_ait_dir(root)
+    config = ensure_local_config(root)
+    ensure_ait_ignored(root)
+    ensure_initial_commit(root)
+    if not config.repo_identity:
+        config = ensure_repo_identity(root, derive_repo_identity(root))
+    db_path = ait_dir / "state.sqlite3"
+    conn = connect_db(db_path)
+    try:
+        run_migrations(conn)
+    finally:
+        conn.close()
+    install_post_rewrite_hook(root)
+    # Keep repo identity composition exercised here so this helper preserves
+    # init-time validation without exposing another public result type.
+    compose_repo_id(str(config.repo_identity), config.install_nonce)
+    return root, db_path
+
+
 def build_repo_brain(repo_root: str | Path) -> RepoBrain:
-    init_result = init_repo(repo_root)
-    root = init_result.repo_root
+    root, db_path = _ensure_brain_repo(repo_root)
     policy = load_memory_policy(root)
-    conn = connect_db(init_result.db_path)
+    conn = connect_db(db_path)
     try:
         run_migrations(conn)
         return build_repo_brain_with_connection(conn, repo_root=root, policy=policy)
@@ -148,7 +169,7 @@ def build_repo_brain_with_connection(
 
 
 def write_repo_brain(repo_root: str | Path) -> RepoBrain:
-    root = init_repo(repo_root).repo_root
+    root, _ = _ensure_brain_repo(repo_root)
     brain = build_repo_brain(root)
     brain_dir = root / ".ait" / "brain"
     brain_dir.mkdir(parents=True, exist_ok=True)
@@ -241,10 +262,9 @@ def build_auto_briefing_query(
     command: tuple[str, ...] = (),
     agent_id: str | None = None,
 ) -> AutoBriefingQuery:
-    init_result = init_repo(repo_root)
-    root = init_result.repo_root
+    root, db_path = _ensure_brain_repo(repo_root)
     policy = load_memory_policy(root)
-    conn = connect_db(init_result.db_path)
+    conn = connect_db(db_path)
     try:
         run_migrations(conn)
         sources: list[BriefingQuerySource] = []
