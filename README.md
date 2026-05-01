@@ -14,6 +14,8 @@ memory.
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Status](https://img.shields.io/badge/status-alpha-orange)](#status)
 
+**[README](README.md) · [繁體中文](README.zh-TW.md) · [MIT License](LICENSE)**
+
 </div>
 
 ---
