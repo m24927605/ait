@@ -541,19 +541,31 @@ def _real_agent_binary_check(adapter: AgentAdapter, wrapper_path: Path) -> Adapt
 
 
 def _find_real_binary(command_name: str, wrapper_path: Path) -> str:
-    wrapper = wrapper_path.resolve()
+    wrapper = wrapper_path
     for directory in os.environ.get("PATH", "").split(os.pathsep):
         if not directory:
             continue
-        candidate = (Path(directory) / command_name).resolve()
-        if candidate == wrapper:
+        candidate = Path(directory) / command_name
+        if _same_file(candidate, wrapper):
             continue
-        if candidate.is_file() and os.access(candidate, os.X_OK):
-            return str(candidate)
+        resolved = candidate.resolve()
+        if _same_file(resolved, wrapper):
+            continue
+        if resolved.is_file() and os.access(resolved, os.X_OK):
+            return str(resolved)
     found = shutil.which(command_name)
     if found is None:
         raise AdapterError(f"could not find {command_name} on PATH")
+    if _same_file(Path(found), wrapper_path):
+        raise AdapterError(f"could not find real {command_name} on PATH")
     return found
+
+
+def _same_file(left: Path, right: Path) -> bool:
+    try:
+        return left.samefile(right)
+    except OSError:
+        return left.resolve(strict=False) == right.resolve(strict=False)
 
 
 def _adapter_wrapper_script(adapter: AgentAdapter, real_binary: str) -> str:
