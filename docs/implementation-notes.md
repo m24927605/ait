@@ -110,6 +110,34 @@ statuses refuse further work. If follow-up work is needed under a
 superseded intent, the replacement intent referenced by the `superseded_by`
 edge should be used instead.
 
+### `ait attempt commit`
+
+`ait attempt commit <attempt-id> -m <message>` materializes staged and
+unstaged changes from the attempt worktree as a normal git commit inside
+that worktree. The command is intentionally explicit: the harness can
+observe work and the runner can auto-commit for wrapped agent sessions, but
+manual attempt workflows still need a deterministic way to turn worktree
+changes into commit evidence.
+
+Behavior:
+
+- resolve the attempt id through the normal id resolver
+- reject attempts whose parent intent is `abandoned` or `superseded`
+- reject attempts already verified as `discarded` or `promoted`
+- fail clearly when the attempt worktree has no staged or unstaged changes
+- stage all worktree changes with `git add -A`
+- create one commit using the supplied message plus ait trailers
+- refresh `attempt_commits` from the attempt worktree after the commit
+
+The generated trailers are part of the traceability contract:
+
+- `Intent-Id: <intent-id>`
+- `Attempt-Id: <attempt-id>`
+
+The command does not promote the result into the main repository branch.
+Promotion remains a separate lifecycle operation so review, rebase, discard,
+and target branch policy stay explicit.
+
 ### Intent Edge Types
 
 `intent_edges.edge_type` values currently written by v1:
