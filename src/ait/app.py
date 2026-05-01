@@ -459,6 +459,8 @@ def abandon_intent(repo_root: str | Path, *, intent_id: str) -> IntentShowResult
         intent = get_intent(conn, intent_id)
         if intent is None:
             raise ValueError(f"Unknown intent: {intent_id}")
+        if intent.status not in {"open", "running"}:
+            raise ValueError(f"Cannot abandon {intent.status} intent")
         update_intent_status(conn, intent_id, "abandoned")
     finally:
         conn.close()
@@ -484,6 +486,8 @@ def supersede_intent(
             raise ValueError(f"Unknown replacement intent: {by_intent_id}")
         if intent_id == by_intent_id:
             raise ValueError("Intent cannot supersede itself")
+        if intent.status not in {"open", "running"}:
+            raise ValueError(f"Cannot supersede {intent.status} intent")
         insert_intent_edge(
             conn,
             parent_intent_id=intent_id,

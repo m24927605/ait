@@ -171,11 +171,13 @@ class AppFlowTests(unittest.TestCase):
                 conn.close()
             verify_attempt(repo_root, attempt_id=attempt.attempt_id)
 
-            abandoned = abandon_intent(repo_root, intent_id=intent.intent_id)
+            with self.assertRaises(ValueError):
+                abandon_intent(repo_root, intent_id=intent.intent_id)
+            shown = show_intent(repo_root, intent_id=intent.intent_id)
 
-            self.assertEqual("abandoned", abandoned.intent["status"])
-            self.assertEqual(("lib.py",), abandoned.files["changed"])
-            self.assertEqual(1, len(abandoned.commit_oids))
+            self.assertEqual("finished", shown.intent["status"])
+            self.assertEqual(("lib.py",), shown.files["changed"])
+            self.assertEqual(1, len(shown.commit_oids))
 
     def test_supersede_intent_marks_original_superseded_and_writes_edge(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -676,6 +678,33 @@ class AppFlowTests(unittest.TestCase):
             verified = verify_attempt(repo_root, attempt_id=attempt.attempt_id)
 
             self.assertEqual("failed", verified.attempt["verified_status"])
+
+    def test_terminal_finished_intent_rejects_abandon_and_supersede(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            finished = create_intent(repo_root, title="Finished", description=None, kind="bugfix")
+            replacement = create_intent(repo_root, title="Replacement", description=None, kind="bugfix")
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            try:
+                from ait.db import update_intent_status
+
+                update_intent_status(conn, finished.intent_id, "finished")
+            finally:
+                conn.close()
+
+            with self.assertRaises(ValueError) as abandon_error:
+                abandon_intent(repo_root, intent_id=finished.intent_id)
+            with self.assertRaises(ValueError) as supersede_error:
+                supersede_intent(
+                    repo_root,
+                    intent_id=finished.intent_id,
+                    by_intent_id=replacement.intent_id,
+                )
+
+            self.assertIn("finished", str(abandon_error.exception))
+            self.assertIn("finished", str(supersede_error.exception))
 
 
 def _init_git_repo(repo_root: Path) -> None:
