@@ -43,6 +43,7 @@ class ConfigTests(unittest.TestCase):
 
             loaded = load_local_config(repo_root)
             self.assertEqual(loaded, expected)
+            self.assertEqual([], list((repo_root / ".ait").glob("config.json.*.tmp")))
 
     def test_ensure_local_config_creates_and_reuses_install_nonce(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

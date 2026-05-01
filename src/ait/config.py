@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import secrets
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -57,10 +58,7 @@ def save_local_config(repo_root: str | Path, config: LocalConfig) -> Path:
     bootstrap_ait_dir(repo_root)
     config_path = local_config_path(repo_root)
     payload = asdict(config)
-    config_path.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    _write_text_atomic(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
     return config_path
 
 
@@ -121,8 +119,15 @@ def ensure_ait_ignored(repo_root: str | Path) -> bool:
     if new_lines and new_lines[-1] != "":
         new_lines.append("")
     new_lines.append(GITIGNORE_ENTRY)
-    gitignore_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+    _write_text_atomic(gitignore_path, "\n".join(new_lines) + "\n")
     return True
+
+
+def _write_text_atomic(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    tmp_path.write_text(text, encoding="utf-8")
+    os.replace(tmp_path, path)
 
 
 def _generate_install_nonce() -> str:
