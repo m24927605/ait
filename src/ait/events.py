@@ -53,6 +53,11 @@ def process_event(
 ) -> EventProcessResult:
     event = envelope if isinstance(envelope, EventEnvelope) else parse_event_envelope(envelope)
     with conn:
+        attempt = validate_ownership_token(
+            conn,
+            attempt_id=event.attempt_id,
+            ownership_token=event.ownership_token,
+        )
         if not _claim_event_id(conn, event):
             return EventProcessResult(
                 event_id=event.event_id,
@@ -62,11 +67,6 @@ def process_event(
                 mutated=False,
             )
 
-        attempt = validate_ownership_token(
-            conn,
-            attempt_id=event.attempt_id,
-            ownership_token=event.ownership_token,
-        )
         mutated = _dispatch_event(conn, attempt, event)
         return EventProcessResult(
             event_id=event.event_id,
@@ -110,7 +110,9 @@ def validate_ownership_token(
 
 def handle_attempt_started(
     conn: sqlite3.Connection, *, attempt: AttemptRecord, sent_at: str, payload: Mapping[str, Any]
-) -> None:
+) -> bool:
+    if attempt.verified_status in {"discarded", "failed", "promoted"} or attempt.reported_status in {"finished", "crashed"}:
+        return False
     agent = payload.get("agent", {})
     if not isinstance(agent, Mapping):
         raise EventError("attempt_started payload.agent must be an object")
@@ -141,6 +143,7 @@ def handle_attempt_started(
         ),
     )
     refresh_intent_status(conn, attempt.intent_id)
+    return True
 
 
 def handle_attempt_heartbeat(
@@ -329,19 +332,30 @@ def _require_bool(mapping: Mapping[str, Any], key: str) -> bool:
 
 
 def handle_attempt_promoted(
-    conn: sqlite3.Connection, *, attempt: AttemptRecord, payload: Mapping[str, Any]
+    conn: sqlite3.Connection, *, attempt: AttemptRecord, sent_at: str, payload: Mapping[str, Any]
 ) -> bool:
     if attempt.verified_status == "discarded":
         raise EventConflictError(f"attempt already discarded: {attempt.id}")
 
     promotion_ref = _required_str(payload, "promotion_ref")
+    if not promotion_ref.startswith("refs/heads/"):
+        raise EventError("promotion_ref must be a branch under refs/heads/")
     conn.execute(
         """
         UPDATE attempts
-        SET result_promotion_ref = ?
+        SET result_promotion_ref = ?,
+            verified_status = 'promoted',
+            reported_status = CASE
+                WHEN reported_status IN ('created', 'running') THEN 'finished'
+                ELSE reported_status
+            END,
+            ended_at = CASE
+                WHEN ended_at IS NULL OR ended_at < ? THEN ?
+                ELSE ended_at
+            END
         WHERE id = ?
         """,
-        (promotion_ref, attempt.id),
+        (promotion_ref, sent_at, sent_at, attempt.id),
     )
     return True
 
@@ -388,23 +402,29 @@ def _mark_stale_running_attempts(
     conn: sqlite3.Connection, *, now: str, heartbeat_ttl_seconds: int
 ) -> tuple[str, ...]:
     now_iso = _parse_timestamp(now)
-    cutoff = _parse_timestamp(now_iso, to_datetime=True) - timedelta(seconds=heartbeat_ttl_seconds)
+    cutoff_dt = _parse_timestamp(now_iso, to_datetime=True) - timedelta(seconds=heartbeat_ttl_seconds)
+    assert isinstance(cutoff_dt, datetime)
+    cutoff_iso = cutoff_dt.replace(microsecond=0).isoformat().replace("+00:00", "Z")
     stale_ids: list[str] = []
 
-    rows = conn.execute(
-        """
-        SELECT id, heartbeat_at, started_at
-        FROM attempts
-        WHERE reported_status = 'running'
-        """
-    ).fetchall()
-    with conn:
+    started_transaction = False
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+        started_transaction = True
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, heartbeat_at, started_at
+            FROM attempts
+            WHERE reported_status = 'running'
+            """
+        ).fetchall()
         for row in rows:
             last_seen = row["heartbeat_at"] or row["started_at"]
-            if _parse_timestamp(str(last_seen), to_datetime=True) > cutoff:
+            if _parse_timestamp(str(last_seen), to_datetime=True) > cutoff_dt:
                 continue
             attempt_id = str(row["id"])
-            conn.execute(
+            updated = conn.execute(
                 """
                 UPDATE attempts
                 SET reported_status = 'crashed',
@@ -414,15 +434,25 @@ def _mark_stale_running_attempts(
                         ELSE ended_at
                     END
                 WHERE id = ?
+                  AND reported_status = 'running'
+                  AND COALESCE(heartbeat_at, started_at) <= ?
                 """,
-                (now_iso, now_iso, attempt_id),
-            )
+                (now_iso, now_iso, attempt_id, cutoff_iso),
+            ).rowcount
+            if updated == 0:
+                continue
             stale_ids.append(attempt_id)
             intent_id = conn.execute(
                 "SELECT intent_id FROM attempts WHERE id = ?",
                 (attempt_id,),
             ).fetchone()["intent_id"]
             refresh_intent_status(conn, str(intent_id))
+        if started_transaction:
+            conn.commit()
+    except Exception:
+        if started_transaction:
+            conn.rollback()
+        raise
     return tuple(stale_ids)
 
 
@@ -430,8 +460,7 @@ def _dispatch_event(
     conn: sqlite3.Connection, attempt: AttemptRecord, event: EventEnvelope
 ) -> bool:
     if event.event_type == "attempt_started":
-        handle_attempt_started(conn, attempt=attempt, sent_at=event.sent_at, payload=event.payload)
-        return True
+        return handle_attempt_started(conn, attempt=attempt, sent_at=event.sent_at, payload=event.payload)
     if event.event_type == "attempt_heartbeat":
         return handle_attempt_heartbeat(conn, attempt=attempt, sent_at=event.sent_at)
     if event.event_type == "tool_event":
@@ -441,7 +470,7 @@ def _dispatch_event(
         handle_attempt_finished(conn, attempt=attempt, sent_at=event.sent_at, payload=event.payload)
         return True
     if event.event_type == "attempt_promoted":
-        return handle_attempt_promoted(conn, attempt=attempt, payload=event.payload)
+        return handle_attempt_promoted(conn, attempt=attempt, sent_at=event.sent_at, payload=event.payload)
     if event.event_type == "attempt_discarded":
         return handle_attempt_discarded(conn, attempt=attempt, sent_at=event.sent_at)
     raise EventError(f"unsupported event_type: {event.event_type}")
@@ -495,13 +524,16 @@ def _coalesce_str(value: Any, fallback: str) -> str:
 
 
 def _parse_timestamp(value: str, *, to_datetime: bool = False) -> str | datetime:
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
-    except ValueError as exc:
-        raise EventError(f"invalid timestamp: {value}") from exc
+    parsed = None
+    for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S.%fZ"):
+        try:
+            parsed = datetime.strptime(value, fmt).replace(tzinfo=UTC)
+        except ValueError:
+            continue
+        break
+    if parsed is None:
+        raise EventError(f"invalid timestamp: {value}")
     normalized = parsed.replace(microsecond=0).isoformat().replace("+00:00", "Z")
     if to_datetime:
         return datetime.fromisoformat(normalized.replace("Z", "+00:00"))
     return normalized
-
-

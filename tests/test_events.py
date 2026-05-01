@@ -10,6 +10,7 @@ from ait.db import connect_db, get_attempt, get_evidence_summary, insert_attempt
 from ait.db.repositories import NewAttempt, NewIntent
 from ait.events import (
     EventConflictError,
+    EventError,
     EventOwnershipError,
     process_event,
     reap_stale_attempts,
@@ -83,6 +84,39 @@ class EventProcessingTests(unittest.TestCase):
         ).fetchone()
         self.assertEqual("running", intent_row["status"])
 
+    def test_attempt_started_does_not_revive_discarded_attempt(self) -> None:
+        process_event(
+            self.conn,
+            {
+                "schema_version": 1,
+                "event_id": "repo:01DISCARD",
+                "event_type": "attempt_discarded",
+                "sent_at": "2026-04-23T00:02:00Z",
+                "attempt_id": "repo:01ATTEMPT1",
+                "ownership_token": "token-1",
+                "payload": {"reason": "user discard"},
+            },
+        )
+
+        result = process_event(
+            self.conn,
+            {
+                "schema_version": 1,
+                "event_id": "repo:01LATESTART",
+                "event_type": "attempt_started",
+                "sent_at": "2026-04-23T00:03:00Z",
+                "attempt_id": "repo:01ATTEMPT1",
+                "ownership_token": "token-1",
+                "payload": {"agent": {"agent_id": "codex:late"}},
+            },
+        )
+
+        attempt = get_attempt(self.conn, "repo:01ATTEMPT1")
+        assert attempt is not None
+        self.assertFalse(result.mutated)
+        self.assertEqual("finished", attempt.reported_status)
+        self.assertEqual("discarded", attempt.verified_status)
+
     def test_attempt_finished_with_verification_populates_observed_fields(self) -> None:
         # Regression for Finding #5: tests_run/passed/failed/lint_passed/
         # build_passed were schema bloat because no event populated them.
@@ -135,6 +169,21 @@ class EventProcessingTests(unittest.TestCase):
         assert evidence is not None
         self.assertEqual(0, evidence.observed_tests_run)
         self.assertIsNone(evidence.observed_lint_passed)
+
+    def test_event_timestamp_rejects_non_utc_offset(self) -> None:
+        with self.assertRaisesRegex(EventError, "invalid timestamp"):
+            process_event(
+                self.conn,
+                {
+                    "schema_version": 1,
+                    "event_id": "repo:01OFFSET",
+                    "event_type": "attempt_heartbeat",
+                    "sent_at": "2026-04-23T08:02:00+08:00",
+                    "attempt_id": "repo:01ATTEMPT1",
+                    "ownership_token": "token-1",
+                    "payload": {},
+                },
+            )
 
     def test_tool_event_without_files_only_updates_counters(self) -> None:
         # Regression for dogfood-session-2 Bug G: a tool_event that omits
@@ -249,6 +298,23 @@ class EventProcessingTests(unittest.TestCase):
                 },
             )
 
+    def test_duplicate_event_still_requires_valid_ownership_token(self) -> None:
+        envelope = {
+            "schema_version": 1,
+            "event_id": "repo:01DUPAUTH",
+            "event_type": "attempt_heartbeat",
+            "sent_at": "2026-04-23T00:04:00Z",
+            "attempt_id": "repo:01ATTEMPT1",
+            "ownership_token": "token-1",
+            "payload": {},
+        }
+        process_event(self.conn, envelope)
+        bad_envelope = dict(envelope)
+        bad_envelope["ownership_token"] = "wrong-token"
+
+        with self.assertRaises(EventOwnershipError):
+            process_event(self.conn, bad_envelope)
+
     def test_attempt_finished_updates_terminal_fields_and_evidence_refs(self) -> None:
         process_event(
             self.conn,
@@ -306,14 +372,31 @@ class EventProcessingTests(unittest.TestCase):
         attempt = get_attempt(self.conn, "repo:01ATTEMPT1")
         assert attempt is not None
         self.assertFalse(result.duplicate)
-        self.assertTrue(result.mutated)
-        self.assertEqual("discarded", attempt.verified_status)
+        self.assertFalse(result.mutated)
+        self.assertEqual("finished", attempt.reported_status)
+        self.assertEqual("2026-04-23T00:06:00Z", attempt.ended_at)
+        self.assertEqual("promoted", attempt.verified_status)
         self.assertEqual("refs/heads/fix/oauth-expiry", attempt.result_promotion_ref)
         intent_row = self.conn.execute(
             "SELECT status FROM intents WHERE id = ?",
             ("repo:01INTENT",),
         ).fetchone()
         self.assertEqual("open", intent_row["status"])
+
+    def test_promoted_event_rejects_non_branch_ref(self) -> None:
+        with self.assertRaisesRegex(EventError, "refs/heads"):
+            process_event(
+                self.conn,
+                {
+                    "schema_version": 1,
+                    "event_id": "repo:01EVENT_NON_BRANCH",
+                    "event_type": "attempt_promoted",
+                    "sent_at": "2026-04-23T00:06:00Z",
+                    "attempt_id": "repo:01ATTEMPT1",
+                    "ownership_token": "token-1",
+                    "payload": {"promotion_ref": "refs/tags/release"},
+                },
+            )
 
     def test_promoting_a_discarded_attempt_conflicts(self) -> None:
         process_event(
