@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from ait.daemon import start_daemon as _real_start_daemon
 from ait.db import connect_db, list_memory_retrieval_events
 from ait.memory import add_memory_note, list_memory_notes, search_repo_memory
 from ait.runner import (
@@ -22,6 +26,26 @@ from ait.runner import (
 
 
 class RunnerTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._started_daemon_pids: set[int] = set()
+        self._start_daemon_patcher = patch(
+            "ait.runner.start_daemon",
+            side_effect=self._start_daemon_for_test,
+        )
+        self._start_daemon_patcher.start()
+        self.addCleanup(self._start_daemon_patcher.stop)
+        self.addCleanup(self._stop_started_daemons)
+
+    def _start_daemon_for_test(self, repo_root: str | Path):
+        status = _real_start_daemon(repo_root)
+        if status.running and status.pid is not None:
+            self._started_daemon_pids.add(status.pid)
+        return status
+
+    def _stop_started_daemons(self) -> None:
+        for pid in tuple(self._started_daemon_pids):
+            _terminate_pid(pid)
+
     def test_run_agent_command_records_command_and_finishes_attempt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
@@ -1014,6 +1038,24 @@ def _git_stdout(repo_root: Path, *args: str) -> str:
         capture_output=True,
         text=True,
     ).stdout.strip()
+
+
+def _terminate_pid(pid: int) -> None:
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(0.05)
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
 
 
 if __name__ == "__main__":

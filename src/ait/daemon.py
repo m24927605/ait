@@ -229,7 +229,7 @@ def run_reaper_loop(
         except Exception as exc:
             # Transient errors (e.g. sqlite OperationalError during
             # contention) must not kill the reaper thread.
-            print(f"ait daemon reaper warning: {exc}", file=sys.stderr)
+            print(f"ait daemon reaper warning: {exc}", file=sys.stderr, flush=True)
         if stop_event.wait(scan_interval_seconds):
             return
 
@@ -320,7 +320,7 @@ def _handle_client_safely(
         _handle_client(conn, db_lock, client, repo_root)
     except Exception as exc:
         # Per-client errors must not crash the whole daemon.
-        print(f"ait daemon client warning: {exc}", file=sys.stderr)
+        print(f"ait daemon client warning: {exc}", file=sys.stderr, flush=True)
     finally:
         try:
             client.close()
@@ -372,7 +372,7 @@ def _verify_attempt_in_background(repo_root: Path, attempt_id: str) -> threading
             verify_attempt(repo_root, attempt_id)
         except Exception as exc:
             # Verification can be retried by explicit `ait attempt verify`.
-            print(f"ait daemon verifier warning: {exc}", file=sys.stderr)
+            print(f"ait daemon verifier warning: {exc}", file=sys.stderr, flush=True)
         finally:
             current = threading.current_thread()
             with _VERIFIER_THREADS_LOCK:
