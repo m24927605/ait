@@ -55,10 +55,13 @@ class DaemonLifecycleTests(unittest.TestCase):
                 self.assertTrue(started.running)
                 self.assertTrue(started.socket_connectable)
                 self.assertTrue(started.pid_matches)
+                self.assertIsNotNone(started.pid)
                 self.assertNotEqual("not-a-pid\n", pid_file.read_text(encoding="utf-8"))
 
                 stopped = stop_daemon(repo_root)
                 self.assertFalse(stopped.running)
+                assert started.pid is not None
+                self.assertTrue(_pid_has_exited(started.pid))
             finally:
                 if repo_root.exists():
                     stop_daemon(repo_root)
@@ -148,6 +151,14 @@ def _wait_for_daemon_to_stop(repo_root: Path) -> None:
             return
         time.sleep(0.05)
     raise AssertionError("daemon did not stop")
+
+
+def _pid_has_exited(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return True
+    return False
 
 
 if __name__ == "__main__":

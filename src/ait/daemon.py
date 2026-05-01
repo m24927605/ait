@@ -23,6 +23,7 @@ from ait.verifier import verify_attempt
 DEFAULT_REAPER_TTL_SECONDS = 300
 DEFAULT_REAPER_SCAN_INTERVAL_SECONDS = 30.0
 DEFAULT_REAPER_STARTUP_GRACE_SECONDS = 30.0
+_STARTED_DAEMON_PROCESSES: dict[int, subprocess.Popen] = {}
 _VERIFIER_THREADS: list[threading.Thread] = []
 _VERIFIER_THREADS_LOCK = threading.Lock()
 
@@ -56,6 +57,7 @@ def start_daemon(repo_root: str | Path) -> DaemonStatus:
     )
     pid_file = _pid_file(root)
     pid_file.write_text(f"{process.pid}\n", encoding="utf-8")
+    _STARTED_DAEMON_PROCESSES[process.pid] = process
     for _ in range(50):
         status = daemon_status(root)
         if status.running:
@@ -71,6 +73,19 @@ def stop_daemon(repo_root: str | Path) -> DaemonStatus:
     status = daemon_status(root)
     if status.pid is not None and status.pid_matches:
         os.kill(status.pid, signal.SIGTERM)
+        process = _STARTED_DAEMON_PROCESSES.pop(status.pid, None)
+        if process is not None:
+            try:
+                process.wait(timeout=5.0)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5.0)
+        elif not _wait_for_pid_exit(status.pid, timeout=5.0):
+            try:
+                os.kill(status.pid, signal.SIGKILL)
+            except OSError:
+                pass
+            _wait_for_pid_exit(status.pid, timeout=2.0)
     if status.socket_path.exists():
         try:
             remove_socket_file(status.socket_path)
@@ -138,6 +153,7 @@ def serve_daemon(repo_root: str | Path) -> None:
     conn = connect_db(db_path, check_same_thread=False)
     db_lock = threading.Lock()
     stop_event = threading.Event()
+    previous_signal_handlers = _install_stop_signal_handlers(stop_event)
     reaper_thread: threading.Thread | None = None
     try:
         with db_lock:
@@ -180,6 +196,7 @@ def serve_daemon(repo_root: str | Path) -> None:
             remove_socket_file(socket_path)
         if pid_file.exists():
             pid_file.unlink()
+        _restore_signal_handlers(previous_signal_handlers)
 
 
 def run_reaper_loop(
@@ -387,6 +404,45 @@ def _socket_path(repo_root: Path) -> Path:
 
 def _pid_file(repo_root: Path) -> Path:
     return repo_root / ".ait" / "daemon.pid"
+
+
+def _install_stop_signal_handlers(
+    stop_event: threading.Event,
+) -> dict[int, signal.Handlers] | None:
+    if threading.current_thread() is not threading.main_thread():
+        return None
+    previous: dict[int, signal.Handlers] = {}
+
+    def request_stop(signum, frame) -> None:
+        del signum, frame
+        stop_event.set()
+
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        previous[signum] = signal.getsignal(signum)
+        signal.signal(signum, request_stop)
+    return previous
+
+
+def _restore_signal_handlers(previous: dict[int, signal.Handlers] | None) -> None:
+    if previous is None:
+        return
+    for signum, handler in previous.items():
+        signal.signal(signum, handler)
+
+
+def _wait_for_pid_exit(pid: int, *, timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return True
+        time.sleep(0.05)
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return True
+    return False
 
 
 def _cleanup_stale_daemon_state(status: DaemonStatus) -> None:
