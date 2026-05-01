@@ -176,6 +176,57 @@ class DaemonConcurrencyTests(unittest.TestCase):
 
         self.assertIn("ait daemon client warning: client exploded", stderr.getvalue())
 
+    def test_finished_event_schedules_verifier_outside_db_lock(self) -> None:
+        verifier_lock_state: list[bool] = []
+
+        def fake_verify(repo_root: Path, attempt_id: str) -> None:
+            del repo_root, attempt_id
+            acquired = self._db_lock.acquire(blocking=False)
+            verifier_lock_state.append(acquired)
+            if acquired:
+                self._db_lock.release()
+
+        self._stop_event.set()
+        self._accept_thread.join(timeout=2.0)
+        self._server.close()
+        if self._socket_path.exists():
+            remove_socket_file(self._socket_path)
+
+        server = bind_unix_socket(self._socket_path)
+        stop_event = threading.Event()
+        thread = threading.Thread(
+            target=run_accept_loop,
+            kwargs={
+                "server": server,
+                "conn": self.conn,
+                "db_lock": self._db_lock,
+                "repo_root": Path(self._tmp.name),
+                "stop_event": stop_event,
+                "poll_interval_seconds": 0.02,
+            },
+            daemon=True,
+        )
+        with patch("ait.daemon._verify_attempt_in_background", fake_verify):
+            thread.start()
+            with AitHarness.open(
+                attempt_id="repo:01ATTEMPT_A",
+                ownership_token="token-A",
+                socket_path=self._socket_path,
+                agent={
+                    "agent_id": "concurrent:A",
+                    "harness": "concurrent",
+                    "harness_version": "0",
+                },
+            ) as harness:
+                harness.finish(exit_code=0)
+            stop_event.set()
+            thread.join(timeout=2.0)
+        try:
+            server.close()
+        except Exception:
+            pass
+
+        self.assertEqual([True], verifier_lock_state)
 
     def test_duplicate_finished_event_schedules_verifier_once(self) -> None:
         spawned_attempts: list[str] = []

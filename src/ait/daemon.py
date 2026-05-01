@@ -56,7 +56,7 @@ def start_daemon(repo_root: str | Path) -> DaemonStatus:
         env={**os.environ, "PYTHONPATH": _pythonpath_with_src(root)},
     )
     pid_file = _pid_file(root)
-    pid_file.write_text(f"{process.pid}\n", encoding="utf-8")
+    _write_pid_file(pid_file, process.pid)
     _STARTED_DAEMON_PROCESSES[process.pid] = process
     for _ in range(50):
         status = daemon_status(root)
@@ -148,7 +148,7 @@ def serve_daemon(repo_root: str | Path) -> None:
     if socket_path.exists():
         remove_socket_file(socket_path)
     server = bind_unix_socket(socket_path)
-    pid_file.write_text(f"{os.getpid()}\n", encoding="utf-8")
+    _write_pid_file(pid_file, os.getpid())
     db_path = root / ".ait" / "state.sqlite3"
     conn = connect_db(db_path, check_same_thread=False)
     db_lock = threading.Lock()
@@ -226,10 +226,10 @@ def run_reaper_loop(
                     now=_now(),
                     heartbeat_ttl_seconds=heartbeat_ttl_seconds,
                 )
-        except Exception:
+        except Exception as exc:
             # Transient errors (e.g. sqlite OperationalError during
             # contention) must not kill the reaper thread.
-            pass
+            print(f"ait daemon reaper warning: {exc}", file=sys.stderr)
         if stop_event.wait(scan_interval_seconds):
             return
 
@@ -256,11 +256,18 @@ def run_accept_loop(
     cleanly unwind when the process is asked to exit; tests use it to
     shut down a test loop.
     """
-    if stop_event is not None:
+    if stop_event is not None or idle_timeout_seconds is not None:
         server.settimeout(poll_interval_seconds)
     last_activity = time.monotonic()
     active_clients = 0
     active_clients_lock = threading.Lock()
+    client_threads: list[threading.Thread] = []
+
+    def finish_loop() -> None:
+        deadline = time.monotonic() + 5.0
+        for thread in list(client_threads):
+            remaining = max(0.0, deadline - time.monotonic())
+            thread.join(timeout=remaining)
 
     def run_client(client: socket.socket) -> None:
         nonlocal active_clients, last_activity
@@ -273,6 +280,7 @@ def run_accept_loop(
 
     while True:
         if stop_event is not None and stop_event.is_set():
+            finish_loop()
             return
         try:
             client, _ = server.accept()
@@ -283,19 +291,23 @@ def run_accept_loop(
                 if idle:
                     if stop_event is not None:
                         stop_event.set()
+                    finish_loop()
                     return
             continue
         except OSError:
+            finish_loop()
             return
         with active_clients_lock:
             active_clients += 1
             last_activity = time.monotonic()
-        threading.Thread(
+        thread = threading.Thread(
             target=run_client,
             args=(client,),
             daemon=True,
             name="ait-client",
-        ).start()
+        )
+        client_threads.append(thread)
+        thread.start()
 
 
 def _handle_client_safely(
@@ -404,6 +416,13 @@ def _socket_path(repo_root: Path) -> Path:
 
 def _pid_file(repo_root: Path) -> Path:
     return repo_root / ".ait" / "daemon.pid"
+
+
+def _write_pid_file(pid_file: Path, pid: int) -> None:
+    pid_file.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = pid_file.with_name(f"{pid_file.name}.{os.getpid()}.tmp")
+    tmp_path.write_text(f"{pid}\n", encoding="utf-8")
+    os.replace(tmp_path, pid_file)
 
 
 def _install_stop_signal_handlers(

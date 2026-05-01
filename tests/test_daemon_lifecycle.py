@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import json
 import os
+import json
 import signal
 import subprocess
 import sys
@@ -9,17 +9,35 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ait.app import create_attempt, create_intent, init_repo
-from ait.daemon import daemon_status, prune_daemon, start_daemon, stop_daemon
-from ait.daemon_transport import bind_unix_socket
-from ait.db import connect_db, get_attempt
 from ait.harness import AitHarness
+from ait.daemon import (
+    _write_pid_file,
+    daemon_status,
+    prune_daemon,
+    serve_daemon,
+    start_daemon,
+    stop_daemon,
+)
+from ait.daemon_transport import bind_unix_socket
+from ait.db import NewAttempt, NewIntent, connect_db, get_attempt, insert_attempt, insert_intent, run_migrations
 
 
 class DaemonLifecycleTests(unittest.TestCase):
+    def test_write_pid_file_replaces_atomically(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            pid_file = Path(tmp) / ".ait" / "daemon.pid"
+
+            _write_pid_file(pid_file, 123)
+            _write_pid_file(pid_file, 456)
+
+            self.assertEqual("456\n", pid_file.read_text(encoding="utf-8"))
+            self.assertEqual([], list(pid_file.parent.glob("daemon.pid.*.tmp")))
+
     def test_daemon_status_does_not_trust_unrelated_live_pid(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
@@ -83,6 +101,55 @@ class DaemonLifecycleTests(unittest.TestCase):
             self.assertFalse(socket_path.exists())
             self.assertFalse(pid_file.exists())
             self.assertIsNone(pruned.stale_reason)
+
+    def test_serve_daemon_recovers_stale_running_attempts_on_startup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            init_repo(repo_root)
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            try:
+                run_migrations(conn)
+                insert_intent(
+                    conn,
+                    NewIntent(
+                        id="repo:01INTENT",
+                        repo_id="repo",
+                        title="Daemon startup recovery",
+                        created_at="2026-04-23T00:00:00Z",
+                        created_by_actor_type="agent",
+                        created_by_actor_id="codex:worker",
+                        trigger_source="cli",
+                    ),
+                )
+                insert_attempt(
+                    conn,
+                    NewAttempt(
+                        id="repo:01ATTEMPT",
+                        intent_id="repo:01INTENT",
+                        agent_id="codex:worker",
+                        workspace_ref=str(repo_root / ".ait" / "workspaces" / "attempt"),
+                        base_ref_oid="abc123",
+                        started_at="2000-01-01T00:00:00Z",
+                        heartbeat_at="2000-01-01T00:00:00Z",
+                        ownership_token="token",
+                        reported_status="running",
+                    ),
+                )
+            finally:
+                conn.close()
+
+            def stop_after_recovery(**kwargs):
+                daemon_conn = kwargs["conn"]
+                attempt = get_attempt(daemon_conn, "repo:01ATTEMPT")
+                assert attempt is not None
+                self.assertEqual("crashed", attempt.reported_status)
+                self.assertEqual("failed", attempt.verified_status)
+                raise RuntimeError("stop daemon test")
+
+            with patch("ait.daemon.run_accept_loop", stop_after_recovery):
+                with self.assertRaisesRegex(RuntimeError, "stop daemon test"):
+                    serve_daemon(repo_root)
 
     def test_start_daemon_recovers_running_attempt_after_sigkill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
