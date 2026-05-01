@@ -1,5 +1,7 @@
 <div align="center">
 
+**[README](README.md) · [繁體中文](README.zh-TW.md) · [MIT License](LICENSE)**
+
 # ait
 
 ### 給 AI coding agents 使用的 Git-native 安全工作流
@@ -13,8 +15,6 @@ memory。
 [![Python](https://img.shields.io/badge/python-3.14%2B-blue)](pyproject.toml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Status](https://img.shields.io/badge/status-alpha-orange)](#狀態)
-
-**[README](README.md) · [繁體中文](README.zh-TW.md) · [MIT License](LICENSE)**
 
 </div>
 
