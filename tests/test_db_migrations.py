@@ -46,6 +46,30 @@ class MigrationTests(unittest.TestCase):
             )
             self.assertEqual(str(SCHEMA_VERSION), get_meta(conn, "schema_version"))
 
+    def test_file_db_uses_wal_and_busy_timeout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / ".ait" / "ait.sqlite3"
+            conn = connect_db(db_path)
+            self.addCleanup(conn.close)
+
+            journal_mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+            busy_timeout = conn.execute("PRAGMA busy_timeout").fetchone()[0]
+            synchronous = conn.execute("PRAGMA synchronous").fetchone()[0]
+
+            self.assertEqual("wal", str(journal_mode).lower())
+            self.assertEqual(5000, busy_timeout)
+            self.assertEqual(1, synchronous)
+
+    def test_memory_db_skips_wal_but_uses_busy_timeout(self) -> None:
+        conn = connect_db(":memory:")
+        self.addCleanup(conn.close)
+
+        journal_mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+        busy_timeout = conn.execute("PRAGMA busy_timeout").fetchone()[0]
+
+        self.assertEqual("memory", str(journal_mode).lower())
+        self.assertEqual(5000, busy_timeout)
+
     def test_run_migrations_is_idempotent(self) -> None:
         conn = connect_db(":memory:")
         self.addCleanup(conn.close)

@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from ait.workspace import (
     WorkspaceError,
@@ -98,6 +99,34 @@ class WorkspaceTests(unittest.TestCase):
                     attempt_id="repo:01ARZ3NDEKTSV4RRFFQ69G5FAA",
                     ordinal=1,
                 )
+
+    def test_create_attempt_workspace_cleans_directory_after_git_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            def fail_after_mkdir(root: Path, *args: str, allow_failure: bool = False):
+                del root, allow_failure
+                if args[:2] == ("worktree", "add"):
+                    worktree_path = Path(args[-2])
+                    worktree_path.mkdir(parents=True)
+                    raise WorkspaceError("simulated worktree add failure")
+                return subprocess.CompletedProcess(["git", *args], 0, "", "")
+
+            with patch("ait.workspace._git_run", side_effect=fail_after_mkdir):
+                with self.assertRaisesRegex(WorkspaceError, "simulated"):
+                    create_attempt_workspace(
+                        repo_root=repo_root,
+                        attempt_id="repo:01ARZ3NDEKTSV4RRFFQ69G5FAA",
+                        ordinal=2,
+                    )
+
+            location = get_attempt_workspace_location(
+                repo_root,
+                "repo:01ARZ3NDEKTSV4RRFFQ69G5FAA",
+                2,
+            )
+            self.assertFalse(location.worktree_path.exists())
 
     def test_ref_contains_commits_returns_false_for_empty_commit_list(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
