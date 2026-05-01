@@ -94,39 +94,51 @@ from ait.cli_installation import (
     _installation_payload as _default_installation_payload,
     package_version,
 )
-from ait.cli_helpers import (
+from ait.cli.adapter_helpers import (
     _agent_cli_message,
     _agent_cli_summary,
     _agent_command_name,
-    _ait_health_payload,
-    _daemon_status_payload,
     _doctor_next_steps,
     _format_adapter,
     _format_adapter_doctor,
     _format_auto_enable,
     _format_bootstrap,
-    _format_daemon_lines,
+)
+from ait.cli.hint_helpers import (
+    _maybe_emit_automation_hint,
+    _maybe_emit_status_all_hint,
+    _read_hints,
+    _write_hints,
+)
+from ait.cli.init_helpers import (
     _format_init,
+    _format_repair,
+    _init_payload,
+    _repair_payload,
+)
+from ait.cli.memory_helpers import (
     _format_memory_facts,
     _format_memory_import,
     _format_memory_retrievals,
-    _format_rows,
-    _format_repair,
-    _format_run_result,
-    _format_shell_integration,
-    _format_status,
-    _format_status_all,
-    _init_payload,
-    _maybe_emit_automation_hint,
-    _maybe_emit_status_all_hint,
     _memory_eval_next_steps,
     _memory_status_payload,
-    _read_hints,
-    _repair_payload,
     _report_status_payload,
+)
+from ait.cli.query_helpers import (
+    _format_rows,
     _run_query_command,
+)
+from ait.cli.runtime_helpers import (
+    _daemon_status_payload,
+    _format_daemon_lines,
+    _format_run_result,
+    _format_shell_integration,
+)
+from ait.cli.status_helpers import (
+    _ait_health_payload,
+    _format_status,
+    _format_status_all,
     _status_payload,
-    _write_hints,
 )
 
 def _installation_payload() -> dict[str, object]:

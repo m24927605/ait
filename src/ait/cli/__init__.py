@@ -12,7 +12,7 @@ from ait.cli_installation import (
     _installation_payload,
     package_version,
 )
-from ait.cli_helpers import _format_status
+from ait.cli.status_helpers import _format_status
 
 from .main import main
 from .upgrade import _format_upgrade, _upgrade_command, _upgrade_payload
