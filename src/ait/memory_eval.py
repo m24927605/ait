@@ -284,7 +284,11 @@ def _relevance_scores(conn: sqlite3.Connection, *, query: str, as_of: str) -> di
 
 
 def _tokens(text: str) -> set[str]:
-    return {token for token in re.findall(r"[0-9A-Za-z_]+", text.casefold()) if len(token) >= 3}
+    folded = text.casefold()
+    ascii_tokens = {token for token in re.findall(r"[0-9A-Za-z_]+", folded) if len(token) >= 3}
+    cjk_chars = re.findall(r"[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af]", folded)
+    cjk_bigrams = {left + right for left, right in zip(cjk_chars, cjk_chars[1:])}
+    return ascii_tokens | set(cjk_chars) | cjk_bigrams
 
 
 def _fact_stale(fact: MemoryFactRecord, *, as_of: str) -> bool:

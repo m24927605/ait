@@ -62,6 +62,25 @@ class ContextTests(unittest.TestCase):
             self.assertIn("verified=failed", text)
             self.assertIn("review latest failed attempt", text)
 
+    def test_agent_context_redacts_intent_secret_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            secret = "sk-ant-api03-" + ("a" * 32)
+            intent = create_intent(
+                repo_root,
+                title=f"Use {secret}",
+                description=f"Authorization: Bearer {'b' * 32}",
+                kind="bugfix",
+            )
+
+            text = render_agent_context_text(build_agent_context(repo_root, intent_id=intent.intent_id))
+
+            self.assertNotIn(secret, text)
+            self.assertNotIn("Bearer " + ("b" * 32), text)
+            self.assertIn("[REDACTED]", text)
+
 
 def _init_git_repo(repo_root: Path) -> None:
     _git(repo_root, "init")

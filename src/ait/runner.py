@@ -36,6 +36,8 @@ from ait.run_report import refresh_run_reports
 from ait.transcript import normalize_transcript, strip_terminal_control
 from ait.workspace import WorkspaceError, create_attempt_commit
 
+AIT_CONTEXT_BUDGET_CHARS = 16000
+
 
 @dataclass(frozen=True, slots=True)
 class RunResult:
@@ -478,17 +480,35 @@ def _write_context_file(
     )
     relevant_memory = render_relevant_memory_recall(recall)
     path = workspace / ".ait-context.md"
-    path.write_text(
+    context_text = (
         render_agent_context_text(context)
         + "\n"
         + relevant_memory
         + "\n"
-        + render_repo_memory_text(memory, budget_chars=12000)
+        + render_repo_memory_text(
+            memory,
+            budget_chars=12000,
+            include_advisory_attempt_memory=False,
+        )
         + "\n"
-        + render_repo_brain_briefing(briefing, budget_chars=5000),
-        encoding="utf-8",
+        + render_repo_brain_briefing(briefing, budget_chars=5000)
     )
+    path.write_text(_fit_context_budget(context_text), encoding="utf-8")
     return path
+
+
+def _fit_context_budget(text: str, *, budget_chars: int = AIT_CONTEXT_BUDGET_CHARS) -> str:
+    if budget_chars <= 0:
+        return ""
+    if len(text) <= budget_chars:
+        return text
+    marker = (
+        "\n\n[ait context truncated: total context exceeded "
+        f"{budget_chars} character budget]\n"
+    )
+    if len(marker) >= budget_chars:
+        return marker[:budget_chars]
+    return text[: budget_chars - len(marker)].rstrip() + marker
 
 
 def _finish_attempt_locally(

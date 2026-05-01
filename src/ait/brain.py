@@ -495,6 +495,8 @@ def _add_note_nodes(
         topic, topic_redacted = redact_text(topic_raw)
         source, source_redacted = redact_text(str(row["source"]))
         body, redacted = redact_text(str(row["body"]))
+        if _advisory_attempt_memory_note(source, body):
+            continue
         topic_id = f"topic:{_safe_node_fragment(topic)}"
         _add_node(
             nodes,
@@ -631,6 +633,7 @@ def _add_attempt_nodes(
         trace_text = _read_trace_text(raw_trace_ref, repo_root=repo_root)
         if trace_text and not transcript_excluded(trace_text, policy):
             trace_text, trace_redacted = redact_text(trace_text)
+            trace_text = _compact_line(trace_text, limit=400)
             trace_id = f"trace:{row['attempt_id']}"
             _add_node(
                 nodes,
@@ -835,6 +838,15 @@ def _terms(text: str) -> tuple[str, ...]:
 def _safe_node_fragment(value: str) -> str:
     compacted = re.sub(r"[^A-Za-z0-9_.:-]+", "-", value.strip().lower()).strip("-")
     return compacted or "general"
+
+
+def _advisory_attempt_memory_note(source: str, body: str) -> bool:
+    if not source.startswith("attempt-memory:"):
+        return False
+    return "confidence=advisory" in body or any(
+        f"verified_status={status}" in body
+        for status in ("failed", "failed_interrupted", "needs_review")
+    )
 
 
 def _compact_query(text: str, *, limit: int = 1200) -> str:

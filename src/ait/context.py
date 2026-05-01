@@ -15,6 +15,8 @@ from ait.db import (
     list_intent_attempts,
 )
 from ait.idresolver import resolve_intent_id
+from ait.memory_policy import EXCLUDED_MARKER, default_memory_policy, transcript_excluded
+from ait.redaction import redact_text
 from ait.repo import resolve_repo_root
 
 
@@ -81,15 +83,18 @@ def build_agent_context_with_connection(
 
 def render_agent_context_text(context: AgentContext) -> str:
     intent = context.intent
+    title = _context_safe_text(str(intent["title"]))
+    kind = _context_safe_text(str(intent.get("kind") or ""))
+    description = _context_safe_text(str(intent.get("description") or ""))
     lines = [
-        f"Intent: {intent['title']}",
+        f"Intent: {title}",
         f"Intent ID: {intent['id']}",
         f"Status: {intent['status']}",
     ]
-    if intent.get("kind"):
-        lines.append(f"Kind: {intent['kind']}")
-    if intent.get("description"):
-        lines.append(f"Description: {intent['description']}")
+    if kind:
+        lines.append(f"Kind: {kind}")
+    if description:
+        lines.append(f"Description: {description}")
 
     lines.append("")
     lines.append("Attempts:")
@@ -134,6 +139,13 @@ def render_agent_context_text(context: AgentContext) -> str:
     for item in context.recommended:
         lines.append(f"- {item}")
     return "\n".join(lines) + "\n"
+
+
+def _context_safe_text(value: str) -> str:
+    redacted, _ = redact_text(value)
+    if transcript_excluded(redacted, default_memory_policy()):
+        return EXCLUDED_MARKER
+    return redacted
 
 
 def _context_attempt(conn: sqlite3.Connection, attempt: AttemptRecord) -> ContextAttempt:
