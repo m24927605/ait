@@ -53,10 +53,31 @@ class ReconcileTests(unittest.TestCase):
                 conn.close()
 
             self.assertEqual(2, result.processed_mappings)
+            self.assertEqual(0, result.unmapped_mappings)
             self.assertEqual("newcommit", row["commit_oid"])
             self.assertEqual("basenew", row["base_commit_oid"])
             self.assertFalse((repo_root / ".ait" / "post-rewrite.last").exists())
             self.assertFalse((repo_root / ".ait" / "manual-reconcile-required").exists())
+
+    def test_reconcile_surfaces_unmapped_rewrite_mapping_for_manual_repair(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            create_intent(repo_root, title="Rewrite", description=None, kind="bugfix")
+
+            post_rewrite = repo_root / ".ait" / "post-rewrite.last"
+            post_rewrite.write_text("unknownold unknownnew\n", encoding="utf-8")
+
+            result = reconcile_repo(repo_root)
+
+            marker = repo_root / ".ait" / "manual-reconcile-required"
+            self.assertEqual(1, result.processed_mappings)
+            self.assertEqual(0, result.updated_commit_rows)
+            self.assertEqual(0, result.updated_base_rows)
+            self.assertEqual(1, result.unmapped_mappings)
+            self.assertTrue(result.manual_repair_required)
+            self.assertTrue(post_rewrite.exists())
+            self.assertIn("unknownold unknownnew", marker.read_text(encoding="utf-8"))
 
     def test_reconcile_handles_chained_amends_from_real_post_rewrite_hook(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

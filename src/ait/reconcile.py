@@ -21,6 +21,7 @@ class ReconcileResult:
     processed_mappings: int
     updated_commit_rows: int
     updated_base_rows: int
+    unmapped_mappings: int
     manual_repair_required: bool
 
 
@@ -32,17 +33,18 @@ def reconcile_repo(repo_root: str | Path) -> ReconcileResult:
     if not mappings:
         if manual_marker.exists():
             manual_marker.unlink()
-        return ReconcileResult(0, 0, 0, False)
+        return ReconcileResult(0, 0, 0, 0, False)
 
     db_path = root / ".ait" / "state.sqlite3"
     conn = connect_db(db_path)
     updated_commit_rows = 0
     updated_base_rows = 0
+    unmapped: list[RewriteMapping] = []
     try:
         with conn:
             for mapping in mappings:
-                updated_commit_rows += _rewrite_commit_oid(conn, mapping)
-                updated_base_rows += conn.execute(
+                commit_rows = _rewrite_commit_oid(conn, mapping)
+                base_rows = conn.execute(
                     """
                     UPDATE attempt_commits
                     SET base_commit_oid = ?
@@ -50,18 +52,26 @@ def reconcile_repo(repo_root: str | Path) -> ReconcileResult:
                     """,
                     (mapping.new_commit_oid, mapping.old_commit_oid),
                 ).rowcount
+                updated_commit_rows += commit_rows
+                updated_base_rows += base_rows
+                if commit_rows == 0 and base_rows == 0:
+                    unmapped.append(mapping)
     finally:
         conn.close()
 
-    if post_rewrite_path.exists():
+    manual_repair_required = bool(unmapped)
+    if post_rewrite_path.exists() and not manual_repair_required:
         post_rewrite_path.unlink()
-    if manual_marker.exists():
+    if manual_repair_required:
+        _write_manual_reconcile_marker(manual_marker, unmapped)
+    elif manual_marker.exists():
         manual_marker.unlink()
     return ReconcileResult(
         processed_mappings=len(mappings),
         updated_commit_rows=updated_commit_rows,
         updated_base_rows=updated_base_rows,
-        manual_repair_required=False,
+        unmapped_mappings=len(unmapped),
+        manual_repair_required=manual_repair_required,
     )
 
 
@@ -120,3 +130,13 @@ def _rewrite_commit_oid(conn, mapping: RewriteMapping) -> int:
             (mapping.new_commit_oid, attempt_id, mapping.old_commit_oid),
         ).rowcount
     return updated
+
+
+def _write_manual_reconcile_marker(path: Path, mappings: list[RewriteMapping]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "AIT manual reconcile required",
+        "The following post-rewrite mappings did not match any tracked attempt commit or base commit:",
+    ]
+    lines.extend(f"- {mapping.old_commit_oid} {mapping.new_commit_oid}" for mapping in mappings)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
