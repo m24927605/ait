@@ -147,7 +147,7 @@ class HarnessClientTests(unittest.TestCase):
         finished = self._received[-1]
         self.assertEqual(1, finished["payload"]["exit_code"])
 
-    def test_context_manager_does_not_retry_failed_explicit_finish(self) -> None:
+    def test_failed_explicit_finish_can_be_retried_by_caller(self) -> None:
         self._serve_thread = threading.Thread(
             target=self._serve_close_on_finish,
             daemon=True,
@@ -161,7 +161,11 @@ class HarnessClientTests(unittest.TestCase):
                 socket_path=self._socket_path,
                 agent={"agent_id": "myhar:worker", "harness": "myhar", "harness_version": "0"},
             ) as harness:
-                harness.finish(exit_code=1)
+                with self.assertRaises(HarnessError):
+                    harness.finish(exit_code=1)
+                self.assertFalse(harness._finish_attempted)
+                self.assertTrue(harness._finish_failed)
+                raise HarnessError("stop context without auto finish retry")
 
         self._serve_thread.join(timeout=2.0)
         event_types = [evt["event_type"] for evt in self._received]

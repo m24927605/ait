@@ -50,10 +50,10 @@ from __future__ import annotations
 import json
 import socket
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from ait.db.core import utc_now
 from ait.ids import new_ulid
 
 PROTOCOL_SCHEMA_VERSION = 1
@@ -79,6 +79,7 @@ class AitHarness:
     _started: bool = field(default=False, init=False)
     _finished: bool = field(default=False, init=False)
     _finish_attempted: bool = field(default=False, init=False)
+    _finish_failed: bool = field(default=False, init=False)
     socket_timeout_seconds: float = DEFAULT_SOCKET_TIMEOUT_SECONDS
 
     @classmethod
@@ -106,7 +107,7 @@ class AitHarness:
 
     def __exit__(self, exc_type, exc, tb) -> None:
         try:
-            if not self._finished and not self._finish_attempted:
+            if not self._finished and not self._finish_attempted and not self._finish_failed:
                 self.finish(exit_code=0 if exc is None else 1)
         finally:
             self.close()
@@ -173,8 +174,13 @@ class AitHarness:
             verification["build_passed"] = bool(build_passed)
         if verification:
             payload["verification"] = verification
+        try:
+            self._send(event_type="attempt_finished", payload=payload)
+        except Exception:
+            self._finish_failed = True
+            raise
+        self._finish_failed = False
         self._finish_attempted = True
-        self._send(event_type="attempt_finished", payload=payload)
         self._finished = True
 
     def close(self) -> None:
@@ -235,4 +241,4 @@ class AitHarness:
 
 
 def _iso_now() -> str:
-    return datetime.now(tz=UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return utc_now()
