@@ -33,8 +33,6 @@ from .models import (
 )
 from .notes import add_memory_note, list_memory_notes, remove_memory_note
 from .recall import (
-    _normalize_recall_ranker_scores,
-    _temporal_ranked_result,
     build_relevant_memory_recall,
     render_memory_search_results,
     render_relevant_memory_recall,
@@ -46,6 +44,7 @@ from .summary import (
     build_repo_memory_with_connection,
     render_repo_memory_text,
 )
+from .temporal import _normalize_recall_ranker_scores, _temporal_ranked_result
 
 __all__ = [
     "AGENT_MEMORY_CANDIDATES",
