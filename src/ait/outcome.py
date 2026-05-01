@@ -22,12 +22,11 @@ def classify_attempt_outcome(
     observed_tests_run: int,
     observed_tests_failed: int,
     raw_trace_text: str,
-    has_memory_candidates: bool,
 ) -> OutcomeClassification:
     reasons: list[str] = []
     normalized_trace = raw_trace_text.lower()
     has_changes = bool(changed_files or commit_oids or observed_file_writes > 0)
-    has_evidence = has_changes or observed_tool_calls > 0 or observed_tests_run > 0 or has_memory_candidates
+    has_evidence = has_changes or observed_tool_calls > 0 or observed_tests_run > 0
 
     if verified_status == "discarded":
         return OutcomeClassification("discarded", "high", ("attempt was discarded",))
@@ -39,7 +38,7 @@ def classify_attempt_outcome(
         return OutcomeClassification("pending", "low", (f"reported_status={reported_status}",))
 
     if result_exit_code not in (None, 0):
-        if result_exit_code == 130 or "keyboardinterrupt" in normalized_trace or "^c" in normalized_trace:
+        if result_exit_code == 130 or _looks_like_interruption(normalized_trace):
             return OutcomeClassification("failed_interrupted", "high", ("attempt was interrupted",))
         if _looks_like_infra_failure(normalized_trace):
             return OutcomeClassification("failed_infra", "high", ("trace indicates harness or environment failure",))
@@ -49,8 +48,6 @@ def classify_attempt_outcome(
                 reasons.append("workspace changed")
             if observed_tests_run > 0:
                 reasons.append("tests ran")
-            if has_memory_candidates:
-                reasons.append("memory candidates extracted")
             return OutcomeClassification("failed_with_evidence", "medium", tuple(reasons))
         return OutcomeClassification("failed", "high", (f"exit_code={result_exit_code}",))
 
@@ -68,8 +65,6 @@ def classify_attempt_outcome(
         if commit_oids:
             reasons.append("attempt has commits")
         return OutcomeClassification("succeeded", "high", tuple(reasons))
-    if has_memory_candidates:
-        return OutcomeClassification("succeeded", "medium", ("no file changes but durable memory candidates exist",))
     return OutcomeClassification("succeeded_noop", "high", ("zero exit with no changes and no durable evidence",))
 
 
@@ -83,7 +78,18 @@ def _looks_like_infra_failure(trace_text: str) -> bool:
         "broken pipe",
         "connection refused",
         "ait daemon did not start",
-        "harness",
-        "traceback",
+        "ait harness",
+        "harness binary",
+    )
+    return any(marker in trace_text for marker in markers)
+
+
+def _looks_like_interruption(trace_text: str) -> bool:
+    markers = (
+        "keyboardinterrupt",
+        "\x03",
+        "signal sigint",
+        "received sigint",
+        "interrupted by signal",
     )
     return any(marker in trace_text for marker in markers)

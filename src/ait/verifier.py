@@ -18,7 +18,6 @@ from ait.db import (
     utc_now,
 )
 from ait.lifecycle import refresh_intent_status
-from ait.memory import extract_memory_candidates
 from ait.outcome import OutcomeClassification, classify_attempt_outcome
 from ait.repo import resolve_repo_root
 from ait.workspace import (
@@ -173,12 +172,6 @@ def _classify_and_store_outcome(
 ) -> OutcomeClassification:
     raw_trace_ref = attempt.raw_trace_ref or evidence.raw_trace_ref or ""
     raw_trace_text = _read_ref_text(repo_root, raw_trace_ref, limit=12000)
-    candidates = extract_memory_candidates(
-        raw_trace_text,
-        attempt_id=attempt.id,
-        source_ref=raw_trace_ref,
-        verified_status=attempt.verified_status,
-    )
     outcome = classify_attempt_outcome(
         reported_status=attempt.reported_status,
         verified_status=attempt.verified_status,
@@ -190,7 +183,6 @@ def _classify_and_store_outcome(
         observed_tests_run=evidence.observed_tests_run,
         observed_tests_failed=evidence.observed_tests_failed,
         raw_trace_text=raw_trace_text,
-        has_memory_candidates=bool(candidates),
     )
     upsert_attempt_outcome(
         conn,
