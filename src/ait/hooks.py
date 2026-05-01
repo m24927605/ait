@@ -11,7 +11,7 @@ if [ -x "$(command -v python3)" ]; then
   REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
   if [ -n "$REPO_ROOT" ]; then
     mkdir -p "$REPO_ROOT/.ait"
-    cat > "$REPO_ROOT/.ait/post-rewrite.last"
+    cat >> "$REPO_ROOT/.ait/post-rewrite.last"
     : > "$REPO_ROOT/.ait/manual-reconcile-required"
   fi
 fi

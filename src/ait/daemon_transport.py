@@ -49,13 +49,23 @@ def bind_unix_socket(
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
         if path.is_socket():
-            path.unlink()
+            probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            try:
+                probe.settimeout(0.2)
+                probe.connect(str(path))
+            except OSError:
+                path.unlink()
+            else:
+                raise TransportError(f"socket path already has a live listener: {path}")
+            finally:
+                probe.close()
         else:
             raise TransportError(f"socket path already exists and is not a socket: {path}")
 
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
         server.bind(str(path))
+        path.chmod(0o600)
         server.listen(backlog)
     except Exception:
         server.close()
