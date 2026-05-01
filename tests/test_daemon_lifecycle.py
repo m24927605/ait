@@ -118,16 +118,17 @@ class DaemonLifecycleTests(unittest.TestCase):
             assert started.pid is not None
             os.kill(started.pid, signal.SIGKILL)
             _wait_for_daemon_to_stop(repo_root)
-            time.sleep(1.1)
+            time.sleep(2.1)
             restarted = start_daemon(repo_root)
 
             try:
                 self.assertTrue(restarted.running)
-                conn = connect_db(repo_root / ".ait" / "state.sqlite3")
-                try:
-                    recovered = get_attempt(conn, attempt.attempt_id)
-                finally:
-                    conn.close()
+                recovered = _wait_for_attempt_status(
+                    repo_root,
+                    attempt.attempt_id,
+                    reported_status="crashed",
+                    verified_status="failed",
+                )
                 assert recovered is not None
                 self.assertEqual("crashed", recovered.reported_status)
                 self.assertEqual("failed", recovered.verified_status)
@@ -159,6 +160,31 @@ def _pid_has_exited(pid: int) -> bool:
     except OSError:
         return True
     return False
+
+
+def _wait_for_attempt_status(
+    repo_root: Path,
+    attempt_id: str,
+    *,
+    reported_status: str,
+    verified_status: str,
+):
+    deadline = time.monotonic() + 5.0
+    latest = None
+    while time.monotonic() < deadline:
+        conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+        try:
+            latest = get_attempt(conn, attempt_id)
+        finally:
+            conn.close()
+        if (
+            latest is not None
+            and latest.reported_status == reported_status
+            and latest.verified_status == verified_status
+        ):
+            return latest
+        time.sleep(0.05)
+    return latest
 
 
 if __name__ == "__main__":
