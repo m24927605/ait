@@ -91,6 +91,12 @@ class IdResolverTests(unittest.TestCase):
         with self.assertRaises(IdResolutionError):
             resolve_intent_id(self.conn, "01NOPE")
 
+    def test_like_wildcards_are_treated_literally(self) -> None:
+        with self.assertRaises(IdResolutionError):
+            resolve_intent_id(self.conn, "%")
+        with self.assertRaises(IdResolutionError):
+            resolve_intent_id(self.conn, "_")
+
     def test_empty_input_raises(self) -> None:
         with self.assertRaises(IdResolutionError):
             resolve_intent_id(self.conn, "")

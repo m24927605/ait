@@ -54,8 +54,8 @@ def _resolve(
         return str(exact["id"])
 
     rows = conn.execute(
-        f"SELECT id FROM {table} WHERE id LIKE ?",
-        (f"%{given}%",),
+        f"SELECT id FROM {table} WHERE id LIKE ? ESCAPE '\\'",
+        (f"%{_escape_like(given)}%",),
     ).fetchall()
     if not rows:
         raise IdResolutionError(f"no {subject} matches: {given}")
@@ -65,3 +65,7 @@ def _resolve(
             f"{subject} id {given!r} is ambiguous; candidates: {candidates}"
         )
     return str(rows[0]["id"])
+
+
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
