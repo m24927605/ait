@@ -44,16 +44,22 @@ from .models import (
 )
 
 from .common import _read_trace_text, _trace_excluded
-from .notes import _active_memory_source_exists, add_memory_note
+from .notes import _active_memory_source_exists, add_memory_note_with_repository
+from .repository import MemoryRepository, open_memory_repository
 
 def add_attempt_memory_note(repo_root: str | Path, attempt_result) -> MemoryNote | None:
     root = resolve_repo_root(repo_root)
+    with open_memory_repository(root) as repo:
+        return _add_attempt_memory_note(repo, attempt_result)
+
+def _add_attempt_memory_note(repo: MemoryRepository, attempt_result) -> MemoryNote | None:
+    root = repo.root
     attempt = dict(attempt_result.attempt)
     attempt_id = str(attempt.get("id") or "")
     if not attempt_id:
         return None
     source = f"attempt-memory:{attempt_id}"
-    if _active_memory_source_exists(root, source):
+    if _active_memory_source_exists(repo, source):
         return None
 
     files = getattr(attempt_result, "files", {}) or {}
@@ -62,7 +68,7 @@ def add_attempt_memory_note(repo_root: str | Path, attempt_result) -> MemoryNote
         tuple(str(path) for path in files.get("changed", ())),
     )
     commits = tuple(str(commit.get("commit_oid")) for commit in getattr(attempt_result, "commits", []) if commit.get("commit_oid"))
-    intent = _attempt_memory_intent_fields(root, str(attempt.get("intent_id") or ""))
+    intent = _attempt_memory_intent_fields(repo, str(attempt.get("intent_id") or ""))
     verified_status = str(attempt.get("verified_status") or "pending")
     if verified_status in {"failed", "failed_interrupted", "needs_review"}:
         return None
@@ -81,13 +87,13 @@ def add_attempt_memory_note(repo_root: str | Path, attempt_result) -> MemoryNote
         outcome_confidence=outcome_confidence,
         exit_code=exit_code,
     )
-    note = add_memory_note(
-        root,
+    note = add_memory_note_with_repository(
+        repo,
         topic="attempt-memory",
         body=body,
         source=source,
     )
-    add_memory_candidates_for_attempt(root, attempt_result)
+    _add_memory_candidates_for_attempt(repo, attempt_result)
     return note
 
 def _attempt_memory_confidence(*, verified_status: str, outcome_class: str) -> str:
@@ -101,14 +107,19 @@ def _attempt_memory_confidence(*, verified_status: str, outcome_class: str) -> s
 
 def add_memory_candidates_for_attempt(repo_root: str | Path, attempt_result) -> tuple[MemoryNote, ...]:
     root = resolve_repo_root(repo_root)
+    with open_memory_repository(root) as repo:
+        return _add_memory_candidates_for_attempt(repo, attempt_result)
+
+def _add_memory_candidates_for_attempt(repo: MemoryRepository, attempt_result) -> tuple[MemoryNote, ...]:
+    root = repo.root
     attempt = dict(attempt_result.attempt)
     attempt_id = str(attempt.get("id") or "")
     if not attempt_id:
         return ()
     source = f"memory-candidate:{attempt_id}"
-    if _active_memory_source_exists(root, source):
+    if _active_memory_source_exists(repo, source):
         return ()
-    if _active_memory_source_exists(root, f"durable-memory:{attempt_id}"):
+    if _active_memory_source_exists(repo, f"durable-memory:{attempt_id}"):
         return ()
     raw_trace_ref = str(attempt.get("raw_trace_ref") or "")
     policy = load_memory_policy(root)
@@ -131,14 +142,14 @@ def add_memory_candidates_for_attempt(repo_root: str | Path, attempt_result) -> 
             and _candidate_corroborated(candidate, corroboration_messages)
         )
         _upsert_memory_fact_for_candidate(
-            root,
+            repo,
             attempt_id=attempt_id,
             candidate=candidate,
             durable=durable,
         )
         notes.append(
-            add_memory_note(
-                root,
+            add_memory_note_with_repository(
+                repo,
                 topic="durable-memory" if durable else "memory-candidate",
                 body=_memory_candidate_note_body(candidate, durable=durable),
                 source=(f"durable-memory:{attempt_id}" if durable else source),
@@ -147,7 +158,7 @@ def add_memory_candidates_for_attempt(repo_root: str | Path, attempt_result) -> 
     return tuple(notes)
 
 def _upsert_memory_fact_for_candidate(
-    repo_root: Path,
+    repo: MemoryRepository,
     *,
     attempt_id: str,
     candidate: MemoryCandidate,
@@ -155,30 +166,24 @@ def _upsert_memory_fact_for_candidate(
 ) -> None:
     now = utc_now()
     fact_id = f"{attempt_id}:memory-fact:{uuid.uuid5(uuid.NAMESPACE_URL, attempt_id + ':' + candidate.body).hex}"
-    conn = connect_db(repo_root / ".ait" / "state.sqlite3")
-    try:
-        run_migrations(conn)
-        upsert_memory_fact(
-            conn,
-            NewMemoryFact(
-                id=fact_id,
-                kind=_memory_fact_kind(candidate.kind),
-                topic=candidate.topic,
-                body=candidate.body,
-                summary=_memory_fact_summary(candidate.body),
-                status="accepted" if durable else "candidate",
-                confidence="medium" if durable else "low",
-                source_attempt_id=attempt_id,
-                source_trace_ref=candidate.source_ref,
-                human_review_state="pending" if durable else "pending",
-                provenance="commit" if durable else "transcript",
-                valid_from=now,
-                created_at=now,
-                updated_at=now,
-            ),
+    repo.upsert_candidate_fact(
+        NewMemoryFact(
+            id=fact_id,
+            kind=_memory_fact_kind(candidate.kind),
+            topic=candidate.topic,
+            body=candidate.body,
+            summary=_memory_fact_summary(candidate.body),
+            status="accepted" if durable else "candidate",
+            confidence="medium" if durable else "low",
+            source_attempt_id=attempt_id,
+            source_trace_ref=candidate.source_ref,
+            human_review_state="pending" if durable else "pending",
+            provenance="commit" if durable else "transcript",
+            valid_from=now,
+            created_at=now,
+            updated_at=now,
         )
-    finally:
-        conn.close()
+    )
 
 def extract_memory_candidates(
     text: str,
@@ -226,29 +231,8 @@ def _policy_visible_files(root: Path, paths: tuple[str, ...]) -> tuple[str, ...]
     policy = load_memory_policy(root)
     return tuple(path for path in paths if not path_excluded(path, policy))
 
-def _attempt_memory_intent_fields(root: Path, intent_id: str) -> dict[str, str]:
-    if not intent_id:
-        return {}
-    conn = connect_db(root / ".ait" / "state.sqlite3")
-    try:
-        run_migrations(conn)
-        row = conn.execute(
-            """
-            SELECT title, kind, description
-            FROM intents
-            WHERE id = ?
-            """,
-            (intent_id,),
-        ).fetchone()
-        if row is None:
-            return {}
-        return {
-            "title": str(row["title"]),
-            "kind": str(row["kind"] or ""),
-            "description": str(row["description"] or ""),
-        }
-    finally:
-        conn.close()
+def _attempt_memory_intent_fields(repo: MemoryRepository, intent_id: str) -> dict[str, str]:
+    return repo.intent_fields(intent_id)
 
 def _attempt_memory_note_body(
     *,

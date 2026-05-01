@@ -45,6 +45,7 @@ from .models import (
 
 from .common import _terms
 from .notes import _all_active_memory_notes, list_memory_notes, remove_memory_note
+from .repository import open_memory_repository
 
 def lint_memory_notes(
     repo_root: str | Path,
@@ -53,19 +54,17 @@ def lint_memory_notes(
     max_chars: int = 6000,
 ) -> MemoryLintResult:
     root = resolve_repo_root(repo_root)
-    conn = connect_db(root / ".ait" / "state.sqlite3")
-    try:
-        run_migrations(conn)
-        notes = _all_active_memory_notes(conn)
+    with open_memory_repository(root) as repo:
+        notes = _all_active_memory_notes(repo.conn)
         duplicate_ids = _duplicate_memory_note_ids(notes)
         issues: list[MemoryLintIssue] = []
         fixes: list[MemoryLintFix] = []
         for note in notes:
-            detected = _lint_one_memory_note(conn, note, duplicate_ids=duplicate_ids, max_chars=max_chars)
+            detected = _lint_one_memory_note(repo.conn, note, duplicate_ids=duplicate_ids, max_chars=max_chars)
             for issue in detected:
                 fixed_issue = issue
                 if fix and issue.fixable:
-                    applied = _apply_memory_lint_fix(conn, note, issue, max_chars=max_chars)
+                    applied = _apply_memory_lint_fix(repo.conn, note, issue, max_chars=max_chars)
                     if applied is not None:
                         fixes.append(applied)
                         fixed_issue = MemoryLintIssue(
@@ -80,8 +79,6 @@ def lint_memory_notes(
                         )
                 issues.append(fixed_issue)
         return MemoryLintResult(checked=len(notes), issues=tuple(issues), fixes=tuple(fixes))
-    finally:
-        conn.close()
 
 def memory_health_from_lint(result: MemoryLintResult) -> MemoryHealth:
     error_count = len([issue for issue in result.issues if issue.severity == "error"])

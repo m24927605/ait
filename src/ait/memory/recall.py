@@ -57,6 +57,7 @@ from .common import (
     _trace_excluded,
 )
 from .lint import lint_memory_notes
+from .repository import MemoryRepository, open_memory_repository
 from .summary import _changed_files, _commit_oids
 
 def search_repo_memory(
@@ -69,19 +70,15 @@ def search_repo_memory(
 ) -> tuple[MemorySearchResult, ...]:
     root = resolve_repo_root(repo_root)
     resolved_policy = policy or load_memory_policy(root)
-    conn = connect_db(root / ".ait" / "state.sqlite3")
-    try:
-        run_migrations(conn)
+    with open_memory_repository(root) as repo:
         return search_repo_memory_with_connection(
-            conn,
+            repo.conn,
             query=query,
             limit=limit,
             ranker=ranker,
             repo_root=root,
             policy=resolved_policy,
         )
-    finally:
-        conn.close()
 
 def search_repo_memory_with_connection(
     conn: sqlite3.Connection,
@@ -447,24 +444,35 @@ def _record_memory_retrieval_event(
     selected: tuple[RelevantMemoryItem, ...],
     budget_chars: int,
 ) -> None:
-    selected_fact_ids = tuple(item.id for item in selected if item.kind == "fact")
-    conn = connect_db(repo_root / ".ait" / "state.sqlite3")
-    try:
-        run_migrations(conn)
-        insert_memory_retrieval_event(
-            conn,
-            NewMemoryRetrievalEvent(
-                id=f"{attempt_id}:memory-retrieval:{uuid.uuid4().hex}",
-                attempt_id=attempt_id,
-                query=query,
-                selected_fact_ids=selected_fact_ids,
-                ranker_version="hybrid-v1",
-                budget_chars=budget_chars,
-                created_at=utc_now(),
-            ),
+    with open_memory_repository(repo_root) as repo:
+        _record_memory_retrieval_event_with_repository(
+            repo,
+            attempt_id=attempt_id,
+            query=query,
+            selected=selected,
+            budget_chars=budget_chars,
         )
-    finally:
-        conn.close()
+
+def _record_memory_retrieval_event_with_repository(
+    repo: MemoryRepository,
+    *,
+    attempt_id: str,
+    query: str,
+    selected: tuple[RelevantMemoryItem, ...],
+    budget_chars: int,
+) -> None:
+    selected_fact_ids = tuple(item.id for item in selected if item.kind == "fact")
+    repo.insert_retrieval_event(
+        NewMemoryRetrievalEvent(
+            id=f"{attempt_id}:memory-retrieval:{uuid.uuid4().hex}",
+            attempt_id=attempt_id,
+            query=query,
+            selected_fact_ids=selected_fact_ids,
+            ranker_version="hybrid-v1",
+            budget_chars=budget_chars,
+            created_at=utc_now(),
+        )
+    )
 
 def _lint_note_codes_by_severity(
     repo_root: str | Path,

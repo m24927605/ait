@@ -42,6 +42,7 @@ from .models import (
     RelevantMemoryRecall,
     RepoMemory,
 )
+from .repository import MemoryRepository, open_memory_repository
 from .summary import _memory_notes
 
 def add_memory_note(
@@ -52,28 +53,17 @@ def add_memory_note(
     source: str = "manual",
 ) -> MemoryNote:
     root = resolve_repo_root(repo_root)
-    conn = connect_db(root / ".ait" / "state.sqlite3")
-    try:
-        run_migrations(conn)
-        note = MemoryNote(
-            id=f"note:{uuid.uuid4().hex}",
-            topic=topic,
-            body=body,
-            source=source,
-            created_at=utc_now(),
-            updated_at=utc_now(),
-        )
-        with conn:
-            conn.execute(
-                """
-                INSERT INTO memory_notes(id, created_at, updated_at, topic, body, source, active)
-                VALUES (?, ?, ?, ?, ?, ?, 1)
-                """,
-                (note.id, note.created_at, note.updated_at, note.topic, note.body, note.source),
-            )
-        return note
-    finally:
-        conn.close()
+    with open_memory_repository(root) as repo:
+        return add_memory_note_with_repository(repo, body=body, topic=topic, source=source)
+
+def add_memory_note_with_repository(
+    repo: MemoryRepository,
+    *,
+    body: str,
+    topic: str | None = None,
+    source: str = "manual",
+) -> MemoryNote:
+    return repo.add_note(body=body, topic=topic, source=source)
 
 def list_memory_notes(
     repo_root: str | Path,
@@ -82,47 +72,16 @@ def list_memory_notes(
     limit: int = 100,
 ) -> tuple[MemoryNote, ...]:
     root = resolve_repo_root(repo_root)
-    conn = connect_db(root / ".ait" / "state.sqlite3")
-    try:
-        run_migrations(conn)
-        return _memory_notes(conn, limit=limit, topic=topic)
-    finally:
-        conn.close()
+    with open_memory_repository(root) as repo:
+        return _memory_notes(repo.conn, limit=limit, topic=topic)
 
 def remove_memory_note(repo_root: str | Path, *, note_id: str) -> bool:
     root = resolve_repo_root(repo_root)
-    conn = connect_db(root / ".ait" / "state.sqlite3")
-    try:
-        run_migrations(conn)
-        with conn:
-            cursor = conn.execute(
-                """
-                UPDATE memory_notes
-                SET active = 0, updated_at = ?
-                WHERE id = ? AND active = 1
-                """,
-                (utc_now(), note_id),
-            )
-        return cursor.rowcount > 0
-    finally:
-        conn.close()
+    with open_memory_repository(root) as repo:
+        return repo.remove_note(note_id=note_id)
 
-def _active_memory_source_exists(root: Path, source: str) -> bool:
-    conn = connect_db(root / ".ait" / "state.sqlite3")
-    try:
-        run_migrations(conn)
-        row = conn.execute(
-            """
-            SELECT 1
-            FROM memory_notes
-            WHERE active = 1 AND source = ?
-            LIMIT 1
-            """,
-            (source,),
-        ).fetchone()
-        return row is not None
-    finally:
-        conn.close()
+def _active_memory_source_exists(repo: MemoryRepository, source: str) -> bool:
+    return repo.active_source_exists(source)
 
 def _all_active_memory_notes(conn: sqlite3.Connection) -> tuple[MemoryNote, ...]:
     rows = conn.execute(

@@ -6,6 +6,7 @@ import unittest
 import json
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 from ait.app import create_commit_for_attempt, create_attempt, create_intent, show_attempt
 from ait.db import connect_db, list_memory_facts, NewMemoryFact, run_migrations, upsert_memory_fact
@@ -28,10 +29,26 @@ from ait.memory import (
     _normalize_recall_ranker_scores,
     _temporal_ranked_result,
 )
+from ait.memory.repository import open_memory_repository
 from ait.memory_policy import init_memory_policy
 
 
 class MemoryTests(unittest.TestCase):
+    def test_memory_repository_reuses_one_connection_for_multiple_helpers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            with patch("ait.memory.repository.connect_db", wraps=connect_db) as connect:
+                with open_memory_repository(repo_root) as repo:
+                    first = repo.add_note(topic="release", body="Run twine check.", source="manual")
+                    second = repo.add_note(topic="release", body="Run pytest.", source="manual")
+                    self.assertTrue(repo.active_source_exists("manual"))
+                    self.assertIn(first, repo.all_active_notes())
+                    self.assertTrue(repo.remove_note(note_id=second.id))
+
+            self.assertEqual(1, connect.call_count)
+
     def test_build_repo_memory_summarizes_recent_attempts_and_hot_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

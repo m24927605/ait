@@ -44,6 +44,7 @@ from .models import (
 )
 
 from .common import _attempt_memory_note_advisory
+from .repository import open_memory_repository
 
 def build_repo_memory(
     repo_root: str | Path,
@@ -55,11 +56,9 @@ def build_repo_memory(
 ) -> RepoMemory:
     root = resolve_repo_root(repo_root)
     policy = load_memory_policy(root)
-    conn = connect_db(root / ".ait" / "state.sqlite3")
-    try:
-        run_migrations(conn)
+    with open_memory_repository(root) as repo:
         return build_repo_memory_with_connection(
-            conn,
+            repo.conn,
             repo_root=root,
             limit=limit,
             path_filter=path_filter,
@@ -67,8 +66,6 @@ def build_repo_memory(
             promoted_only=promoted_only,
             policy=policy,
         )
-    finally:
-        conn.close()
 
 def build_repo_memory_with_connection(
     conn: sqlite3.Connection,

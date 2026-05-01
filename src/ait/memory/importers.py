@@ -43,7 +43,8 @@ from .models import (
     RepoMemory,
 )
 
-from .notes import add_memory_note
+from .notes import add_memory_note_with_repository
+from .repository import MemoryRepository, open_memory_repository
 
 AGENT_MEMORY_CANDIDATES: dict[str, tuple[str, ...]] = {
     "claude": (
@@ -79,45 +80,46 @@ def import_agent_memory(
     candidates = _agent_memory_candidates(root, source_names=source_names, paths=paths)
     imported: list[MemoryNote] = []
     skipped: list[dict[str, str]] = []
-    existing = _existing_import_bodies(root)
-    for source_name, relative_path, path in candidates:
-        if relative_path in {item["path"] for item in skipped}:
-            continue
-        if path_excluded(relative_path, policy):
-            skipped.append({"path": relative_path, "source": source_name, "reason": "excluded by memory policy"})
-            continue
-        if not path.exists():
-            skipped.append({"path": relative_path, "source": source_name, "reason": "not found"})
-            continue
-        if path.is_dir():
-            for child in sorted(item for item in path.rglob("*") if item.is_file()):
-                child_relative = child.relative_to(root).as_posix()
-                if path_excluded(child_relative, policy):
-                    skipped.append({"path": child_relative, "source": source_name, "reason": "excluded by memory policy"})
-                    continue
-                _import_one_agent_memory_file(
-                    root,
-                    source_name=source_name,
-                    relative_path=child_relative,
-                    path=child,
-                    topic=topic,
-                    max_chars=max_chars,
-                    existing=existing,
-                    imported=imported,
-                    skipped=skipped,
-                )
-            continue
-        _import_one_agent_memory_file(
-            root,
-            source_name=source_name,
-            relative_path=relative_path,
-            path=path,
-            topic=topic,
-            max_chars=max_chars,
-            existing=existing,
-            imported=imported,
-            skipped=skipped,
-        )
+    with open_memory_repository(root) as repo:
+        existing = _existing_import_bodies(repo)
+        for source_name, relative_path, path in candidates:
+            if relative_path in {item["path"] for item in skipped}:
+                continue
+            if path_excluded(relative_path, policy):
+                skipped.append({"path": relative_path, "source": source_name, "reason": "excluded by memory policy"})
+                continue
+            if not path.exists():
+                skipped.append({"path": relative_path, "source": source_name, "reason": "not found"})
+                continue
+            if path.is_dir():
+                for child in sorted(item for item in path.rglob("*") if item.is_file()):
+                    child_relative = child.relative_to(root).as_posix()
+                    if path_excluded(child_relative, policy):
+                        skipped.append({"path": child_relative, "source": source_name, "reason": "excluded by memory policy"})
+                        continue
+                    _import_one_agent_memory_file(
+                        repo,
+                        source_name=source_name,
+                        relative_path=child_relative,
+                        path=child,
+                        topic=topic,
+                        max_chars=max_chars,
+                        existing=existing,
+                        imported=imported,
+                        skipped=skipped,
+                    )
+                continue
+            _import_one_agent_memory_file(
+                repo,
+                source_name=source_name,
+                relative_path=relative_path,
+                path=path,
+                topic=topic,
+                max_chars=max_chars,
+                existing=existing,
+                imported=imported,
+                skipped=skipped,
+            )
     return MemoryImportResult(imported=tuple(imported), skipped=tuple(skipped))
 
 def ensure_agent_memory_imported(repo_root: str | Path) -> MemoryImportResult:
@@ -155,20 +157,8 @@ def _existing_agent_memory_sources(root: Path) -> tuple[str, ...]:
     db_path = root / ".ait" / "state.sqlite3"
     if not db_path.exists():
         return ()
-    conn = connect_db(db_path)
-    try:
-        run_migrations(conn)
-        rows = conn.execute(
-            """
-            SELECT source
-            FROM memory_notes
-            WHERE active = 1 AND topic = 'agent-memory' AND source LIKE 'agent-memory:%'
-            ORDER BY created_at ASC, id ASC
-            """
-        ).fetchall()
-        return tuple(str(row["source"]) for row in rows)
-    finally:
-        conn.close()
+    with open_memory_repository(root) as repo:
+        return repo.agent_memory_sources()
 
 def _agent_memory_import_state_path(root: Path) -> Path:
     return root / ".ait" / "memory" / "agent-import-state.json"
@@ -264,7 +254,7 @@ def _agent_memory_candidates(
     return tuple(candidates)
 
 def _import_one_agent_memory_file(
-    root: Path,
+    repo: MemoryRepository,
     *,
     source_name: str,
     relative_path: str,
@@ -295,8 +285,8 @@ def _import_one_agent_memory_file(
     if body in existing:
         skipped.append({"path": relative_path, "source": source_name, "reason": "already imported"})
         return
-    note = add_memory_note(
-        root,
+    note = add_memory_note_with_repository(
+        repo,
         topic=topic,
         body=body,
         source=f"agent-memory:{source_name}:{relative_path}",
@@ -325,20 +315,8 @@ def _agent_memory_note_body(
         f"{compacted}"
     )
 
-def _existing_import_bodies(repo_root: Path) -> set[str]:
-    conn = connect_db(repo_root / ".ait" / "state.sqlite3")
-    try:
-        run_migrations(conn)
-        rows = conn.execute(
-            """
-            SELECT body
-            FROM memory_notes
-            WHERE active = 1 AND source LIKE 'agent-memory:%'
-            """
-        ).fetchall()
-        return {str(row["body"]) for row in rows}
-    finally:
-        conn.close()
+def _existing_import_bodies(repo: MemoryRepository) -> set[str]:
+    return repo.imported_agent_memory_bodies()
 
 def _looks_like_memory_text_file(path: Path) -> bool:
     if path.name in {"AGENTS.md", "CLAUDE.md", ".cursorrules"}:
