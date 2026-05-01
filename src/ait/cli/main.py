@@ -30,10 +30,13 @@ _HANDLERS = {
 
 
 def main() -> int:
-    parser = build_parser()
-    args = parser.parse_args()
-    handler = _HANDLERS.get(args.command)
-    if handler is None:
-        parser.print_help()
-        return 1
-    return handler(args, Path.cwd(), parser)
+    try:
+        parser = build_parser()
+        args = parser.parse_args()
+        handler = _HANDLERS.get(args.command)
+        if handler is None:
+            parser.print_help()
+            return 1
+        return handler(args, Path.cwd(), parser)
+    except KeyboardInterrupt:
+        return 130

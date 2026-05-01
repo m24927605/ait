@@ -37,6 +37,7 @@ from ait.transcript import normalize_transcript, strip_terminal_control
 from ait.workspace import WorkspaceError, create_attempt_commit
 
 AIT_CONTEXT_BUDGET_CHARS = 16000
+AIT_TRANSCRIPT_FIELD_BUDGET_CHARS = 1_000_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,6 +153,7 @@ def run_agent_command(
     should_capture_tty = not should_capture_output and _stdio_is_tty()
     raw_trace_ref: str | None = None
     raw_trace_text: str = ""
+    postprocess_interrupted = False
     harness_context = (
         _LocalRunHarness(root, attempt.attempt_id)
         if local_only
@@ -191,7 +193,7 @@ def run_agent_command(
             )
             raw_trace_text = completed.stderr or ""
         if should_capture_output:
-            raw_trace_ref = _write_command_transcript(
+            raw_trace_ref, postprocess_interrupted = _write_command_transcript_best_effort(
                 root,
                 attempt.attempt_id,
                 command=command,
@@ -200,7 +202,7 @@ def run_agent_command(
                 exit_code=completed.returncode,
             )
         elif should_capture_tty:
-            raw_trace_ref = _write_command_transcript(
+            raw_trace_ref, postprocess_interrupted = _write_command_transcript_best_effort(
                 root,
                 attempt.attempt_id,
                 command=command,
@@ -214,6 +216,8 @@ def run_agent_command(
             workspace=workspace,
             context_file=context_file,
         )
+        if postprocess_interrupted:
+            effective_exit_code = 130
         duration_ms = int((time.monotonic() - started) * 1000)
         try:
             harness.record_tool(
@@ -599,8 +603,52 @@ def _write_command_transcript(
     return raw_trace_ref
 
 
+def _write_command_transcript_best_effort(
+    repo_root: Path,
+    attempt_id: str,
+    *,
+    command: list[str],
+    stdout: str,
+    stderr: str,
+    exit_code: int,
+) -> tuple[str | None, bool]:
+    try:
+        return (
+            _write_command_transcript(
+                repo_root,
+                attempt_id,
+                command=command,
+                stdout=stdout,
+                stderr=stderr,
+                exit_code=exit_code,
+            ),
+            False,
+        )
+    except KeyboardInterrupt:
+        print("ait warning: interrupted while writing command transcript", file=sys.stderr)
+        return None, True
+
+
 def _strip_terminal_control(text: str) -> str:
-    return strip_terminal_control(text)
+    return strip_terminal_control(_fit_transcript_field_budget(text))
+
+
+def _fit_transcript_field_budget(
+    text: str,
+    *,
+    budget_chars: int = AIT_TRANSCRIPT_FIELD_BUDGET_CHARS,
+) -> str:
+    if budget_chars <= 0 or len(text) <= budget_chars:
+        return text
+    marker = (
+        "\n\n[ait transcript truncated: field exceeded "
+        f"{budget_chars} character budget]\n\n"
+    )
+    if len(marker) >= budget_chars:
+        return marker[:budget_chars]
+    head_budget = (budget_chars - len(marker)) // 2
+    tail_budget = budget_chars - len(marker) - head_budget
+    return text[:head_budget].rstrip() + marker + text[-tail_budget:].lstrip()
 
 
 def _write_normalized_transcript(repo_root: Path, attempt_id: str, *, raw_trace_ref: str) -> str | None:

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.55.28 - 2026-05-01
+
+### Fixed
+
+- Return exit code 130 instead of surfacing a traceback when `ait run`
+  receives Ctrl-C while writing or cleaning a captured command
+  transcript.
+- Limit captured transcript fields before terminal-control cleanup so
+  very large interactive agent outputs do not stall post-run handling.
+- Convert top-level CLI `KeyboardInterrupt` into exit code 130.
+
 ## 0.54.0 - 2026-04-29
 
 ### Fixed

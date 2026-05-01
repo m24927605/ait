@@ -30,6 +30,32 @@ from ait.db.repositories import (
 
 
 class CliRunTests(unittest.TestCase):
+    def test_cli_main_returns_130_on_keyboard_interrupt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            with chdir(repo_root):
+                with (
+                    patch(
+                        "sys.argv",
+                        [
+                            "ait",
+                            "run",
+                            "--intent",
+                            "Interrupted run",
+                            "--",
+                            sys.executable,
+                            "-c",
+                            "print('ok')",
+                        ],
+                    ),
+                    patch("ait.cli.run.run_agent_command", side_effect=KeyboardInterrupt),
+                ):
+                    exit_code = cli.main()
+
+        self.assertEqual(130, exit_code)
+
     def test_run_json_format_outputs_parseable_json_with_command_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

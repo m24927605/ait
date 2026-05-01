@@ -19,6 +19,7 @@ from ait.memory import add_memory_note, list_memory_notes, search_repo_memory
 from ait.runner import (
     AIT_CONTEXT_BUDGET_CHARS,
     _finish_attempt_locally,
+    _fit_transcript_field_budget,
     _run_command_with_pty_transcript,
     _strip_terminal_control,
     run_agent_command,
@@ -196,6 +197,29 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(0, result.exit_code)
             self.assertEqual("out\n", result.command_stdout)
             self.assertEqual("err\n", result.command_stderr)
+
+    def test_run_agent_command_suppresses_keyboard_interrupt_during_transcript_write(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            stderr = io.StringIO()
+
+            with (
+                patch("ait.runner._write_command_transcript", side_effect=KeyboardInterrupt),
+                patch("sys.stderr", stderr),
+            ):
+                result = run_agent_command(
+                    repo_root,
+                    intent_title="Interrupted transcript",
+                    command=[sys.executable, "-c", "print('finished before interrupt')"],
+                    capture_command_output=True,
+                )
+
+            self.assertEqual(130, result.exit_code)
+            self.assertEqual("finished", result.attempt.attempt["reported_status"])
+            self.assertEqual(130, result.attempt.attempt["result_exit_code"])
+            self.assertIsNone(result.attempt.attempt["raw_trace_ref"])
+            self.assertIn("interrupted while writing command transcript", stderr.getvalue())
 
     def test_run_agent_command_finalizes_locally_if_finish_is_interrupted(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -961,6 +985,16 @@ class RunnerTests(unittest.TestCase):
         text = "\x1b[?25hhello\r\n\x1b]0;title\x07world\x1b[0m"
 
         self.assertEqual("hello\nworld", _strip_terminal_control(text))
+
+    def test_transcript_field_budget_preserves_head_and_tail(self) -> None:
+        text = "head-" + ("x" * 200) + "-tail"
+
+        fitted = _fit_transcript_field_budget(text, budget_chars=96)
+
+        self.assertLessEqual(len(fitted), 96)
+        self.assertTrue(fitted.startswith("head"))
+        self.assertIn("truncated", fitted)
+        self.assertTrue(fitted.endswith("tail"))
 
     def test_run_agent_command_can_disable_default_auto_commit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
