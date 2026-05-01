@@ -1,7 +1,5 @@
 <div align="center">
 
-**[README](README.md) · [繁體中文](README.zh-TW.md) · [MIT License](LICENSE)**
-
 # ait
 
 ### Git-native safety rails for AI coding agents
@@ -9,6 +7,8 @@
 Run Claude Code, Codex, Aider, Gemini, and Cursor in isolated Git
 worktrees with traceable commits, reviewable attempts, and repo-local
 memory.
+
+<sub>[English](README.md) · [繁體中文](README.zh-TW.md)</sub>
 
 [![PyPI](https://img.shields.io/pypi/v/ait-vcs?label=PyPI)](https://pypi.org/project/ait-vcs/)
 [![npm](https://img.shields.io/npm/v/ait-vcs?label=npm)](https://www.npmjs.com/package/ait-vcs)

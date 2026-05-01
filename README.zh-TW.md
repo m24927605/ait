@@ -1,7 +1,5 @@
 <div align="center">
 
-**[README](README.md) · [繁體中文](README.zh-TW.md) · [MIT License](LICENSE)**
-
 # ait
 
 ### 給 AI coding agents 使用的 Git-native 安全工作流
@@ -9,6 +7,8 @@
 讓 Claude Code、Codex、Aider、Gemini、Cursor 在隔離的 Git worktree
 中執行，並保留可追溯的 commits、可 review 的 attempts，以及 repo-local
 memory。
+
+<sub>[English](README.md) · [繁體中文](README.zh-TW.md)</sub>
 
 [![PyPI](https://img.shields.io/pypi/v/ait-vcs?label=PyPI)](https://pypi.org/project/ait-vcs/)
 [![npm](https://img.shields.io/npm/v/ait-vcs?label=npm)](https://www.npmjs.com/package/ait-vcs)
