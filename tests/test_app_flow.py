@@ -70,6 +70,38 @@ class AppFlowTests(unittest.TestCase):
                 promoted.commits[0]["commit_oid"],
             )
 
+    def test_promote_rejects_non_branch_target_ref(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            intent = create_intent(repo_root, title="Tag target", description=None, kind="bugfix")
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+            worktree = Path(attempt.workspace_ref)
+            _git(worktree, "config", "user.email", "test@example.com")
+            _git(worktree, "config", "user.name", "Test User")
+            (worktree / "feature.py").write_text("flag = True\n", encoding="utf-8")
+            _git(worktree, "add", "feature.py")
+            _git(worktree, "commit", "-m", "feature")
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            try:
+                update_attempt(
+                    conn,
+                    attempt.attempt_id,
+                    reported_status="finished",
+                    ended_at="2026-04-23T00:10:00Z",
+                    result_exit_code=0,
+                )
+            finally:
+                conn.close()
+
+            with self.assertRaisesRegex(ValueError, "refs/heads"):
+                promote_attempt(
+                    repo_root,
+                    attempt_id=attempt.attempt_id,
+                    target_ref="refs/tags/release",
+                )
+
     def test_attempt_commit_writes_git_trailers_and_updates_attempt_commits(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

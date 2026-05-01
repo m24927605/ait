@@ -337,13 +337,26 @@ def promote_attempt(
             raise ValueError(f"Intent is {intent.status}: {intent.id}")
         if attempt.reported_status != "finished":
             raise ValueError(f"Attempt is not finished: {attempt_id}")
-        ref_name = target_ref if target_ref.startswith("refs/") else f"refs/heads/{target_ref}"
+        ref_name = _normalize_target_branch_ref(target_ref)
         update_ref_to_workspace_head(init_result.repo_root, ref_name, attempt.workspace_ref)
         update_attempt(conn, attempt_id, result_promotion_ref=ref_name)
         verify_attempt_with_connection(conn, init_result.repo_root, attempt_id)
     finally:
         conn.close()
     return show_attempt(repo_root, attempt_id=attempt_id)
+
+
+def _normalize_target_branch_ref(target_ref: str) -> str:
+    ref = target_ref.strip()
+    if not ref:
+        raise ValueError("target ref must not be empty")
+    if ref.startswith("refs/") and not ref.startswith("refs/heads/"):
+        raise ValueError("target ref must be a branch under refs/heads/")
+    branch_ref = ref if ref.startswith("refs/heads/") else f"refs/heads/{ref}"
+    branch_name = branch_ref.removeprefix("refs/heads/")
+    if branch_name in {"", ".", ".."} or branch_name.endswith("/") or "//" in branch_name:
+        raise ValueError(f"invalid branch name: {target_ref}")
+    return branch_ref
 
 
 def rebase_attempt(
