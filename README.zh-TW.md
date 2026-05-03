@@ -140,6 +140,71 @@ ait repair
 ait repair codex
 ```
 
+## 整合（Integrations）
+
+`ait` 為主流 AI coding agent 提供 first-class adapter，把每次執行都包進
+獨立的 Git worktree，並把過程記錄在 `.ait/`。
+
+### 在 Git worktree 中執行 Claude Code
+
+```bash
+ait adapter setup claude-code
+claude -p --permission-mode bypassPermissions "Refactor the auth module"
+```
+
+`ait` 會把 prompt、變更檔案、執行狀態與 commits 紀錄為一次 attempt。確認
+diff 後再用 `ait attempt promote <id> --to main` 推上主線。
+
+### 安全地在真實 repo 跑 Codex CLI
+
+```bash
+ait adapter setup codex
+ait run --adapter codex --intent "Implement parser edge cases" -- codex
+```
+
+每個 Codex session 都在隔離 worktree 裡編輯。失敗的 attempt 會留下供
+檢查；只有 promote 過的 attempt 會碰到 root checkout。
+
+### 在隔離 worktree 中跑 Aider
+
+```bash
+ait adapter setup aider
+ait run --adapter aider --intent "Fix auth expiry" -- aider src/auth.py
+```
+
+Aider 的 commits 落在 attempt worktree 內，附帶完整的 prompt、檔案、
+commit 對應關係。
+
+### Gemini CLI 搭配 attempt 歷史
+
+```bash
+ait adapter setup gemini
+ait run --adapter gemini --intent "Add config validation" -- gemini
+```
+
+Gemini 的 session 與 Claude Code、Codex 一樣會被記錄成 attempt。日後可
+用 `ait memory recall` 查找各 agent 嘗試過什麼。
+
+### Cursor agent 帶可審核的 provenance
+
+```bash
+ait adapter setup cursor
+ait run --adapter cursor --intent "Migrate to new SDK" -- cursor
+```
+
+Cursor 的編輯被限制在 attempt worktree 內。Attempt log 保留變更檔案、
+退出狀態與 commits，方便審核與 promote。
+
+### 包裝其他 shell agent
+
+```bash
+ait run --adapter shell --intent "Regenerate fixtures" -- \
+  python scripts/regenerate_fixtures.py
+```
+
+使用通用 `shell` adapter 即可為任何自訂 agent 或 script 加上 attempt
+provenance。
+
 ## 運作方式
 
 ```text

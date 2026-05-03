@@ -143,6 +143,74 @@ ait repair
 ait repair codex
 ```
 
+## Integrations
+
+`ait` ships first-class adapters for the agents most teams already run.
+Each adapter wraps the upstream CLI, isolates its work in a Git worktree,
+and records the attempt locally in `.ait/`.
+
+### Run Claude Code in a Git worktree
+
+```bash
+ait adapter setup claude-code
+claude -p --permission-mode bypassPermissions "Refactor the auth module"
+```
+
+`ait` captures the prompt, edited files, status, and resulting commits as
+one attempt. Promote it with `ait attempt promote <id> --to main` once you
+are happy with the diff.
+
+### Run Codex CLI safely on a real repository
+
+```bash
+ait adapter setup codex
+ait run --adapter codex --intent "Implement parser edge cases" -- codex
+```
+
+Each Codex session edits an isolated worktree. Failed attempts are kept
+for inspection; only promoted attempts touch your root checkout.
+
+### Run Aider in an isolated worktree
+
+```bash
+ait adapter setup aider
+ait run --adapter aider --intent "Fix auth expiry" -- aider src/auth.py
+```
+
+Aider's commits land inside the attempt worktree, with full provenance
+linking the prompt, edited files, and commits.
+
+### Run Gemini CLI with attempt history
+
+```bash
+ait adapter setup gemini
+ait run --adapter gemini --intent "Add config validation" -- gemini
+```
+
+Gemini sessions are recorded as attempts the same way as Claude Code and
+Codex. `ait memory recall` later surfaces what each agent tried.
+
+### Run Cursor agents with reviewable provenance
+
+```bash
+ait adapter setup cursor
+ait run --adapter cursor --intent "Migrate to new SDK" -- cursor
+```
+
+Cursor edits are confined to an attempt worktree. The attempt log keeps
+the changed files, exit status, and commits available for review and
+promotion.
+
+### Wrap any other shell agent
+
+```bash
+ait run --adapter shell --intent "Regenerate fixtures" -- \
+  python scripts/regenerate_fixtures.py
+```
+
+Use the generic `shell` adapter to give attempt provenance to any custom
+agent or script.
+
 ## How It Works
 
 ```text
