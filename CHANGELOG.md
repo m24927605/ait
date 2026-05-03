@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.55.29 - 2026-05-04
+
+### Changed
+
+- Expand PyPI and npm package keywords with long-tail terms (claude-code,
+  codex, aider, gemini-cli, cursor, worktree, agent-isolation, ai-coding,
+  coding-agent, git-worktree) for SEO discoverability.
+
+### Added
+
+- Add MkDocs Material documentation site under `site-docs/` with
+  GitHub Pages deploy workflow, automatic sitemap, OpenGraph and
+  Twitter Card meta, and `robots.txt`.
+- Add agent integrations sections to README and 繁中 README, with one
+  long-tail keyword heading per supported agent (Claude Code, Codex,
+  Aider, Gemini CLI, Cursor, shell).
+- Add external-promotion drafts under `docs/marketing/` (Show HN,
+  Reddit, awesome-list PRs, dev.to article, Product Hunt copy).
+- Update GitHub repository description and topics for SEO.
+
 ## 0.55.28 - 2026-05-01
 
 ### Fixed
