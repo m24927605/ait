@@ -69,6 +69,7 @@ extra:
 
 nav:
   - Home: index.md
+  - Why ait: why-ait.md
   - Getting started: getting-started.md
   - Integrations:
       - Claude Code: integrations/claude-code.md
