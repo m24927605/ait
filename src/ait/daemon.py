@@ -16,8 +16,10 @@ from ait.config import DEFAULT_DAEMON_IDLE_TIMEOUT_SECONDS, DEFAULT_DAEMON_SOCKE
 from ait.daemon_transport import NDJSONSocketStream, bind_unix_socket, remove_socket_file
 from ait.db import connect_db, run_migrations
 from ait.events import EventError, process_event, reap_stale_attempts, recover_running_attempts
+from ait.memory_policy import load_memory_policy
 from ait.protocol import ProtocolError, envelope_to_dict
 from ait.repo import resolve_repo_root
+from ait.transcript_store import prune_transcripts
 from ait.verifier import verify_attempt
 
 DEFAULT_REAPER_TTL_SECONDS = 300
@@ -172,6 +174,7 @@ def serve_daemon(repo_root: str | Path) -> None:
                 "heartbeat_ttl_seconds": _reaper_ttl(root),
                 "scan_interval_seconds": DEFAULT_REAPER_SCAN_INTERVAL_SECONDS,
                 "startup_grace_seconds": DEFAULT_REAPER_STARTUP_GRACE_SECONDS,
+                "repo_root": root,
             },
             daemon=True,
             name="ait-reaper",
@@ -207,6 +210,7 @@ def run_reaper_loop(
     heartbeat_ttl_seconds: int,
     scan_interval_seconds: float,
     startup_grace_seconds: float,
+    repo_root: Path | None = None,
 ) -> None:
     """Run the reaper on a timer until stop_event is set.
 
@@ -215,6 +219,10 @@ def run_reaper_loop(
     first reap cycle. This prevents daemon-restart from immediately
     killing harnesses whose last heartbeat happened to predate the
     restart by more than one TTL.
+
+    Each cycle also prunes stale agent transcripts under
+    ``.ait/transcripts/`` per the memory policy retention settings, when
+    a repo_root is provided.
     """
     if stop_event.wait(startup_grace_seconds):
         return
@@ -230,6 +238,16 @@ def run_reaper_loop(
             # Transient errors (e.g. sqlite OperationalError during
             # contention) must not kill the reaper thread.
             print(f"ait daemon reaper warning: {exc}", file=sys.stderr, flush=True)
+        if repo_root is not None:
+            try:
+                policy = load_memory_policy(repo_root)
+                prune_transcripts(repo_root, policy=policy)
+            except Exception as exc:
+                print(
+                    f"ait daemon transcript prune warning: {exc}",
+                    file=sys.stderr,
+                    flush=True,
+                )
         if stop_event.wait(scan_interval_seconds):
             return
 

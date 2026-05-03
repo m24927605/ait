@@ -31,6 +31,8 @@ DEFAULT_RECALL_SOURCE_ALLOW = (
 )
 DEFAULT_RECALL_SOURCE_BLOCK: tuple[str, ...] = ()
 DEFAULT_RECALL_LINT_BLOCK_SEVERITIES = ("error",)
+DEFAULT_TRANSCRIPT_RETAIN_DAYS = 90
+DEFAULT_TRANSCRIPT_MAX_TOTAL_BYTES = 500 * 1024 * 1024  # 500 MB
 EXCLUDED_MARKER = "[EXCLUDED BY MEMORY POLICY]"
 
 
@@ -41,6 +43,8 @@ class MemoryPolicy:
     recall_source_allow: tuple[str, ...] = DEFAULT_RECALL_SOURCE_ALLOW
     recall_source_block: tuple[str, ...] = DEFAULT_RECALL_SOURCE_BLOCK
     recall_lint_block_severities: tuple[str, ...] = DEFAULT_RECALL_LINT_BLOCK_SEVERITIES
+    transcript_retain_days: int = DEFAULT_TRANSCRIPT_RETAIN_DAYS
+    transcript_max_total_bytes: int = DEFAULT_TRANSCRIPT_MAX_TOTAL_BYTES
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -49,6 +53,10 @@ class MemoryPolicy:
             "recall_source_allow": list(self.recall_source_allow),
             "recall_source_block": list(self.recall_source_block),
             "recall_lint_block_severities": list(self.recall_lint_block_severities),
+            "transcripts": {
+                "retain_days": self.transcript_retain_days,
+                "max_total_bytes": self.transcript_max_total_bytes,
+            },
         }
 
 
@@ -159,13 +167,41 @@ def _policy_from_mapping(data: dict[str, Any], *, path: Path) -> MemoryPolicy:
             f"invalid memory policy JSON at {path}: invalid recall lint severities "
             + ", ".join(invalid_severities)
         )
+    transcript_retain_days, transcript_max_total_bytes = _transcript_retention_from_mapping(
+        data.get("transcripts"),
+        path=path,
+    )
     return MemoryPolicy(
         exclude_paths=exclude_paths,
         exclude_transcript_patterns=patterns,
         recall_source_allow=recall_source_allow,
         recall_source_block=recall_source_block,
         recall_lint_block_severities=recall_lint_block_severities,
+        transcript_retain_days=transcript_retain_days,
+        transcript_max_total_bytes=transcript_max_total_bytes,
     )
+
+
+def _transcript_retention_from_mapping(
+    value: object, *, path: Path
+) -> tuple[int, int]:
+    if value is None:
+        return DEFAULT_TRANSCRIPT_RETAIN_DAYS, DEFAULT_TRANSCRIPT_MAX_TOTAL_BYTES
+    if not isinstance(value, dict):
+        raise ValueError(
+            f"invalid memory policy JSON at {path}: transcripts must be an object"
+        )
+    retain = value.get("retain_days", DEFAULT_TRANSCRIPT_RETAIN_DAYS)
+    cap = value.get("max_total_bytes", DEFAULT_TRANSCRIPT_MAX_TOTAL_BYTES)
+    if not isinstance(retain, int) or isinstance(retain, bool) or retain < 0:
+        raise ValueError(
+            f"invalid memory policy JSON at {path}: transcripts.retain_days must be a non-negative integer"
+        )
+    if not isinstance(cap, int) or isinstance(cap, bool) or cap < 0:
+        raise ValueError(
+            f"invalid memory policy JSON at {path}: transcripts.max_total_bytes must be a non-negative integer"
+        )
+    return retain, cap
 
 
 def _string_tuple(value: object, *, path: Path) -> tuple[str, ...]:
