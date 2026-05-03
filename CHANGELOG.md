@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.55.30 - 2026-05-04
+
+### Changed
+
+- Reframe the README "Why ait" section as a 9-row pain → solution table
+  covering blast radius, missing provenance, polluted working copy,
+  repeated investigation, parallel collisions, promotion ambiguity,
+  lost cross-agent context, forced SaaS, and prompt search. Mirrored to
+  README.zh-TW.md and the documentation site landing page.
+
+### Added
+
+- Add `Why ait` deep-dive page (`site-docs/why-ait.md`) to the docs
+  site, with one section per problem and the concrete ait command or
+  feature that addresses it. Targets long-tail searches such as "ai
+  agent blast radius", "claude code provenance", "git worktree ai
+  coding".
+
 ## 0.55.29 - 2026-05-04
 
 ### Changed
