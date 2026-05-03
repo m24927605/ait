@@ -49,15 +49,19 @@ claude ...
 The package is named `ait-vcs` on PyPI and npm. The installed command is
 `ait`.
 
-## Why Developers Use ait
+## Problems ait Solves
 
-| Problem with agent coding | What ait adds |
+| Problem with agent coding today | What ait adds |
 | --- | --- |
-| A prompt edits many files at once | Each run happens in an isolated Git worktree |
-| The diff has no useful provenance | Attempts link intent, command output, files, and commits |
-| Agents leave partial or failed work behind | You can inspect, discard, rebase, or promote attempts |
-| The next agent repeats old investigation | Repo-local memory summarizes prior attempts and commits |
-| Tooling should stay local | Metadata lives in `.ait/` inside your repository |
+| A bad prompt rewrites half your repo before you notice | Each run lands in an isolated Git worktree — your root checkout never moves |
+| The diff has no useful provenance — which prompt produced it? | Attempts link intent, command output, files, and commits in one record |
+| Failed or partial runs leave your working copy half-broken | Bad attempts stay isolated; `ait attempt discard` removes them in one command |
+| The next agent repeats investigation you already paid tokens for | Repo-local memory feeds prior attempts and commits to the next run |
+| Two agents on the same task stomp each other | Each attempt has its own worktree — run N agents in parallel |
+| Did the agent really fix it, or just claim it did? | Explicit `ait attempt promote` keeps speculative changes out of main until you decide |
+| Cross-agent hand-offs lose every previous decision | Memory layer auto-imports `CLAUDE.md`, `AGENTS.md`, and prior attempts |
+| Provenance tooling wants to ship your code to a SaaS | Metadata stays in `.ait/` next to `.git/` — local, no telemetry, no daemon |
+| "Where's that prompt I wrote last month?" → grep shell history | Query attempts, intents, and commits with a structured DSL |
 
 `ait` is not another agent. It is the Git layer around the agents you
 already trust.
