@@ -1,0 +1,81 @@
+site_name: ait — Git worktree isolation for AI coding agents
+site_url: https://m24927605.github.io/ait/
+site_description: >-
+  ait wraps Claude Code, Codex, Aider, Gemini CLI, and Cursor in isolated Git
+  worktrees with reviewable attempts and repo-local memory. Open-source,
+  dependency-free, runs on top of Git.
+site_author: sin-chengchen
+repo_url: https://github.com/m24927605/ait
+repo_name: m24927605/ait
+edit_uri: edit/main/site-docs/
+copyright: MIT licensed.
+
+docs_dir: site-docs
+
+theme:
+  name: material
+  custom_dir: overrides
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/m24927605/ait
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/ait-vcs/
+    - icon: fontawesome/brands/npm
+      link: https://www.npmjs.com/package/ait-vcs
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Integrations:
+      - Claude Code: integrations/claude-code.md
+      - Codex CLI: integrations/codex.md
+      - Aider: integrations/aider.md
+      - Gemini CLI: integrations/gemini.md
+      - Cursor: integrations/cursor.md
+      - Shell agents: integrations/shell.md
+  - Reference:
+      - Commands: reference/commands.md

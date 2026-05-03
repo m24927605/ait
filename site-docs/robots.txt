@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://m24927605.github.io/ait/sitemap.xml
