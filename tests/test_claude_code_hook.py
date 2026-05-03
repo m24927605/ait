@@ -63,6 +63,49 @@ class ClaudeCodeHookTests(unittest.TestCase):
             self.assertTrue((repo_root / ".ait" / "claude-code-hooks" / "abc_123.json").exists())
             self.assertEqual(state, hook.read_state(repo_root, "abc/123"))
 
+    def test_persist_transcript_copies_existing_file_into_ait_transcripts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            upstream = repo_root / "upstream.jsonl"
+            upstream.write_text(
+                '{"role":"user","text":"hi"}\n{"role":"assistant","text":"hello"}\n',
+                encoding="utf-8",
+            )
+
+            persisted = hook.persist_transcript(
+                repo_root,
+                attempt_id="attempt-aaa",
+                source_path=str(upstream),
+            )
+
+            self.assertEqual(".ait/transcripts/attempt-aaa.jsonl", persisted)
+            copied = repo_root / ".ait" / "transcripts" / "attempt-aaa.jsonl"
+            self.assertTrue(copied.exists())
+            self.assertEqual(upstream.read_bytes(), copied.read_bytes())
+
+    def test_persist_transcript_returns_none_when_source_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            self.assertIsNone(
+                hook.persist_transcript(
+                    repo_root,
+                    attempt_id="attempt-bbb",
+                    source_path=str(repo_root / "missing.jsonl"),
+                )
+            )
+            self.assertFalse((repo_root / ".ait" / "transcripts").exists())
+
+    def test_persist_transcript_returns_none_when_source_path_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            self.assertIsNone(
+                hook.persist_transcript(
+                    repo_root,
+                    attempt_id="attempt-ccc",
+                    source_path=None,
+                )
+            )
+
     def test_append_env_file_quotes_values(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             env_file = Path(tmp) / "claude.env"
@@ -143,6 +186,67 @@ class ClaudeCodeHookTests(unittest.TestCase):
         self.assertEqual(1, attempt.evidence_summary["observed_tool_calls"])
         self.assertEqual(1, attempt.evidence_summary["observed_file_writes"])
         self.assertEqual(("README.md",), attempt.files["touched"])
+
+    def test_session_end_persists_transcript_under_ait_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            setup_adapter("claude-code", repo_root)
+            hook_path = repo_root / ".ait" / "adapters" / "claude-code" / "claude_code_hook.py"
+            upstream = repo_root / "upstream-transcript.jsonl"
+            upstream.write_text(
+                '{"role":"user","text":"do the thing"}\n'
+                '{"role":"assistant","text":"done"}\n',
+                encoding="utf-8",
+            )
+            env_file = repo_root / "claude.env"
+            env = {
+                **os.environ,
+                "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
+                "CLAUDE_PROJECT_DIR": str(repo_root),
+                "CLAUDE_ENV_FILE": str(env_file),
+            }
+
+            _run_hook(
+                hook_path,
+                {
+                    "hook_event_name": "SessionStart",
+                    "session_id": "session-persist",
+                    "cwd": str(repo_root),
+                    "source": "startup",
+                    "agent_type": "default",
+                },
+                env,
+            )
+            _run_hook(
+                hook_path,
+                {
+                    "hook_event_name": "SessionEnd",
+                    "session_id": "session-persist",
+                    "cwd": str(repo_root),
+                    "exit_code": 0,
+                    "transcript_path": str(upstream),
+                },
+                env,
+            )
+
+            state = json.loads(
+                (
+                    repo_root / ".ait" / "claude-code-hooks" / "session-persist.json"
+                ).read_text(encoding="utf-8")
+            )
+            attempt_id = state["attempt_id"]
+            persisted = repo_root / ".ait" / "transcripts" / f"{attempt_id}.jsonl"
+            self.assertTrue(
+                persisted.exists(),
+                f"expected transcript at {persisted}",
+            )
+            self.assertEqual(upstream.read_bytes(), persisted.read_bytes())
+            attempt = show_attempt(repo_root, attempt_id=attempt_id)
+            self.assertEqual(
+                f".ait/transcripts/{attempt_id}.jsonl",
+                attempt.attempt["raw_trace_ref"],
+            )
 
 
 def _run_hook(

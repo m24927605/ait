@@ -162,13 +162,47 @@ def handle_session_end(payload: Mapping[str, Any]) -> None:
     if state is None:
         return
     exit_code = int(payload.get("exit_code") or 0)
-    transcript_path = optional_str(payload.get("transcript_path"))
+    transcript_source = optional_str(payload.get("transcript_path"))
+    persisted = persist_transcript(
+        repo_root,
+        attempt_id=str(state["attempt_id"]),
+        source_path=transcript_source,
+    )
+    raw_trace_ref = persisted or transcript_source
 
     harness = open_harness(state)
     try:
-        harness.finish(exit_code=exit_code, raw_trace_ref=transcript_path)
+        harness.finish(exit_code=exit_code, raw_trace_ref=raw_trace_ref)
     finally:
         harness.close()
+
+
+def persist_transcript(
+    repo_root: Path, *, attempt_id: str, source_path: str | None
+) -> str | None:
+    """Copy the upstream agent transcript into .ait/transcripts/.
+
+    Returns the repo-relative path on success so the caller can use it as
+    raw_trace_ref. Returns None if the source is missing or unreadable so
+    the caller can fall back to the upstream path string.
+    """
+    if not source_path:
+        return None
+    src = Path(source_path)
+    if not src.is_absolute():
+        candidate = repo_root / src
+        src = candidate if candidate.exists() else src
+    if not src.exists() or not src.is_file():
+        return None
+    dest_dir = repo_root / ".ait" / "transcripts"
+    try:
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        suffix = src.suffix or ".jsonl"
+        dest = dest_dir / f"{attempt_id}{suffix}"
+        dest.write_bytes(src.read_bytes())
+    except OSError:
+        return None
+    return dest.relative_to(repo_root).as_posix()
 
 
 def open_harness(state: Mapping[str, Any]) -> AitHarness:
