@@ -12,7 +12,23 @@ license = "MIT"
 authors = [
   {name = "sin-chengchen"}
 ]
-keywords = ["ai", "agents", "git", "vcs", "provenance"]
+keywords = [
+  "ai",
+  "agents",
+  "ai-coding",
+  "coding-agent",
+  "claude-code",
+  "codex",
+  "aider",
+  "gemini-cli",
+  "cursor",
+  "git",
+  "git-worktree",
+  "worktree",
+  "vcs",
+  "provenance",
+  "agent-isolation",
+]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",

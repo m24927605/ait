@@ -16,13 +16,19 @@
   "keywords": [
     "ai",
     "agents",
+    "ai-coding",
+    "coding-agent",
+    "claude-code",
+    "codex",
+    "aider",
+    "gemini-cli",
+    "cursor",
     "git",
+    "git-worktree",
+    "worktree",
     "vcs",
     "provenance",
-    "claude",
-    "codex",
-    "gemini",
-    "cursor"
+    "agent-isolation"
   ],
   "bin": {
     "ait": "bin/ait.js"
