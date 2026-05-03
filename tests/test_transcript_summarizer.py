@@ -8,7 +8,9 @@ from pathlib import Path
 
 from ait.app import create_attempt, create_intent, init_repo
 from ait.db import connect_db
+from ait.memory import build_relevant_memory_recall
 from ait.memory.notes import list_memory_notes
+from ait.memory_policy import init_memory_policy
 from ait.transcript_summarizer import (
     TranscriptEvent,
     heuristic_summary,
@@ -347,6 +349,51 @@ class SummarizeAttemptTranscriptTests(unittest.TestCase):
             note = summarize_attempt_transcript(repo_root, attempt_id)
 
             self.assertIsNone(note)
+
+
+class RecallIntegrationTests(unittest.TestCase):
+    def test_transcript_summary_note_is_surfaced_by_default_recall_policy(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            init_repo(str(repo_root))
+            init_memory_policy(repo_root, overwrite=True)
+            transcript = repo_root / ".ait" / "transcripts" / "attempt-recall.jsonl"
+            transcript.parent.mkdir(parents=True, exist_ok=True)
+            _write_jsonl(
+                transcript,
+                [
+                    {"role": "user", "text": "fix billing retry cache mode"},
+                    {"role": "assistant", "text": "switched to durable queue"},
+                    {
+                        "role": "tool_use",
+                        "tool": "Edit",
+                        "files": ["src/billing/retry.py"],
+                    },
+                ],
+            )
+
+            note = summarize_transcript_to_note(
+                repo_root,
+                attempt_id="attempt-recall",
+                transcript_path=transcript,
+                agent_id="claude-code:default",
+            )
+            self.assertIsNotNone(note)
+
+            recall = build_relevant_memory_recall(
+                repo_root,
+                "billing retry cache",
+                limit=12,
+            )
+
+            recalled_sources = [item.metadata.get("source") for item in recall.selected]
+            self.assertIn(
+                "transcript-summary:claude-code:default:attempt-recall",
+                recalled_sources,
+            )
 
 
 if __name__ == "__main__":

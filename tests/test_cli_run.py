@@ -1403,7 +1403,17 @@ class CliRunTests(unittest.TestCase):
         self.assertTrue(init_payload["path"].endswith(".ait/memory-policy.json"))
         self.assertIn(".env", show_payload["exclude_paths"])
         self.assertIn("BEGIN PRIVATE KEY", show_payload["exclude_transcript_patterns"])
-        self.assertEqual(["manual", "manual:*", "attempt-memory:*", "agent-memory:*", "durable-memory:*"], show_payload["recall_source_allow"])
+        self.assertEqual(
+            [
+                "manual",
+                "manual:*",
+                "attempt-memory:*",
+                "agent-memory:*",
+                "durable-memory:*",
+                "transcript-summary:*",
+            ],
+            show_payload["recall_source_allow"],
+        )
         self.assertEqual([], show_payload["recall_source_block"])
         self.assertEqual(["error"], show_payload["recall_lint_block_severities"])
 

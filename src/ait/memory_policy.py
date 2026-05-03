@@ -28,6 +28,7 @@ DEFAULT_RECALL_SOURCE_ALLOW = (
     "attempt-memory:*",
     "agent-memory:*",
     "durable-memory:*",
+    "transcript-summary:*",
 )
 DEFAULT_RECALL_SOURCE_BLOCK: tuple[str, ...] = ()
 DEFAULT_RECALL_LINT_BLOCK_SEVERITIES = ("error",)
