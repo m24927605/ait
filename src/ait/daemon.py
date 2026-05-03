@@ -20,6 +20,7 @@ from ait.memory_policy import load_memory_policy
 from ait.protocol import ProtocolError, envelope_to_dict
 from ait.repo import resolve_repo_root
 from ait.transcript_store import prune_transcripts
+from ait.transcript_summarizer import summarize_attempt_transcript
 from ait.verifier import verify_attempt
 
 DEFAULT_REAPER_TTL_SECONDS = 300
@@ -366,10 +367,15 @@ def _handle_client(
                 "attempt_finished",
                 "attempt_promoted",
             }
+            should_summarize = (
+                repo_root is not None and envelope.event_type == "attempt_finished"
+            )
             with db_lock:
                 result = process_event(conn, envelope_to_dict(envelope))
             if should_verify and not result.duplicate:
                 _verify_attempt_in_background(repo_root, envelope.attempt_id)
+            if should_summarize and not result.duplicate:
+                _summarize_attempt_in_background(repo_root, envelope.attempt_id)
             _write_response(client, {"ok": True, **result.__dict__})
         except EventError as exc:
             _write_response(client, {"ok": False, "error": str(exc)})
@@ -401,6 +407,38 @@ def _verify_attempt_in_background(repo_root: Path, attempt_id: str) -> threading
         target=run,
         daemon=True,
         name="ait-verifier",
+    )
+    with _VERIFIER_THREADS_LOCK:
+        _VERIFIER_THREADS.append(thread)
+    thread.start()
+    return thread
+
+
+def _summarize_attempt_in_background(
+    repo_root: Path, attempt_id: str
+) -> threading.Thread:
+    def run() -> None:
+        try:
+            summarize_attempt_transcript(repo_root, attempt_id)
+        except Exception as exc:
+            # Summarization is best-effort; a failure must never poison the
+            # attempt lifecycle. The transcript itself remains durable on
+            # disk and a follow-up sweep can retry.
+            print(
+                f"ait daemon summarizer warning: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
+        finally:
+            current = threading.current_thread()
+            with _VERIFIER_THREADS_LOCK:
+                if current in _VERIFIER_THREADS:
+                    _VERIFIER_THREADS.remove(current)
+
+    thread = threading.Thread(
+        target=run,
+        daemon=True,
+        name="ait-summarizer",
     )
     with _VERIFIER_THREADS_LOCK:
         _VERIFIER_THREADS.append(thread)
