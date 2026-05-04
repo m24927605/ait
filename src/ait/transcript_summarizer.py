@@ -23,6 +23,7 @@ note.
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Iterator
@@ -30,6 +31,7 @@ from typing import Iterable, Iterator
 from ait.db import connect_db, get_attempt
 from ait.memory.notes import add_memory_note
 from ait.memory.models import MemoryNote
+from ait.memory_policy import MemoryPolicy, load_memory_policy
 
 
 STRUCTURAL_TOOLS: frozenset[str] = frozenset(
@@ -165,9 +167,38 @@ def summarize_transcript_to_note(
     transcript_path: str | Path,
     agent_id: str,
     max_chars: int = DEFAULT_SUMMARY_MAX_CHARS,
+    policy: MemoryPolicy | None = None,
 ) -> MemoryNote | None:
-    """Parse + summarize + persist as a memory note. Returns the note."""
-    body = heuristic_summary(parse_transcript(transcript_path), max_chars=max_chars)
+    """Parse + summarize + persist as a memory note. Returns the note.
+
+    Dispatches between the heuristic and LLM summarizer based on the
+    repo's memory policy. The default policy uses the heuristic, so
+    behavior is unchanged unless the user explicitly opts in.
+
+    LLM failures (missing key, network, malformed response) fall back to
+    the heuristic so a misconfiguration never poisons the attempt
+    lifecycle.
+    """
+    events = list(parse_transcript(transcript_path))
+    if not events:
+        return None
+    if policy is None:
+        try:
+            policy = load_memory_policy(repo_root)
+        except Exception as exc:
+            print(
+                f"ait summarizer warning: could not load memory policy ({exc}); "
+                "using heuristic",
+                file=sys.stderr,
+                flush=True,
+            )
+            policy = None
+
+    body = _render_summary_body(
+        events,
+        max_chars=max_chars,
+        policy=policy,
+    )
     if not body.strip():
         return None
     return add_memory_note(
@@ -176,6 +207,29 @@ def summarize_transcript_to_note(
         topic="transcript-summary",
         source=f"transcript-summary:{agent_id}:{attempt_id}",
     )
+
+
+def _render_summary_body(
+    events: list[TranscriptEvent],
+    *,
+    max_chars: int,
+    policy: MemoryPolicy | None,
+) -> str:
+    if policy is not None and policy.summarizer.kind == "llm":
+        try:
+            from ait.transcript_llm import LLMSummarizerError, llm_summary
+
+            return llm_summary(events, config=policy.summarizer.llm)
+        except Exception as exc:
+            # ImportError, LLMSummarizerError, or anything unexpected — never
+            # block the attempt lifecycle on a summarizer hiccup.
+            print(
+                f"ait summarizer warning: LLM summarizer failed ({exc}); "
+                "falling back to heuristic",
+                file=sys.stderr,
+                flush=True,
+            )
+    return heuristic_summary(events, max_chars=max_chars)
 
 
 INTERNAL_TRANSCRIPT_PREFIX = ".ait/transcripts/"

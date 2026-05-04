@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import fnmatch
 import json
 from pathlib import Path
@@ -34,7 +34,44 @@ DEFAULT_RECALL_SOURCE_BLOCK: tuple[str, ...] = ()
 DEFAULT_RECALL_LINT_BLOCK_SEVERITIES = ("error",)
 DEFAULT_TRANSCRIPT_RETAIN_DAYS = 90
 DEFAULT_TRANSCRIPT_MAX_TOTAL_BYTES = 500 * 1024 * 1024  # 500 MB
+DEFAULT_SUMMARIZER_KIND = "heuristic"
+DEFAULT_SUMMARIZER_LLM_PROVIDER = "anthropic"
+DEFAULT_SUMMARIZER_LLM_MODEL = "claude-haiku-4-5-20251001"
+DEFAULT_SUMMARIZER_LLM_API_KEY_ENV = "ANTHROPIC_API_KEY"
+DEFAULT_SUMMARIZER_LLM_MAX_CHARS = 600
+DEFAULT_SUMMARIZER_LLM_TIMEOUT_SECONDS = 30
+SUMMARIZER_KINDS = frozenset({"heuristic", "llm"})
+SUMMARIZER_LLM_PROVIDERS = frozenset({"anthropic", "openai-compat"})
 EXCLUDED_MARKER = "[EXCLUDED BY MEMORY POLICY]"
+
+
+@dataclass(frozen=True, slots=True)
+class SummarizerLLMConfig:
+    provider: str = DEFAULT_SUMMARIZER_LLM_PROVIDER
+    model: str = DEFAULT_SUMMARIZER_LLM_MODEL
+    api_key_env: str = DEFAULT_SUMMARIZER_LLM_API_KEY_ENV
+    max_chars: int = DEFAULT_SUMMARIZER_LLM_MAX_CHARS
+    base_url: str | None = None
+    timeout_seconds: int = DEFAULT_SUMMARIZER_LLM_TIMEOUT_SECONDS
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "provider": self.provider,
+            "model": self.model,
+            "api_key_env": self.api_key_env,
+            "max_chars": self.max_chars,
+            "base_url": self.base_url,
+            "timeout_seconds": self.timeout_seconds,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class SummarizerConfig:
+    kind: str = DEFAULT_SUMMARIZER_KIND
+    llm: SummarizerLLMConfig = field(default_factory=SummarizerLLMConfig)
+
+    def to_dict(self) -> dict[str, object]:
+        return {"kind": self.kind, "llm": self.llm.to_dict()}
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +83,7 @@ class MemoryPolicy:
     recall_lint_block_severities: tuple[str, ...] = DEFAULT_RECALL_LINT_BLOCK_SEVERITIES
     transcript_retain_days: int = DEFAULT_TRANSCRIPT_RETAIN_DAYS
     transcript_max_total_bytes: int = DEFAULT_TRANSCRIPT_MAX_TOTAL_BYTES
+    summarizer: SummarizerConfig = field(default_factory=SummarizerConfig)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -58,6 +96,7 @@ class MemoryPolicy:
                 "retain_days": self.transcript_retain_days,
                 "max_total_bytes": self.transcript_max_total_bytes,
             },
+            "summarizer": self.summarizer.to_dict(),
         }
 
 
@@ -172,6 +211,7 @@ def _policy_from_mapping(data: dict[str, Any], *, path: Path) -> MemoryPolicy:
         data.get("transcripts"),
         path=path,
     )
+    summarizer = _summarizer_from_mapping(data.get("summarizer"), path=path)
     return MemoryPolicy(
         exclude_paths=exclude_paths,
         exclude_transcript_patterns=patterns,
@@ -180,6 +220,76 @@ def _policy_from_mapping(data: dict[str, Any], *, path: Path) -> MemoryPolicy:
         recall_lint_block_severities=recall_lint_block_severities,
         transcript_retain_days=transcript_retain_days,
         transcript_max_total_bytes=transcript_max_total_bytes,
+        summarizer=summarizer,
+    )
+
+
+def _summarizer_from_mapping(value: object, *, path: Path) -> SummarizerConfig:
+    if value is None:
+        return SummarizerConfig()
+    if not isinstance(value, dict):
+        raise ValueError(
+            f"invalid memory policy JSON at {path}: summarizer must be an object"
+        )
+    kind = value.get("kind", DEFAULT_SUMMARIZER_KIND)
+    if not isinstance(kind, str) or kind not in SUMMARIZER_KINDS:
+        raise ValueError(
+            f"invalid memory policy JSON at {path}: summarizer.kind must be one of "
+            f"{sorted(SUMMARIZER_KINDS)}"
+        )
+    llm_data = value.get("llm")
+    if llm_data is None:
+        llm = SummarizerLLMConfig()
+    elif not isinstance(llm_data, dict):
+        raise ValueError(
+            f"invalid memory policy JSON at {path}: summarizer.llm must be an object"
+        )
+    else:
+        llm = _summarizer_llm_from_mapping(llm_data, path=path)
+    return SummarizerConfig(kind=kind, llm=llm)
+
+
+def _summarizer_llm_from_mapping(
+    data: dict[str, Any], *, path: Path
+) -> SummarizerLLMConfig:
+    provider = data.get("provider", DEFAULT_SUMMARIZER_LLM_PROVIDER)
+    if not isinstance(provider, str) or provider not in SUMMARIZER_LLM_PROVIDERS:
+        raise ValueError(
+            f"invalid memory policy JSON at {path}: summarizer.llm.provider must be "
+            f"one of {sorted(SUMMARIZER_LLM_PROVIDERS)}"
+        )
+    model = data.get("model", DEFAULT_SUMMARIZER_LLM_MODEL)
+    if not isinstance(model, str) or not model:
+        raise ValueError(
+            f"invalid memory policy JSON at {path}: summarizer.llm.model must be a non-empty string"
+        )
+    api_key_env = data.get("api_key_env", DEFAULT_SUMMARIZER_LLM_API_KEY_ENV)
+    if not isinstance(api_key_env, str) or not api_key_env:
+        raise ValueError(
+            f"invalid memory policy JSON at {path}: summarizer.llm.api_key_env must be a non-empty string"
+        )
+    max_chars = data.get("max_chars", DEFAULT_SUMMARIZER_LLM_MAX_CHARS)
+    if not isinstance(max_chars, int) or isinstance(max_chars, bool) or max_chars <= 0:
+        raise ValueError(
+            f"invalid memory policy JSON at {path}: summarizer.llm.max_chars must be a positive integer"
+        )
+    timeout_seconds = data.get("timeout_seconds", DEFAULT_SUMMARIZER_LLM_TIMEOUT_SECONDS)
+    if not isinstance(timeout_seconds, int) or isinstance(timeout_seconds, bool) or timeout_seconds <= 0:
+        raise ValueError(
+            f"invalid memory policy JSON at {path}: summarizer.llm.timeout_seconds must be a positive integer"
+        )
+    base_url = data.get("base_url")
+    if base_url is not None and (not isinstance(base_url, str) or not base_url):
+        raise ValueError(
+            f"invalid memory policy JSON at {path}: summarizer.llm.base_url must be a non-empty string when set"
+        )
+    return SummarizerLLMConfig(
+        provider=provider,
+        model=model,
+        api_key_env=api_key_env,
+        max_chars=max_chars,
+        base_url=base_url,
+        timeout_seconds=timeout_seconds,
     )
 
 

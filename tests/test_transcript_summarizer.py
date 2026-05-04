@@ -6,11 +6,19 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from unittest.mock import patch
+
 from ait.app import create_attempt, create_intent, init_repo
 from ait.db import connect_db
 from ait.memory import build_relevant_memory_recall
 from ait.memory.notes import list_memory_notes
-from ait.memory_policy import init_memory_policy
+from ait.memory_policy import (
+    MemoryPolicy,
+    SummarizerConfig,
+    SummarizerLLMConfig,
+    init_memory_policy,
+)
+from ait.transcript_llm import LLMSummarizerError
 from ait.transcript_summarizer import (
     TranscriptEvent,
     heuristic_summary,
@@ -349,6 +357,104 @@ class SummarizeAttemptTranscriptTests(unittest.TestCase):
             note = summarize_attempt_transcript(repo_root, attempt_id)
 
             self.assertIsNone(note)
+
+
+class SummarizerDispatchTests(unittest.TestCase):
+    def _setup_repo(self, tmp: str) -> Path:
+        repo_root = Path(tmp)
+        _init_git_repo(repo_root)
+        init_repo(str(repo_root))
+        transcript = repo_root / ".ait" / "transcripts" / "attempt-d.jsonl"
+        transcript.parent.mkdir(parents=True, exist_ok=True)
+        _write_jsonl(
+            transcript,
+            [
+                {"role": "user", "text": "fix the auth retry"},
+                {"role": "assistant", "text": "switched to durable queue"},
+            ],
+        )
+        return repo_root
+
+    def test_default_policy_uses_heuristic(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = self._setup_repo(tmp)
+            transcript = repo_root / ".ait" / "transcripts" / "attempt-d.jsonl"
+
+            with patch("ait.transcript_summarizer._render_summary_body", wraps=__import__(
+                "ait.transcript_summarizer", fromlist=["_render_summary_body"]
+            )._render_summary_body) as wrapped:
+                note = summarize_transcript_to_note(
+                    repo_root,
+                    attempt_id="attempt-d",
+                    transcript_path=transcript,
+                    agent_id="claude-code:default",
+                )
+
+            self.assertIsNotNone(note)
+            assert note is not None
+            self.assertIn("User intent: fix the auth retry", note.body)
+            wrapped.assert_called_once()
+
+    def test_llm_policy_calls_llm_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = self._setup_repo(tmp)
+            transcript = repo_root / ".ait" / "transcripts" / "attempt-d.jsonl"
+            policy = MemoryPolicy(
+                summarizer=SummarizerConfig(
+                    kind="llm",
+                    llm=SummarizerLLMConfig(
+                        provider="anthropic",
+                        api_key_env="AIT_TEST_ANTHROPIC",
+                    ),
+                )
+            )
+
+            with patch(
+                "ait.transcript_llm.llm_summary",
+                return_value="LLM-quality summary text",
+            ) as fake_llm:
+                note = summarize_transcript_to_note(
+                    repo_root,
+                    attempt_id="attempt-d",
+                    transcript_path=transcript,
+                    agent_id="claude-code:default",
+                    policy=policy,
+                )
+
+            self.assertIsNotNone(note)
+            assert note is not None
+            self.assertEqual("LLM-quality summary text", note.body)
+            fake_llm.assert_called_once()
+
+    def test_llm_failure_falls_back_to_heuristic(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = self._setup_repo(tmp)
+            transcript = repo_root / ".ait" / "transcripts" / "attempt-d.jsonl"
+            policy = MemoryPolicy(
+                summarizer=SummarizerConfig(
+                    kind="llm",
+                    llm=SummarizerLLMConfig(
+                        provider="anthropic",
+                        api_key_env="AIT_TEST_ANTHROPIC",
+                    ),
+                )
+            )
+
+            with patch(
+                "ait.transcript_llm.llm_summary",
+                side_effect=LLMSummarizerError("simulated outage"),
+            ):
+                note = summarize_transcript_to_note(
+                    repo_root,
+                    attempt_id="attempt-d",
+                    transcript_path=transcript,
+                    agent_id="claude-code:default",
+                    policy=policy,
+                )
+
+            self.assertIsNotNone(note)
+            assert note is not None
+            self.assertIn("User intent: fix the auth retry", note.body)
 
 
 class RecallIntegrationTests(unittest.TestCase):
