@@ -21,6 +21,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     init_parser.add_argument("--format", choices=("text", "json"), default="text")
     init_parser.add_argument("--shell", action="store_true")
+    init_parser.add_argument(
+        "--no-shell-install",
+        action="store_true",
+        help="skip auto-installing the per-cd shell hook into ~/.zshrc / ~/.bashrc",
+    )
     intent_parser = subparsers.add_parser("intent")
     intent_subparsers = intent_parser.add_subparsers(dest="intent_command")
     intent_new = intent_subparsers.add_parser("new")

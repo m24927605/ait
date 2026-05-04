@@ -9,7 +9,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 from ait import cli
-from ait.shell_integration import END_MARKER, START_MARKER
+from ait.shell_integration import (
+    END_MARKER,
+    START_MARKER,
+    detect_user_shell,
+    is_shell_integration_installed,
+)
 
 
 class CliShellTests(unittest.TestCase):
@@ -82,6 +87,58 @@ class CliShellTests(unittest.TestCase):
         self.assertEqual(0, uninstall_exit)
         self.assertTrue(payload["changed"])
         self.assertNotIn(START_MARKER, rc_text)
+
+
+class ShellIntegrationHelperTests(unittest.TestCase):
+    def test_detect_user_shell_returns_known_shell(self) -> None:
+        with patch.dict("os.environ", {"SHELL": "/bin/zsh"}):
+            self.assertEqual("zsh", detect_user_shell())
+        with patch.dict("os.environ", {"SHELL": "/usr/bin/bash"}):
+            self.assertEqual("bash", detect_user_shell())
+
+    def test_detect_user_shell_returns_none_for_unknown(self) -> None:
+        with patch.dict("os.environ", {"SHELL": "/usr/bin/fish"}):
+            self.assertIsNone(detect_user_shell())
+        with patch.dict("os.environ", {"SHELL": ""}):
+            self.assertIsNone(detect_user_shell())
+
+    def test_is_shell_integration_installed_true_after_install(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            rc_path = Path(tmp) / ".zshrc"
+            rc_path.write_text(
+                "echo hi\n"
+                + START_MARKER
+                + "\n_ait_auto_path() { :; }\n"
+                + END_MARKER
+                + "\n",
+                encoding="utf-8",
+            )
+
+            self.assertTrue(
+                is_shell_integration_installed("zsh", rc_path=rc_path)
+            )
+
+    def test_is_shell_integration_installed_false_when_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            rc_path = Path(tmp) / ".zshrc"
+            self.assertFalse(
+                is_shell_integration_installed("zsh", rc_path=rc_path)
+            )
+
+            rc_path.write_text("echo hi\n", encoding="utf-8")
+            self.assertFalse(
+                is_shell_integration_installed("zsh", rc_path=rc_path)
+            )
+
+    def test_is_shell_integration_installed_false_for_unsupported_shell(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            rc_path = Path(tmp) / ".fishrc"
+            rc_path.write_text(START_MARKER + "\n" + END_MARKER + "\n", encoding="utf-8")
+            self.assertFalse(
+                is_shell_integration_installed("fish", rc_path=rc_path)
+            )
 
 
 if __name__ == "__main__":

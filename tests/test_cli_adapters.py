@@ -237,7 +237,10 @@ class CliAdapterTests(unittest.TestCase):
             os.environ["PATH"] = str(bin_dir) + os.pathsep + "/usr/bin:/bin"
             try:
                 with chdir(repo_root):
-                    with patch("sys.argv", ["ait", "init"]):
+                    # Pass --no-shell-install so the legacy "direnv allow / eval"
+                    # hint path is exercised. The default-on auto-install path
+                    # is covered by tests/test_init_shell_install.py.
+                    with patch("sys.argv", ["ait", "init", "--no-shell-install"]):
                         with redirect_stdout(stdout):
                             exit_code = cli.main()
             finally:
@@ -248,7 +251,11 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertTrue(text.startswith("AIT initialized\nAgent wrappers: claude, codex\nNext:\n"))
             self.assertIn("Details:\nRepo:", text)
-            self.assertTrue("direnv allow" in text or 'eval "$(ait init --shell)"' in text)
+            self.assertTrue(
+                "direnv allow" in text
+                or 'eval "$(ait init --shell)"' in text
+                or "ait shell install" in text
+            )
             self.assertTrue((repo_root / ".ait" / "config.json").exists())
             self.assertTrue((repo_root / ".ait" / "bin" / "claude").exists())
             self.assertTrue((repo_root / ".ait" / "bin" / "codex").exists())

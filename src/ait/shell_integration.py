@@ -134,6 +134,39 @@ def uninstall_shell_integration(
     return ShellIntegrationResult(shell=shell_name, rc_path=str(path), changed=True, snippet=snippet)
 
 
+def detect_user_shell() -> str | None:
+    """Best-effort detection of the user's interactive shell name.
+
+    Returns "zsh" or "bash" when recognised, otherwise None. Reads
+    `$SHELL` from the environment without raising on unsupported values.
+    """
+    raw = os.environ.get("SHELL", "")
+    name = Path(raw).name if raw else ""
+    if name in {"zsh", "bash"}:
+        return name
+    return None
+
+
+def is_shell_integration_installed(
+    shell: str | None = None,
+    *,
+    rc_path: str | Path | None = None,
+) -> bool:
+    """Return True if the ait shell hook block is present in the rc file."""
+    try:
+        shell_name = _normalize_shell(shell or os.environ.get("SHELL", ""))
+        path = _resolve_rc_path(shell_name, rc_path)
+    except ShellIntegrationError:
+        return False
+    if not path.exists():
+        return False
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return START_MARKER in text and END_MARKER in text
+
+
 def _resolve_rc_path(shell: str, rc_path: str | Path | None) -> Path:
     if rc_path is not None:
         return Path(rc_path).expanduser()

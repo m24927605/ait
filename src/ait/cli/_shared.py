@@ -114,6 +114,7 @@ from ait.cli.init_helpers import (
     _format_init,
     _format_repair,
     _init_payload,
+    _maybe_auto_install_shell_hook,
     _repair_payload,
 )
 from ait.cli.memory_helpers import (

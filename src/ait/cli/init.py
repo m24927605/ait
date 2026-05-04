@@ -26,7 +26,18 @@ def handle(args, repo_root: Path, parser=None) -> int:
             doctor_automation(item.adapter.name, result.repo_root)
             for item in automation.installed
         )
-        payload = _init_payload(result, automation, statuses, memory_import, memory_policy)
+        shell_install_result = _maybe_auto_install_shell_hook(
+            skip=getattr(args, "no_shell_install", False),
+            installed_adapters=automation.installed,
+        )
+        payload = _init_payload(
+            result,
+            automation,
+            statuses,
+            memory_import,
+            memory_policy,
+            shell_install=shell_install_result,
+        )
         if args.format == "json":
             print(json.dumps(payload, indent=2))
         else:
