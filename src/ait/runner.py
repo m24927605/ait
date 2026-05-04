@@ -210,6 +210,16 @@ def run_agent_command(
                 stderr="",
                 exit_code=completed.returncode,
             )
+        if adapter.name == "aider":
+            from ait.aider_capture import persist_aider_session
+
+            aider_ref = persist_aider_session(
+                root,
+                attempt_id=attempt.attempt_id,
+                workspace=workspace,
+            )
+            if aider_ref is not None:
+                raw_trace_ref = aider_ref
         effective_exit_code = _semantic_exit_code(
             completed.returncode,
             transcript=raw_trace_text,
