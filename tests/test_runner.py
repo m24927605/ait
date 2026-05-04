@@ -84,6 +84,33 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual("pass", report["health"]["status"])
             self.assertEqual([], report["health"]["reasons"])
 
+    def test_run_agent_command_records_command_as_raw_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="Capture command as prompt",
+                command=[
+                    sys.executable,
+                    "-c",
+                    "from pathlib import Path; Path('done.txt').write_text('ok\\n')",
+                ],
+            )
+
+            ref = result.attempt.evidence_summary["raw_prompt_ref"]
+            self.assertIsNotNone(ref, "raw_prompt_ref must be set after a wrapped run")
+            assert ref is not None
+            self.assertTrue(
+                ref.startswith(".ait/prompts/"),
+                f"unexpected prompt ref location: {ref}",
+            )
+            stored = (repo_root / ref).read_text(encoding="utf-8")
+            self.assertIn("# adapter: shell", stored)
+            self.assertIn("done.txt", stored)
+            self.assertIn(sys.executable, stored)
+
     def test_run_agent_command_self_repairs_memory_policy_and_imports_agent_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

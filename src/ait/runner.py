@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import pty
 import select
+import shlex
 import subprocess
 import sys
 import termios
@@ -124,6 +125,12 @@ def run_agent_command(
     )
     attempt = create_attempt(root, intent_id=intent.intent_id, agent_id=resolved_agent_id)
     workspace = Path(attempt.workspace_ref)
+    _record_command_as_prompt(
+        root,
+        attempt_id=attempt.attempt_id,
+        command=tuple(command),
+        adapter_name=adapter.name,
+    )
     context_file = (
         _write_context_file(
             root,
@@ -309,6 +316,55 @@ def _add_attempt_memory_note_with_warning(repo_root: Path, shown: AttemptShowRes
         add_attempt_memory_note(repo_root, shown)
     except Exception as exc:
         print(f"ait warning: add_attempt_memory_note failed: {exc}", file=sys.stderr)
+
+
+def _record_command_as_prompt(
+    repo_root: Path,
+    *,
+    attempt_id: str,
+    command: tuple[str, ...],
+    adapter_name: str,
+) -> str | None:
+    """Persist the launched command line as the attempt's raw prompt.
+
+    Native-hook adapters (Claude Code, Codex, Gemini) capture the actual
+    user/assistant turns through their own hook bridges; for everyone else
+    the closest analog of "prompt" is the command-line ait was asked to
+    run, which is what this helper stores.
+    """
+    if not command:
+        return None
+    prompts_dir = repo_root / ".ait" / "prompts"
+    try:
+        prompts_dir.mkdir(parents=True, exist_ok=True)
+        dest = prompts_dir / f"{attempt_id}.txt"
+        body = (
+            f"# adapter: {adapter_name}\n"
+            f"# captured-by: ait runner _record_command_as_prompt\n"
+            "\n"
+            + " ".join(shlex.quote(arg) for arg in command)
+            + "\n"
+        )
+        dest.write_text(body, encoding="utf-8")
+    except OSError:
+        return None
+    relative_ref = dest.relative_to(repo_root).as_posix()
+    db_path = repo_root / ".ait" / "state.sqlite3"
+    if not db_path.exists():
+        return relative_ref
+    try:
+        conn = connect_db(db_path)
+        try:
+            conn.execute(
+                "UPDATE evidence_summaries SET raw_prompt_ref = ? WHERE attempt_id = ?",
+                (relative_ref, attempt_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
+    return relative_ref
 
 
 def _stdio_is_tty() -> bool:
