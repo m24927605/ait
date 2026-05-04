@@ -111,6 +111,41 @@ class QueryTests(unittest.TestCase):
 
         self.assertEqual([], rows)
 
+    def test_intent_query_finds_by_title_substring(self) -> None:
+        rows = execute_query(self.conn, "intent", 'title~"auth"')
+
+        self.assertEqual(["repo:intent-1"], [row["id"] for row in rows])
+
+    def test_intent_query_supports_title_equality(self) -> None:
+        rows = execute_query(self.conn, "intent", 'title="Update docs"')
+
+        self.assertEqual(["repo:intent-2"], [row["id"] for row in rows])
+
+    def test_attempt_query_filters_by_intent_title(self) -> None:
+        rows = execute_query(self.conn, "attempt", 'title~"auth"')
+
+        self.assertIn(
+            "repo:attempt-1",
+            {row["id"] for row in rows},
+        )
+        self.assertNotIn(
+            "repo:attempt-3",
+            {row["id"] for row in rows},
+        )
+
+    def test_intent_query_finds_by_description_substring(self) -> None:
+        # Update an intent to carry a description, then query it.
+        self.conn.execute(
+            "UPDATE intents SET description = ? WHERE id = ?",
+            ("triage the staging session timeouts", "repo:intent-1"),
+        )
+
+        rows = execute_query(
+            self.conn, "intent", 'description~"staging session"'
+        )
+
+        self.assertEqual(["repo:intent-1"], [row["id"] for row in rows])
+
     def test_shortcut_expression_quotes_user_input(self) -> None:
         expression = list_shortcut_expression("attempt", agent='codex" OR kind="bugfix')
 

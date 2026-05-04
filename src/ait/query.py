@@ -528,6 +528,18 @@ FIELD_REGISTRY: dict[str, QueryField] = {
         attempt_expr="i.kind",
         intent_expr="i.kind",
     ),
+    "title": _scalar_field(
+        name="title",
+        value_type="text",
+        attempt_expr="i.title",
+        intent_expr="i.title",
+    ),
+    "description": _scalar_field(
+        name="description",
+        value_type="text",
+        attempt_expr="i.description",
+        intent_expr="i.description",
+    ),
     "created_at": _scalar_field(
         name="created_at",
         value_type="timestamp",
