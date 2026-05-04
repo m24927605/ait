@@ -1,5 +1,80 @@
 # Changelog
 
+## 0.55.40 - 2026-05-05
+
+### Documentation
+
+- New comparison page `/compare/git-worktree-naked-vs-ait/` with a
+  7-row manual-vs-ait table, a 3-agent-parallel side-by-side bash
+  example, and an honest "when you don't need ait" section.
+- New AI-search facts page `/facts/` with 15 self-contained Q&A
+  and `FAQPage` JSON-LD aimed at LLM retrieval (ChatGPT,
+  Perplexity, Google AI Overviews, Claude search).
+- New `site-docs/llms.txt` (per llmstxt.org) with a fact-dense
+  blockquote and a link manifest pointing at core docs,
+  integrations, comparisons, spec, and project URLs.
+- README hero rewritten with the canonical entity-first sentence
+  ("Git-native version control layer for AI coding agents"). Adds
+  GitHub-stars / PyPI-downloads / last-commit badges; removes the
+  visual `alpha` badge from the hero — the word "alpha" stays in
+  the Status section. New "Compared to alternatives" H2 with a
+  four-row table linking to the new comparison page.
+- New `CITATION.cff` (with `m24927605` as the author handle) and
+  `SECURITY.md` at the repo root for GitHub Community Standards.
+- New `docs/seo-strategy.md` capturing the four-domain Staff-level
+  audit, the canonical messaging architecture, and the P0/P1/P2
+  work breakdown. New "SEO Drift Audit" section in
+  `docs/release-checklist.md` enforcing eight canonical-string
+  and version-sync checks before each tagged release.
+
+### Packaging
+
+- `pyproject.toml`: classifiers expanded 6 → 18 (License, OS,
+  Topic depth, Intended Audience); `[project.urls]` extended
+  (Documentation, Source Code, Bug Tracker, Release Notes);
+  `description` switches to the canonical short form; keywords
+  refined (drop generic, add `agent-harness`, `code-provenance`,
+  `*-wrapper` variants).
+- `npm/ait-vcs/package.json`: `description` aligned with PyPI;
+  `homepage` points at the docs site; adds `os`, `cpu`,
+  `preferGlobal`, `publishConfig`; keywords expanded.
+
+### Site
+
+- `overrides/main.html`: full template head rewrite — `og:image`
+  1200×630, `twitter:card=summary_large_image`, `og:locale` +
+  alternate, conditional `hreflang` (zh-TW alternate suppressed
+  for `/facts/` and `/compare/` until translations land),
+  `<meta name="robots">`, JSON-LD `@graph` with
+  `SoftwareApplication` + `SoftwareSourceCode` + `WebSite` on the
+  home page and `BreadcrumbList` on inner pages. JSON-LD
+  `description` and `name` inherit from `mkdocs.yml`
+  `site_description` / `site_name` to avoid drift.
+- `mkdocs.yml`: `site_description` switches to the canonical long
+  form; enables `navigation.indexes`, `search.share`; adds
+  `i18n.fallback_to_default` + `reconfigure_material`; nav
+  extended for Compare and Facts; `nav_translations` updated.
+- `site-docs/robots.txt`: explicitly allows `GPTBot`, `ClaudeBot`,
+  `PerplexityBot`, `Google-Extended`, `Anthropic-AI`, `cohere-ai`,
+  `Applebot-Extended`.
+- `site-docs/assets/og-default.{svg,png}`: 1200×630 social-preview
+  asset generated from SVG via `rsvg-convert`. Same image is the
+  GitHub repo social preview source (uploaded manually via the
+  Settings UI).
+
+### GitHub repo metadata
+
+- Description: "Worktree isolation & provenance for AI coding
+  agents".
+- Homepage: `https://m24927605.github.io/ait/` (was the GitHub
+  README anchor).
+- Topics rerank under the 20-topic cap: drops `ai`, `cli`,
+  `coding-agents`, `provenance`; adds `agent-harness`,
+  `code-provenance`, `agentic`, `coding-assistant`.
+
+This release is purely metadata, content, and site-level SEO —
+the `ait` CLI behavior is unchanged from 0.55.39.
+
 ## 0.55.39 - 2026-05-04
 
 ### Added
