@@ -21,10 +21,13 @@ runs in an isolated Git worktree with full provenance.
 ## Setup
 
 ```bash
-ait init
-ait adapter setup codex
-ait adapter doctor codex
+ait init                  # detects `codex` on PATH, auto-installs hook + wrapper
+ait adapter doctor codex  # optional sanity check
 ```
+
+`ait init` writes `.codex/hooks.json` and the bridge under
+`.ait/adapters/codex/` automatically when `codex` is on `$PATH`. Use
+`ait adapter setup codex` to re-run the install explicitly.
 
 ## Run Codex under ait
 

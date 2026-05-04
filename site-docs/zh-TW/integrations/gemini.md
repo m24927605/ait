@@ -19,10 +19,12 @@ description: >-
 ## 設定
 
 ```bash
-ait init
-ait adapter setup gemini
-ait adapter doctor gemini
+ait init                   # 偵測 PATH 上的 `gemini`，自動裝 hook + wrapper
+ait adapter doctor gemini  # 可選的 sanity check
 ```
+
+`ait init` 在 `gemini` 於 `$PATH` 上時自動寫 `.gemini/settings.json`
+與 `.ait/adapters/gemini/` 的 bridge。
 
 ## 在 ait 下跑 Gemini
 

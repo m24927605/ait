@@ -27,13 +27,15 @@ across your repository. `ait` keeps that work contained:
 ## Setup
 
 ```bash
-ait init
-ait adapter setup claude-code
-ait adapter doctor claude-code
+ait init                       # detects `claude` on PATH, auto-installs the wrapper + hook
+ait adapter doctor claude-code # optional sanity check
 ```
 
-`ait adapter setup claude-code` installs a repo-local `claude` wrapper and
-the matching Claude Code hook. `ait adapter doctor` verifies the wiring.
+`ait init` detects every supported agent CLI on `$PATH` and wires it up
+in one shot — for Claude Code that means installing a repo-local
+`claude` wrapper plus merging the Claude Code hook config into
+`.claude/settings.json`. To re-run setup explicitly (e.g. after
+upgrading Claude Code), use `ait adapter setup claude-code`.
 
 ## Run Claude Code under ait
 

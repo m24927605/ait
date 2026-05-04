@@ -21,10 +21,12 @@ reviewable attempt.
 ## Setup
 
 ```bash
-ait init
-ait adapter setup gemini
-ait adapter doctor gemini
+ait init                   # detects `gemini` on PATH, auto-installs hook + wrapper
+ait adapter doctor gemini  # optional sanity check
 ```
+
+`ait init` writes `.gemini/settings.json` and the bridge under
+`.ait/adapters/gemini/` automatically when `gemini` is on `$PATH`.
 
 ## Run Gemini under ait
 

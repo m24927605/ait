@@ -19,10 +19,13 @@ worktree 內，每次 agent 執行都記成可審核的 attempt。
 ## 設定
 
 ```bash
-ait init
-ait adapter setup cursor
-ait adapter doctor cursor
+ait init                   # 偵測 PATH 上的 `cursor`，自動裝 wrapper
+ait adapter doctor cursor  # 可選的 sanity check
 ```
+
+`ait init` 在 `cursor` 於 `$PATH` 上時自動裝 repo-local 的 `cursor`
+wrapper。Cursor 目前 CLI 端沒有可靠的 hook 系統，所以 ait 改用
+`--output-format stream-json` 從 stdout 後處理 event stream。
 
 ## 在 ait 下跑 Cursor
 

@@ -21,10 +21,13 @@ description: >-
 ## 設定
 
 ```bash
-ait init
-ait adapter setup aider
-ait adapter doctor aider
+ait init                  # 偵測 PATH 上的 `aider`，自動裝 wrapper
+ait adapter doctor aider  # 可選的 sanity check
 ```
+
+`ait init` 在 `aider` 於 `$PATH` 上時自動裝 repo-local 的 `aider`
+wrapper。Aider 沒有外部 hook 要 merge——它的 chat history 是 attempt
+worktree 跑完後從 `.aider.chat.history.md` 讀回來。
 
 ## 在 ait 下跑 Aider
 

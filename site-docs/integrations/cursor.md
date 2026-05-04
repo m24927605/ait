@@ -21,10 +21,14 @@ managed by `ait`, with each agent run captured as a reviewable attempt.
 ## Setup
 
 ```bash
-ait init
-ait adapter setup cursor
-ait adapter doctor cursor
+ait init                   # detects `cursor` on PATH, installs the wrapper
+ait adapter doctor cursor  # optional sanity check
 ```
+
+`ait init` auto-installs the repo-local `cursor` wrapper when the
+binary is on `$PATH`. Cursor has no reliable CLI hook system today, so
+ait captures the `--output-format stream-json` event stream from
+stdout post-run instead.
 
 ## Run Cursor under ait
 

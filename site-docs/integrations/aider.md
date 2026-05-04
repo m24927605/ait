@@ -22,10 +22,14 @@ Run [Aider](https://aider.chat/) inside an isolated Git worktree managed by
 ## Setup
 
 ```bash
-ait init
-ait adapter setup aider
-ait adapter doctor aider
+ait init                  # detects `aider` on PATH, installs the wrapper
+ait adapter doctor aider  # optional sanity check
 ```
+
+`ait init` auto-installs the repo-local `aider` wrapper when the
+binary is on `$PATH`. Aider has no external hook config to merge — its
+chat history is read post-run from `.aider.chat.history.md` in the
+attempt worktree.
 
 ## Run Aider under ait
 

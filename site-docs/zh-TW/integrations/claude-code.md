@@ -25,13 +25,14 @@ Claude Code 又快又強，但一個 prompt 就能改你 repo 裡很多檔案。
 ## 設定
 
 ```bash
-ait init
-ait adapter setup claude-code
-ait adapter doctor claude-code
+ait init                       # 偵測 PATH 上的 `claude`，自動裝 wrapper + hook
+ait adapter doctor claude-code # 可選的 sanity check
 ```
 
-`ait adapter setup claude-code` 會安裝 repo-local 的 `claude` wrapper
-與對應的 Claude Code hook。`ait adapter doctor` 驗證接線。
+`ait init` 會掃 `$PATH` 上每個支援的 agent CLI 並一次裝好——對 Claude
+Code 而言會安裝 repo-local 的 `claude` wrapper、把 Claude Code 的
+hook 設定 merge 進 `.claude/settings.json`。如要顯式重跑（例如 Claude
+Code 升級後），用 `ait adapter setup claude-code`。
 
 ## 在 ait 下跑 Claude Code
 

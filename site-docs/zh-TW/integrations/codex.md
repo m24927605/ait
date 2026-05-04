@@ -20,10 +20,13 @@ session 都在獨立 Git worktree 跑、含完整 provenance。
 ## 設定
 
 ```bash
-ait init
-ait adapter setup codex
-ait adapter doctor codex
+ait init                  # 偵測 PATH 上的 `codex`，自動裝 hook + wrapper
+ait adapter doctor codex  # 可選的 sanity check
 ```
+
+`ait init` 會在 `codex` 在 `$PATH` 上時自動寫 `.codex/hooks.json` 與
+`.ait/adapters/codex/` 的 bridge。要顯式重跑用 `ait adapter setup
+codex`。
 
 ## 在 ait 下跑 Codex
 

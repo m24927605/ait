@@ -153,10 +153,16 @@ ait repair codex
 Each adapter wraps the upstream CLI, isolates its work in a Git worktree,
 and records the attempt locally in `.ait/`.
 
+`ait init` detects every supported agent CLI on `$PATH` and wires it up
+automatically — wrappers under `.ait/bin/`, hooks merged into the
+relevant `.claude/`, `.codex/`, `.gemini/` config. The per-adapter
+sections below assume you already ran `ait init`. To re-run setup
+explicitly (e.g. after upgrading an agent), use `ait adapter setup
+<name>`.
+
 ### Run Claude Code in a Git worktree
 
 ```bash
-ait adapter setup claude-code
 claude -p --permission-mode bypassPermissions "Refactor the auth module"
 ```
 
@@ -167,7 +173,6 @@ are happy with the diff.
 ### Run Codex CLI safely on a real repository
 
 ```bash
-ait adapter setup codex
 ait run --adapter codex --intent "Implement parser edge cases" -- codex
 ```
 
@@ -177,7 +182,6 @@ for inspection; only promoted attempts touch your root checkout.
 ### Run Aider in an isolated worktree
 
 ```bash
-ait adapter setup aider
 ait run --adapter aider --intent "Fix auth expiry" -- aider src/auth.py
 ```
 
@@ -187,7 +191,6 @@ linking the prompt, edited files, and commits.
 ### Run Gemini CLI with attempt history
 
 ```bash
-ait adapter setup gemini
 ait run --adapter gemini --intent "Add config validation" -- gemini
 ```
 
@@ -197,7 +200,6 @@ Codex. `ait memory recall` later surfaces what each agent tried.
 ### Run Cursor agents with reviewable provenance
 
 ```bash
-ait adapter setup cursor
 ait run --adapter cursor --intent "Migrate to new SDK" -- cursor
 ```
 
@@ -273,7 +275,7 @@ ait --version
 Tagged GitHub release:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.55.37"
+pipx install "git+https://github.com/m24927605/ait.git@v0.55.38"
 ```
 
 Upgrade:
@@ -332,7 +334,7 @@ ait shell uninstall --shell zsh
 
 ## Status
 
-`ait` is currently `0.55.37` and alpha quality. It is intended for local
+`ait` is currently `0.55.38` and alpha quality. It is intended for local
 dogfooding and early users who are comfortable with Git workflows.
 
 Metadata is local to one repository under `.ait/`. It is not
