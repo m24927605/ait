@@ -1,5 +1,14 @@
 {% extends "base.html" %}
 
+{% block htmltitle %}
+  {%- set page_title = (page.meta.title if page and page.meta and page.meta.title else (page.title if page else None)) -%}
+  {%- if page_title and page_title|string != config.site_name|string -%}
+    <title>{{ page_title }} - {{ config.site_name }}</title>
+  {%- else -%}
+    <title>{{ config.site_name }}</title>
+  {%- endif -%}
+{% endblock %}
+
 {% block extrahead %}
   {%- set title = page.meta.title if page and page.meta and page.meta.title else (page.title if page else config.site_name) -%}
   {%- set description = page.meta.description if page and page.meta and page.meta.description else config.site_description -%}
