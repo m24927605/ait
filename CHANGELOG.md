@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.55.36 - 2026-05-04
+
+### Added
+
+- Cursor CLI session capture. Cursor's lifecycle hooks are unreliable
+  in headless mode, so ait captures the structured event stream Cursor
+  already emits to stdout via `cursor-agent --print --output-format
+  stream-json`. The runner auto-enables stdout capture for the cursor
+  adapter, parses the typed events (`system`, `user`, `assistant`,
+  `tool_call`, `result`), and persists them as common envelope under
+  `.ait/transcripts/<attempt-id>.jsonl`.
+- The parser coalesces consecutive assistant chunks into a single
+  turn and pairs `tool_call.started` / `tool_call.completed` events
+  into envelope tool_use / tool_result entries.
+
+### The transcript memory pipeline is now feature-complete
+
+Cross-agent recall spans **all five** supported agents:
+
+| Agent | Capture mechanism |
+| --- | --- |
+| Claude Code | Native SessionEnd hook → transcript copy |
+| Codex CLI | Native SessionEnd hook → transcript copy |
+| Aider | Post-run chat-history conversion |
+| Gemini CLI | Native Stop hook → transcript copy |
+| Cursor | Stdout stream-json post-processing (this release) |
+
+Every session in any of these agents:
+1. lands as one ait attempt with a full transcript under `.ait/transcripts/`,
+2. is summarized by the heuristic (default) or LLM summarizer,
+3. is recalled by every future session in every agent.
+
+A Claude session next month can pick up where last week's Cursor
+session left off. The original goal of the agent-transcript-memory-design.md
+pipeline is met.
+
 ## 0.55.35 - 2026-05-04
 
 ### Added
