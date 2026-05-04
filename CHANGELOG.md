@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.55.34 - 2026-05-04
+
+### Added
+
+- Aider chat history capture. After every wrapped aider run, ait now
+  reads the markdown chat history aider writes to its working
+  directory (`.aider.chat.history.md`) and converts it to the common
+  envelope jsonl at `.ait/transcripts/<attempt-id>.jsonl`. Aider
+  sessions now flow through the same retention, summarizer, and
+  recall pipeline as Claude Code and Codex.
+- The integration is zero-config — no aider flag changes required.
+  As long as aider writes its default chat history file, ait captures
+  it.
+
+### Cross-agent recall now spans
+
+- Claude Code (via SessionEnd hook + transcript copy)
+- Codex CLI (via SessionEnd hook + transcript copy)
+- Aider (via post-run chat-history conversion, this release)
+
+A future Claude session can recall what last week's aider session
+decided, and vice versa.
+
 ## 0.55.33 - 2026-05-04
 
 ### Added
