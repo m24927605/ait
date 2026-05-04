@@ -16,7 +16,6 @@ theme:
   name: material
   custom_dir: overrides
   features:
-    - navigation.instant
     - navigation.tracking
     - navigation.sections
     - navigation.top
@@ -44,6 +43,30 @@ theme:
 
 plugins:
   - search
+  - i18n:
+      docs_structure: folder
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+        - locale: zh-TW
+          name: 繁體中文
+          build: true
+          site_name: ait — 給 AI coding agent 的 Git worktree 隔離層
+          nav_translations:
+            Home: 首頁
+            Why ait: 為什麼用 ait
+            Getting started: 開始使用
+            Integrations: 整合
+            Claude Code: Claude Code
+            Codex CLI: Codex CLI
+            Aider: Aider
+            Gemini CLI: Gemini CLI
+            Cursor: Cursor
+            Shell agents: Shell agents
+            Reference: 參考
+            Commands: 指令
 
 markdown_extensions:
   - admonition
