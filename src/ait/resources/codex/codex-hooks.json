@@ -1,0 +1,56 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CODEX_PROJECT_DIR/.ait/adapters/codex/codex_hook.py\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read|Grep|Glob|LS|Write|Edit|MultiEdit|NotebookEdit|Bash|shell|apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CODEX_PROJECT_DIR/.ait/adapters/codex/codex_hook.py\""
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Read|Grep|Glob|LS|Write|Edit|MultiEdit|NotebookEdit|Bash|shell|apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CODEX_PROJECT_DIR/.ait/adapters/codex/codex_hook.py\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CODEX_PROJECT_DIR/.ait/adapters/codex/codex_hook.py\""
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CODEX_PROJECT_DIR/.ait/adapters/codex/codex_hook.py\""
+          }
+        ]
+      }
+    ]
+  }
+}

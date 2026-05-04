@@ -55,4 +55,9 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-ait = ["resources/claude-code/*.py", "resources/claude-code/*.json"]
+ait = [
+  "resources/claude-code/*.py",
+  "resources/claude-code/*.json",
+  "resources/codex/*.py",
+  "resources/codex/*.json",
+]

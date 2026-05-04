@@ -146,8 +146,12 @@ ADAPTERS: dict[str, AgentAdapter] = {
             "AIT_ADAPTER": "codex",
             "AIT_CONTEXT_HINT": "Read AIT_CONTEXT_FILE before starting work.",
         },
+        native_hooks=True,
         description="Codex CLI wrapper with context enabled by default.",
-        setup_hint="Use ait bootstrap codex to install a repo-local wrapper.",
+        setup_hint=(
+            "Use packaged resources codex_hook.py and codex-hooks.json for "
+            "native Codex CLI hook event capture into .ait/transcripts/."
+        ),
     ),
     "cursor": AgentAdapter(
         name="cursor",
@@ -211,8 +215,8 @@ def doctor_adapter(name: str, repo_root: str | Path) -> AdapterDoctorResult:
     )
 
     if adapter.name == "claude-code":
-        hook = _resource_exists("claude_code_hook.py")
-        settings = _resource_exists("claude-code-settings.json")
+        hook = _resource_exists("claude-code", "claude_code_hook.py")
+        settings = _resource_exists("claude-code", "claude-code-settings.json")
         checks.append(
             AdapterDoctorCheck(
                 "claude_hook_resource",
@@ -227,12 +231,29 @@ def doctor_adapter(name: str, repo_root: str | Path) -> AdapterDoctorResult:
                 "ait.resources.claude-code/claude-code-settings.json",
             )
         )
+    elif adapter.name == "codex":
+        hook = _resource_exists("codex", "codex_hook.py")
+        settings = _resource_exists("codex", "codex-hooks.json")
+        checks.append(
+            AdapterDoctorCheck(
+                "codex_hook_resource",
+                hook,
+                "ait.resources.codex/codex_hook.py",
+            )
+        )
+        checks.append(
+            AdapterDoctorCheck(
+                "codex_settings_resource",
+                settings,
+                "ait.resources.codex/codex-hooks.json",
+            )
+        )
     else:
         checks.append(
             AdapterDoctorCheck(
                 "native_hooks",
                 not adapter.native_hooks,
-                "native hook doctor is only implemented for claude-code",
+                "native hook doctor is only implemented for claude-code and codex",
             )
         )
 
@@ -381,18 +402,26 @@ def setup_adapter(
     hook_path = root / ".ait" / "adapters" / adapter.name
     if adapter.name == "claude-code":
         hook_path = hook_path / "claude_code_hook.py"
+    elif adapter.name == "codex":
+        hook_path = hook_path / "codex_hook.py"
     wrapper_path = root / ".ait" / "bin" / adapter.command_name
     direnv_path = root / ".envrc"
-    settings_path = (
-        _resolve_target(root, target)
-        if target is not None
-        else root / ".claude" / "settings.json"
-        if adapter.name == "claude-code"
-        else None
-    )
-    settings = _claude_code_settings() if adapter.name == "claude-code" else {}
+    if target is not None:
+        settings_path = _resolve_target(root, target)
+    elif adapter.name == "claude-code":
+        settings_path = root / ".claude" / "settings.json"
+    elif adapter.name == "codex":
+        settings_path = root / ".codex" / "hooks.json"
+    else:
+        settings_path = None
+    if adapter.name == "claude-code":
+        settings = _claude_code_settings()
+    elif adapter.name == "codex":
+        settings = _codex_hooks_settings()
+    else:
+        settings = {}
     install_wrapper = install_wrapper or install_direnv
-    if adapter.name != "claude-code":
+    if adapter.name not in {"claude-code", "codex"}:
         install_wrapper = True
 
     wrote_files: list[str] = []
@@ -400,6 +429,19 @@ def setup_adapter(
         if adapter.name == "claude-code":
             hook_path.parent.mkdir(parents=True, exist_ok=True)
             hook_path.write_text(_read_claude_resource("claude_code_hook.py"), encoding="utf-8")
+            wrote_files.append(str(hook_path))
+
+            assert settings_path is not None
+            settings_path.parent.mkdir(parents=True, exist_ok=True)
+            merged = _merge_settings(_read_json_object(settings_path), settings)
+            settings_path.write_text(json.dumps(merged, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            wrote_files.append(str(settings_path))
+        elif adapter.name == "codex":
+            hook_path.parent.mkdir(parents=True, exist_ok=True)
+            hook_path.write_text(
+                _read_adapter_resource("codex", "codex_hook.py"),
+                encoding="utf-8",
+            )
             wrote_files.append(str(hook_path))
 
             assert settings_path is not None
@@ -430,19 +472,23 @@ def setup_adapter(
     )
 
 
-def _resource_exists(name: str) -> bool:
+def _resource_exists(adapter_dir: str, name: str) -> bool:
     try:
-        return resources.files("ait").joinpath("resources", "claude-code", name).is_file()
+        return resources.files("ait").joinpath("resources", adapter_dir, name).is_file()
     except Exception:
         return False
 
 
-def _read_claude_resource(name: str) -> str:
+def _read_adapter_resource(adapter_dir: str, name: str) -> str:
     return (
         resources.files("ait")
-        .joinpath("resources", "claude-code", name)
+        .joinpath("resources", adapter_dir, name)
         .read_text(encoding="utf-8")
     )
+
+
+def _read_claude_resource(name: str) -> str:
+    return _read_adapter_resource("claude-code", name)
 
 
 def _resolve_target(repo_root: Path, target: str | Path) -> Path:
@@ -459,6 +505,27 @@ def _claude_code_settings() -> dict[str, object]:
     )
     tool_events = {
         "matcher": "Read|Grep|Glob|LS|Write|Edit|MultiEdit|NotebookEdit|Bash",
+        "hooks": [{"type": "command", "command": command}],
+    }
+    session_events = {"hooks": [{"type": "command", "command": command}]}
+    return {
+        "hooks": {
+            "SessionStart": [session_events],
+            "PostToolUse": [tool_events],
+            "PostToolUseFailure": [tool_events],
+            "Stop": [session_events],
+            "SessionEnd": [session_events],
+        }
+    }
+
+
+def _codex_hooks_settings() -> dict[str, object]:
+    command = (
+        f"{shlex.quote(sys.executable)} "
+        '"$CODEX_PROJECT_DIR/.ait/adapters/codex/codex_hook.py"'
+    )
+    tool_events = {
+        "matcher": "Read|Grep|Glob|LS|Write|Edit|MultiEdit|NotebookEdit|Bash|shell|apply_patch",
         "hooks": [{"type": "command", "command": command}],
     }
     session_events = {"hooks": [{"type": "command", "command": command}]}
