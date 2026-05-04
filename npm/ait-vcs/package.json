@@ -1,6 +1,6 @@
 {
   "name": "ait-vcs",
-  "version": "0.55.37",
+  "version": "0.55.38",
   "description": "npm installer for the ait AI-agent Git workflow CLI",
   "license": "MIT",
   "author": "sin-chengchen",

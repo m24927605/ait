@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.55.38 - 2026-05-04
+
+### Documentation
+
+- Clarify across the docs site (`site-docs/integrations/*` en + 繁中)
+  and both READMEs that `ait init` already detects every supported
+  agent CLI on `$PATH` and wires it up automatically — wrappers under
+  `.ait/bin/` plus hook configs merged into `.claude/settings.json`,
+  `.codex/hooks.json`, and `.gemini/settings.json`. The previous docs
+  showed `ait init` followed by a per-adapter `ait adapter setup
+  <name>` step which is redundant; that command remains available for
+  explicit re-setup (e.g. after upgrading an agent).
+
+No code changes — auto-setup behavior was already implemented in
+`adapters.enable_available_adapters` and called from the init flow.
+This release is purely a documentation correction surfaced by user
+feedback.
+
 ## 0.55.37 - 2026-05-04
 
 ### Added
