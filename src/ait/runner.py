@@ -149,7 +149,7 @@ def run_agent_command(
         env["AIT_CONTEXT_FILE"] = str(context_file)
     completed: subprocess.CompletedProcess[str] | None = None
     effective_exit_code = 1
-    should_capture_output = capture_command_output
+    should_capture_output = capture_command_output or adapter.name == "cursor"
     should_capture_tty = not should_capture_output and _stdio_is_tty()
     raw_trace_ref: str | None = None
     raw_trace_text: str = ""
@@ -220,6 +220,16 @@ def run_agent_command(
             )
             if aider_ref is not None:
                 raw_trace_ref = aider_ref
+        if adapter.name == "cursor" and completed is not None:
+            from ait.cursor_capture import persist_cursor_session
+
+            cursor_ref = persist_cursor_session(
+                root,
+                attempt_id=attempt.attempt_id,
+                stdout_text=completed.stdout or "",
+            )
+            if cursor_ref is not None:
+                raw_trace_ref = cursor_ref
         effective_exit_code = _semantic_exit_code(
             completed.returncode,
             transcript=raw_trace_text,
