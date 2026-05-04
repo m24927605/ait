@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.55.33 - 2026-05-04
+
+### Added
+
+- Native Codex CLI hook adapter. `ait adapter setup codex` now installs
+  a `codex_hook.py` bridge under `.ait/adapters/codex/` and writes
+  `.codex/hooks.json` so each Codex session is captured exactly the
+  same way as Claude Code: SessionStart → ait attempt + intent;
+  PostToolUse → tool events; SessionEnd → finalize with the persisted
+  transcript copied into `.ait/transcripts/<attempt-id>.jsonl`.
+- Codex transcript persistence flows through the same retention
+  policy, summarizer, and recall pipeline as Claude Code, so cross-
+  agent recall now works in both directions: a Claude session can
+  recall what a previous Codex session decided, and vice versa.
+
+### Fixed
+
+- The hook bridges no longer include the `model` field in
+  `attempt_started` payloads when the agent did not report one. The
+  protocol validator rejects empty strings, so the previous behavior
+  could surface as "daemon closed the connection before responding to
+  attempt_started" warnings on agents that omit `model`.
+
 ## 0.55.32 - 2026-05-04
 
 ### Added
