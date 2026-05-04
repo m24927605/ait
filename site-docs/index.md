@@ -1,13 +1,16 @@
 ---
-title: ait — Git worktree isolation for AI coding agents
+title: ait — Git workflow layer for AI coding agents
 description: >-
-  ait wraps Claude Code, Codex, Aider, Gemini CLI, and Cursor in isolated Git
-  worktrees with traceable commits, reviewable attempts, and repo-local memory.
+  ait wraps Claude Code, Codex, Aider, Gemini CLI, and Cursor with Git
+  worktree isolation, attempt provenance, cross-session repo-local memory
+  with summaries, cross-agent context handoff, and reviewable promotion.
+  Open-source, dependency-free, runs on top of Git.
 ---
 
 # ait
 
-**Git worktree isolation and provenance for AI coding agents.**
+**The Git workflow layer for AI coding agents — worktree isolation,
+attempt provenance, cross-session memory, reviewable promotion.**
 
 `ait` wraps the agent CLIs you already use — Claude Code, Codex, Aider,
 Gemini CLI, Cursor — and turns each run into a **reviewable attempt**.

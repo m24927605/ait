@@ -1,14 +1,16 @@
 ---
-title: ait — 給 AI coding agent 的 Git worktree 隔離層
+title: ait — AI coding agent 的 Git 工作層
 description: >-
-  ait 把 Claude Code、Codex、Aider、Gemini CLI、Cursor 包進獨立的 Git
-  worktree，每次執行都成為可審核、可追溯的 attempt，並透過 repo-local
-  memory 跨 session 傳遞脈絡。
+  ait 把 Claude Code、Codex、Aider、Gemini CLI、Cursor 包進 Git worktree
+  隔離層，記錄 attempt provenance、跨 session repo-local 記憶與摘要、跨
+  agent 脈絡傳遞，並用顯式 promote 讓 root checkout 永遠由你決定。
+  開源、零依賴、跑在 Git 之上。
 ---
 
 # ait
 
-**給 AI coding agent 的 Git worktree 隔離與 provenance 層。**
+**為 AI coding agent 設計的 Git 工作層 — worktree 隔離、attempt
+provenance、跨 session 記憶、可審核 promote。**
 
 `ait` 包住你已經在用的 agent CLI——Claude Code、Codex、Aider、Gemini
 CLI、Cursor——把每次執行變成一筆**可審核的 attempt**。Agent 編輯獨立

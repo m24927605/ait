@@ -1,8 +1,9 @@
-site_name: ait — Git worktree isolation for AI coding agents
+site_name: ait — Git workflow layer for AI coding agents
 site_url: https://m24927605.github.io/ait/
 site_description: >-
-  ait wraps Claude Code, Codex, Aider, Gemini CLI, and Cursor in isolated Git
-  worktrees with reviewable attempts and repo-local memory. Open-source,
+  ait wraps Claude Code, Codex, Aider, Gemini CLI, and Cursor with Git
+  worktree isolation, attempt provenance, cross-session repo-local memory,
+  cross-agent context handoff, and reviewable promotion. Open-source,
   dependency-free, runs on top of Git.
 site_author: sin-chengchen
 repo_url: https://github.com/m24927605/ait
@@ -53,7 +54,7 @@ plugins:
         - locale: zh-TW
           name: 繁體中文
           build: true
-          site_name: ait — 給 AI coding agent 的 Git worktree 隔離層
+          site_name: ait — AI coding agent 的 Git 工作層
           nav_translations:
             Home: 首頁
             Why ait: 為什麼用 ait
