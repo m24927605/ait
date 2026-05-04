@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.55.35 - 2026-05-04
+
+### Added
+
+- Native Gemini CLI hook adapter. `ait adapter setup gemini` installs
+  a `gemini_hook.py` bridge under `.ait/adapters/gemini/` and writes
+  `.gemini/settings.json` so each Gemini session is captured the same
+  way as Claude Code and Codex: `SessionStart` → ait attempt + intent;
+  `AfterTool` / `AfterToolFailure` → tool events; `Stop` → finalize
+  with the persisted transcript copied into
+  `.ait/transcripts/<attempt-id>.jsonl`.
+- The bridge accepts both `AfterTool` (Gemini's name) and
+  `PostToolUse` (Claude/Codex's name) so it stays compatible across
+  versions and migration tooling.
+- `Stop` does double duty as Gemini's session-end event (it fires on
+  both `/clear` reset and CLI exit). The next `SessionStart` opens a
+  fresh attempt.
+
+### Cross-agent recall now spans
+
+- Claude Code (native hook)
+- Codex CLI (native hook)
+- Aider (post-run chat-history conversion)
+- Gemini CLI (native hook, this release)
+
+A future Claude session can recall what last week's Gemini session
+decided, and vice versa, via the existing transcript-summary memory
+notes.
+
 ## 0.55.34 - 2026-05-04
 
 ### Added
