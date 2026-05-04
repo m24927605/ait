@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+title: "ait: Git-native version control layer for AI coding agents"
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - family-names: "m24927605"
+    alias: "m24927605"
+repository-code: "https://github.com/m24927605/ait"
+url: "https://m24927605.github.io/ait/"
+license: MIT
+version: 0.55.39
+date-released: 2026-05-04
+keywords:
+  - "ai-coding"
+  - "claude-code"
+  - "codex"
+  - "aider"
+  - "gemini-cli"
+  - "cursor"
+  - "git-worktree"
+  - "agent-isolation"
+  - "code-provenance"
+  - "agent-harness"
+abstract: >-
+  ait is a Git-native version control layer for AI coding agents
+  (Claude Code, Codex CLI, Aider, Gemini CLI, Cursor). It adds
+  worktree isolation, attempt provenance, cross-agent memory, and
+  reviewable promotion on top of Git, with all metadata stored
+  locally under .ait/ — no SaaS, no telemetry. Open source under
+  MIT, dependency-free Python 3.14+, distributed as ait-vcs on
+  PyPI and npm.
