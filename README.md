@@ -2,11 +2,8 @@
 
 # ait
 
-### Git-native safety rails for AI coding agents
-
-Run Claude Code, Codex, Aider, Gemini, and Cursor in isolated Git
-worktrees with traceable commits, reviewable attempts, and repo-local
-memory.
+### Git-native version control layer for AI coding agents
+**Claude Code · Codex CLI · Aider · Gemini CLI · Cursor**
 
 <sub>[English](README.md) · [繁體中文](README.zh-TW.md)</sub>
 
@@ -14,18 +11,26 @@ memory.
 [![npm](https://img.shields.io/npm/v/ait-vcs?label=npm)](https://www.npmjs.com/package/ait-vcs)
 [![Python](https://img.shields.io/badge/python-3.14%2B-blue)](pyproject.toml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Status](https://img.shields.io/badge/status-alpha-orange)](#status)
+[![GitHub stars](https://img.shields.io/github/stars/m24927605/ait?style=flat&logo=github)](https://github.com/m24927605/ait/stargazers)
+[![PyPI Downloads](https://img.shields.io/pypi/dm/ait-vcs?color=blue)](https://pypi.org/project/ait-vcs/)
+[![Last commit](https://img.shields.io/github/last-commit/m24927605/ait)](https://github.com/m24927605/ait/commits/main)
 
 </div>
 
 ---
 
-AI agents are fast. Git history, review discipline, and handoff context
-often are not.
+**`ait` is a Git-native version control layer for AI coding agents
+(Claude Code, Codex CLI, Aider, Gemini CLI, Cursor) — adding worktree
+isolation, attempt provenance, cross-agent memory, and reviewable
+promotion on top of Git. Open source (MIT), Python 3.14+,
+dependency-free, no SaaS, no telemetry.**
 
-`ait` wraps the agent CLIs you already use and turns each run into a
-reviewable attempt. The agent edits an isolated worktree, `ait` records
-what happened, and your main checkout stays untouched until you promote
+AI agents are fast. Git history, review discipline, and handoff
+context often are not. `ait` closes that gap as a thin layer on top
+of Git — it is not an agent and not a Git replacement. It wraps the
+agent CLIs you already use and turns each run into a reviewable
+attempt: the agent edits an isolated worktree, `ait` records what
+happened, and your main checkout stays untouched until you promote
 the result.
 
 ```bash
@@ -217,6 +222,17 @@ ait run --adapter shell --intent "Regenerate fixtures" -- \
 Use the generic `shell` adapter to give attempt provenance to any custom
 agent or script.
 
+## Compared to alternatives
+
+`ait` is the layer **around** the agents, not a replacement.
+
+| You already use | `ait` adds |
+| --- | --- |
+| **Naked `git worktree` + manual cleanup** | Auto-provisioned worktrees, attempt records, `discard`/`promote` verbs, queryable history — see [ait vs naked git-worktree](https://m24927605.github.io/ait/compare/git-worktree-naked-vs-ait/) |
+| **Aider's `--auto-commits`** | Outer-layer attempt history (Aider commits land *inside* an `ait` attempt), cross-session memory, multi-agent handoff |
+| **Claude Code's built-in worktrees** | Cross-agent (not Claude-only), structured attempt records, query DSL, explicit `discard`/`promote` |
+| **SaaS observability (Langfuse, Braintrust)** | Local-first, no telemetry, `git`-native (commit-linked, not token-linked); they operate at the LLM-call layer, `ait` at the git-call layer — both stack |
+
 ## How It Works
 
 ```text
@@ -370,11 +386,13 @@ should match.
 
 ## Documentation
 
-- [Getting started](docs/getting-started.md)
-- [Claude Code run worktree workflow](docs/claude-code-run-worktree.md)
-- [Claude Code hook smoke test](docs/claude-code-live-smoke.md)
-- [Long-term memory design](docs/long-term-memory-design.md)
-- [Long-term memory acceptance](docs/long-term-memory-acceptance.md)
-- [Repo brain design](docs/repo-brain-design.md)
-- [Repo brain acceptance](docs/repo-brain-acceptance.md)
-- [Release checklist](docs/release-checklist.md)
+- [Documentation site](https://m24927605.github.io/ait/) — full docs in English and 繁體中文
+- [Why ait](https://m24927605.github.io/ait/why-ait/) — the ten problems ait solves
+- [Getting started](https://m24927605.github.io/ait/getting-started/)
+- [AI search facts (Q&A)](https://m24927605.github.io/ait/facts/)
+- [Compare: naked git-worktree vs ait](https://m24927605.github.io/ait/compare/git-worktree-naked-vs-ait/)
+- [Command reference](https://m24927605.github.io/ait/reference/commands/)
+- [SEO strategy (internal)](docs/seo-strategy.md)
+
+For internal design notes (specs, memory architecture, refactor plans),
+see [`docs/`](docs/).
