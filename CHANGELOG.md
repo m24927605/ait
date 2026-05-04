@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.55.31 - 2026-05-04
+
+### Added
+
+- Persist Claude Code session transcripts to `.ait/transcripts/<attempt-id>.jsonl`
+  on session end, instead of only referencing the upstream
+  `~/.claude/projects/...` path. Transcripts now travel with the repo
+  and survive Claude Code cache clears.
+- Memory policy gains a `transcripts` block (`retain_days`,
+  `max_total_bytes`) controlling retention. Defaults: 90 days, 500 MB.
+  Applied by the daemon reaper on each scan cycle.
+- Heuristic transcript summarizer (`src/ait/transcript_summarizer.py`)
+  parses the persisted jsonl and writes a compact memory note
+  (`topic=transcript-summary`,
+  `source=transcript-summary:<agent_id>:<attempt_id>`) so future
+  agents — same or different — can recall what the previous session
+  decided, abandoned, or failed at, not just what it changed.
+- The daemon now fires the summarizer in a background thread on each
+  `attempt_finished` event, in addition to the existing verifier hook.
+- `transcript-summary:*` is added to the default
+  `recall_source_allow`, so summaries flow through
+  `build_relevant_memory_recall` into `AIT_CONTEXT_FILE` automatically.
+
+### Migration
+
+Existing repositories carry a frozen
+`recall_source_allow` list in `.ait/memory-policy.json` from a prior
+`ait init`. To opt into transcript-summary recall, either:
+
+- add `"transcript-summary:*"` to that list manually, or
+- delete `.ait/memory-policy.json` and let the next `ait init` /
+  wrapped run regenerate it with the new default.
+
+New `ait init` runs pick up the default automatically.
+
+### Design doc
+
+See `docs/agent-transcript-memory-design.md` for the full pipeline,
+including the not-yet-shipped Steps 3 (non-Claude hook adapters) and
+the optional LLM summarizer.
+
 ## 0.55.30 - 2026-05-04
 
 ### Changed
