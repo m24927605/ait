@@ -1,10 +1,10 @@
 {
   "name": "ait-vcs",
   "version": "0.55.39",
-  "description": "npm installer for the ait AI-agent Git workflow CLI",
+  "description": "Git worktree isolation and provenance for AI coding agents — wraps Claude Code, Codex, Aider, Gemini CLI, Cursor. MIT, Python, no SaaS.",
   "license": "MIT",
   "author": "sin-chengchen",
-  "homepage": "https://github.com/m24927605/ait#readme",
+  "homepage": "https://m24927605.github.io/ait/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/m24927605/ait.git",
@@ -15,20 +15,27 @@
   },
   "keywords": [
     "ai",
-    "agents",
     "ai-coding",
-    "coding-agent",
+    "agentic-coding",
+    "agent-harness",
+    "agent-isolation",
+    "agent-vcs",
     "claude-code",
+    "claude-code-wrapper",
     "codex",
+    "codex-wrapper",
     "aider",
+    "aider-wrapper",
     "gemini-cli",
     "cursor",
     "git",
     "git-worktree",
-    "worktree",
+    "git-wrapper",
     "vcs",
     "provenance",
-    "agent-isolation"
+    "code-provenance",
+    "llm-coding-agent",
+    "ai-devtools"
   ],
   "bin": {
     "ait": "bin/ait.js"
@@ -44,5 +51,12 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "os": ["darwin", "linux"],
+  "cpu": ["x64", "arm64"],
+  "preferGlobal": true,
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }

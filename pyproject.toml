@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ait-vcs"
 version = "0.55.39"
-description = "Git worktree isolation and provenance for AI coding agents"
+description = "Git worktree isolation and provenance for AI coding agents — wraps Claude Code, Codex, Aider, Gemini CLI, Cursor. MIT, Python, no SaaS."
 readme = "README.md"
 requires-python = ">=3.14"
 license = "MIT"
@@ -14,34 +14,53 @@ authors = [
 ]
 keywords = [
   "ai",
-  "agents",
   "ai-coding",
-  "coding-agent",
+  "agentic-coding",
+  "agent-harness",
+  "agent-isolation",
   "claude-code",
+  "claude-code-wrapper",
   "codex",
+  "codex-wrapper",
   "aider",
+  "aider-wrapper",
   "gemini-cli",
   "cursor",
   "git",
   "git-worktree",
-  "worktree",
   "vcs",
   "provenance",
-  "agent-isolation",
+  "code-provenance",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
   "Intended Audience :: Developers",
+  "Intended Audience :: Information Technology",
+  "License :: OSI Approved :: MIT License",
+  "Natural Language :: English",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
+  "Programming Language :: Python",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development",
+  "Topic :: Software Development :: Version Control",
   "Topic :: Software Development :: Version Control :: Git",
+  "Topic :: Software Development :: Quality Assurance",
+  "Topic :: Software Development :: Code Generators",
+  "Topic :: Utilities",
 ]
 
 [project.urls]
-Homepage = "https://github.com/m24927605/ait"
+Homepage = "https://m24927605.github.io/ait/"
+Documentation = "https://m24927605.github.io/ait/"
 Repository = "https://github.com/m24927605/ait"
+"Source Code" = "https://github.com/m24927605/ait"
+"Bug Tracker" = "https://github.com/m24927605/ait/issues"
 Issues = "https://github.com/m24927605/ait/issues"
+"Release Notes" = "https://github.com/m24927605/ait/releases"
 Changelog = "https://github.com/m24927605/ait/blob/main/CHANGELOG.md"
 
 [project.scripts]
