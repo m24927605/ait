@@ -1,0 +1,48 @@
+# ait
+
+> ait is a Git-native version control layer for AI coding agents (Claude Code, Codex CLI, Aider, Gemini CLI, Cursor) — adding worktree isolation, attempt provenance, cross-agent memory, and reviewable promotion on top of Git. Open source (MIT), Python 3.14+, dependency-free, no SaaS, no telemetry. Metadata is stored locally under `.ait/` next to `.git/`. The package is named `ait-vcs` on PyPI and npm; the installed command is `ait`.
+
+ait is not an agent and not a Git replacement. It is the safety, provenance, and memory layer between AI coding agents and Git. Every wrapped agent run produces one "attempt" record linking intent → prompt → context files → exit status → edited files → resulting commits, queryable via a structured DSL. Repo-local memory auto-imports `CLAUDE.md`, `AGENTS.md`, prior attempts, and prior commits into `AIT_CONTEXT_FILE` for the next run, so cross-agent handoff (Claude Code → Codex → Aider) preserves context. Failed attempts stay isolated in their own worktree until you run `ait attempt discard`; successful changes only reach `main` when you call `ait attempt promote`.
+
+## Core docs
+
+- [Home](https://m24927605.github.io/ait/): overview, install, problems solved
+- [Why ait](https://m24927605.github.io/ait/why-ait/): the ten problems ait solves (blast radius, provenance, parallel agents, promotion, cross-agent handoff, local-first, verification, prompt search)
+- [Getting started](https://m24927605.github.io/ait/getting-started/): install ait-vcs, run `ait init`, run first wrapped agent, promote the attempt
+- [Command reference](https://m24927605.github.io/ait/reference/commands/): all `ait` subcommands — init, status, doctor, adapter, attempt, intent, context, memory, graph, repair, upgrade, shell
+- [AI search facts](https://m24927605.github.io/ait/facts/): self-contained Q&A — what is ait, how it differs from git-worktree, install, supported agents, privacy, safety guarantees
+
+## Integrations
+
+- [Claude Code](https://m24927605.github.io/ait/integrations/claude-code/): wrap `claude` in a worktree; `ait init` auto-installs the wrapper and merges SessionStart/PostToolUse/SessionEnd hooks into `.claude/settings.json`
+- [Codex CLI](https://m24927605.github.io/ait/integrations/codex/): native `.codex/hooks.json` bridge with full transcript capture
+- [Aider](https://m24927605.github.io/ait/integrations/aider/): post-run `.aider.chat.history.md` conversion to attempt transcript
+- [Gemini CLI](https://m24927605.github.io/ait/integrations/gemini/): native `.gemini/settings.json` hook bridge
+- [Cursor](https://m24927605.github.io/ait/integrations/cursor/): captures `cursor-agent --print --output-format stream-json` stream
+- [Generic shell agent](https://m24927605.github.io/ait/integrations/shell/): `ait run --adapter shell -- <any command>` for custom agents
+
+## Comparisons
+
+- [ait vs naked git-worktree](https://m24927605.github.io/ait/compare/git-worktree-naked-vs-ait/): when manual worktrees suffice and when they break down
+
+## Specification
+
+- [MVP spec (v1)](https://github.com/m24927605/ait/blob/main/docs/ai-vcs-mvp-spec.md): runtime objects (Intent, Attempt, EvidenceSummary), identity rules, lifecycle, query DSL, harness protocol
+- [Protocol appendix](https://github.com/m24927605/ait/blob/main/docs/protocol-appendix.md): NDJSON Unix-socket event envelope, payload schemas
+- [Implementation notes](https://github.com/m24927605/ait/blob/main/docs/implementation-notes.md): non-blocking clarifications and known limits
+
+## Project
+
+- [GitHub repository](https://github.com/m24927605/ait)
+- [PyPI package ait-vcs](https://pypi.org/project/ait-vcs/)
+- [npm package ait-vcs](https://www.npmjs.com/package/ait-vcs)
+- [Changelog](https://github.com/m24927605/ait/blob/main/CHANGELOG.md)
+- [Issues](https://github.com/m24927605/ait/issues)
+- [Security policy](https://github.com/m24927605/ait/blob/main/SECURITY.md)
+
+## Optional
+
+- [Long-term memory design](https://github.com/m24927605/ait/blob/main/docs/long-term-memory-design.md)
+- [Repo brain design](https://github.com/m24927605/ait/blob/main/docs/repo-brain-design.md)
+- [Parallel development guide](https://github.com/m24927605/ait/blob/main/docs/parallel-development.md)
+- [Architecture refactor plan](https://github.com/m24927605/ait/blob/main/docs/architecture-refactor-plan.md)

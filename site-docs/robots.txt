@@ -1,4 +1,27 @@
 User-agent: *
 Allow: /
 
+# Explicitly welcome AI bots — ait is a tool for AI engineers; being
+# indexed by AI assistants is a primary distribution channel.
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Anthropic-AI
+Allow: /
+
+User-agent: cohere-ai
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
 Sitemap: https://m24927605.github.io/ait/sitemap.xml

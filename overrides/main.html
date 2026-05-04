@@ -13,12 +13,101 @@
   {%- set title = page.meta.title if page and page.meta and page.meta.title else (page.title if page else config.site_name) -%}
   {%- set description = page.meta.description if page and page.meta and page.meta.description else config.site_description -%}
   {%- set url = page.canonical_url if page else config.site_url -%}
+  {%- set og_image = config.site_url ~ 'assets/og-default.png' -%}
+  {%- set is_zh = url and ('/zh-TW/' in url) -%}
+  {%- set locale = 'zh_TW' if is_zh else 'en_US' -%}
+  {%- set alt_locale = 'en_US' if is_zh else 'zh_TW' -%}
+  {%- if is_zh -%}
+    {%- set en_url = url|replace('/zh-TW/', '/') -%}
+    {%- set zh_url = url -%}
+  {%- else -%}
+    {%- set en_url = url -%}
+    {%- set zh_url = (url|replace(config.site_url, config.site_url ~ 'zh-TW/')) if url else config.site_url ~ 'zh-TW/' -%}
+  {%- endif -%}
+
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
   <meta property="og:title" content="{{ title }}">
   <meta property="og:description" content="{{ description | trim }}">
   <meta property="og:type" content="website">
   <meta property="og:url" content="{{ url }}">
   <meta property="og:site_name" content="{{ config.site_name }}">
-  <meta name="twitter:card" content="summary">
+  <meta property="og:image" content="{{ og_image }}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="ait — Git-native version control layer for AI coding agents">
+  <meta property="og:locale" content="{{ locale }}">
+  <meta property="og:locale:alternate" content="{{ alt_locale }}">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="{{ title }}">
   <meta name="twitter:description" content="{{ description | trim }}">
+  <meta name="twitter:image" content="{{ og_image }}">
+
+  {%- set is_untranslated = url and (('/facts/' in url) or ('/compare/' in url)) -%}
+  <link rel="alternate" hreflang="en" href="{{ en_url }}">
+  {% if not is_untranslated %}<link rel="alternate" hreflang="zh-TW" href="{{ zh_url }}">{% endif %}
+  <link rel="alternate" hreflang="x-default" href="{{ en_url }}">
+
+  {% if page and page.is_homepage %}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "@id": "{{ config.site_url }}#software",
+        "name": "ait",
+        "alternateName": "ait-vcs",
+        "applicationCategory": "DeveloperApplication",
+        "applicationSubCategory": "VersionControl",
+        "operatingSystem": "macOS, Linux",
+        "description": {{ (config.site_description | trim) | tojson }},
+        "url": "{{ config.site_url }}",
+        "downloadUrl": "https://pypi.org/project/ait-vcs/",
+        "license": "https://opensource.org/licenses/MIT",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "author": {
+          "@type": "Person",
+          "name": "sin-chengchen",
+          "url": "https://github.com/m24927605"
+        },
+        "codeRepository": "https://github.com/m24927605/ait",
+        "programmingLanguage": "Python",
+        "keywords": "AI coding agents, Claude Code, Codex, Aider, Gemini CLI, Cursor, git worktree, agent provenance, agent isolation, local-first, code provenance"
+      },
+      {
+        "@type": "SoftwareSourceCode",
+        "@id": "{{ config.site_url }}#source",
+        "name": "ait",
+        "codeRepository": "https://github.com/m24927605/ait",
+        "programmingLanguage": "Python",
+        "license": "https://opensource.org/licenses/MIT",
+        "runtimePlatform": "Python 3.14+"
+      },
+      {
+        "@type": "WebSite",
+        "@id": "{{ config.site_url }}#website",
+        "url": "{{ config.site_url }}",
+        "name": {{ config.site_name | tojson }},
+        "description": {{ (config.site_description | trim) | tojson }},
+        "inLanguage": ["en", "zh-TW"]
+      }
+    ]
+  }
+  </script>
+  {% else %}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {"@type":"ListItem","position":1,"name":"{{ config.site_name }}","item":"{{ config.site_url }}"},
+      {"@type":"ListItem","position":2,"name":"{{ title }}","item":"{{ url }}"}
+    ]
+  }
+  </script>
+  {% endif %}
 {% endblock %}

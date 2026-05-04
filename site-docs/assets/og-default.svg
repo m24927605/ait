@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#161b22"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect x="80" y="80" width="6" height="470" fill="#3fb950"/>
+  <text x="120" y="270" font-family="Menlo, Consolas, monospace" font-size="200" font-weight="700" fill="#f0f6fc">ait</text>
+  <text x="120" y="340" font-family="Menlo, Consolas, monospace" font-size="34" fill="#c9d1d9">Git-native version control layer</text>
+  <text x="120" y="385" font-family="Menlo, Consolas, monospace" font-size="34" fill="#c9d1d9">for AI coding agents</text>
+  <text x="120" y="475" font-family="Menlo, Consolas, monospace" font-size="22" fill="#7d8590">Claude Code  ·  Codex  ·  Aider  ·  Gemini CLI  ·  Cursor</text>
+  <text x="120" y="535" font-family="Menlo, Consolas, monospace" font-size="18" fill="#6e7681">github.com/m24927605/ait  ·  MIT  ·  Python 3.14+  ·  no SaaS</text>
+</svg>

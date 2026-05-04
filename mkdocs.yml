@@ -1,10 +1,11 @@
 site_name: ait — Git workflow layer for AI coding agents
 site_url: https://m24927605.github.io/ait/
 site_description: >-
-  ait wraps Claude Code, Codex, Aider, Gemini CLI, and Cursor with Git
-  worktree isolation, attempt provenance, cross-session repo-local memory,
-  cross-agent context handoff, and reviewable promotion. Open-source,
-  dependency-free, runs on top of Git.
+  ait is a Git-native version control layer for AI coding agents
+  (Claude Code, Codex CLI, Aider, Gemini CLI, Cursor) — adding
+  worktree isolation, attempt provenance, cross-agent memory, and
+  reviewable promotion on top of Git. Open source (MIT), Python
+  3.14+, dependency-free, no SaaS, no telemetry.
 site_author: sin-chengchen
 repo_url: https://github.com/m24927605/ait
 repo_name: m24927605/ait
@@ -19,9 +20,11 @@ theme:
   features:
     - navigation.tracking
     - navigation.sections
+    - navigation.indexes
     - navigation.top
     - search.suggest
     - search.highlight
+    - search.share
     - content.code.copy
     - content.action.edit
   palette:
@@ -46,6 +49,8 @@ plugins:
   - search
   - i18n:
       docs_structure: folder
+      fallback_to_default: true
+      reconfigure_material: true
       languages:
         - locale: en
           default: true
@@ -66,6 +71,9 @@ plugins:
             Gemini CLI: Gemini CLI
             Cursor: Cursor
             Shell agents: Shell agents
+            Compare: 比較
+            "ait vs naked git-worktree": ait 對比裸 git-worktree
+            Facts: 事實
             Reference: 參考
             Commands: 指令
 
@@ -102,5 +110,8 @@ nav:
       - Gemini CLI: integrations/gemini.md
       - Cursor: integrations/cursor.md
       - Shell agents: integrations/shell.md
+  - Compare:
+      - "ait vs naked git-worktree": compare/git-worktree-naked-vs-ait.md
   - Reference:
       - Commands: reference/commands.md
+  - Facts: facts.md
