@@ -37,7 +37,7 @@ PyPI 與 npm 上的套件名是 `ait-vcs`，安裝後的指令是 `ait`。
 | 兩個 agent 跑同一件事會互相覆蓋 | 每個 attempt 自帶 worktree — 可平行跑 N 個 agent |
 | Agent 說「修好了」，但真的修好了嗎？ | 顯式 `ait attempt promote` — 不主動採納，主分支永遠由你決定 |
 | 跨 agent hand-off 會弄丟之前所有的決策 | Memory layer 自動匯入 `CLAUDE.md`、`AGENTS.md`、過往 attempts |
-| Provenance 工具強迫你把 code 上傳到 SaaS | Metadata 就在 `.git/` 旁的 `.ait/` — 純本機、無 telemetry、無 daemon |
+| Provenance 工具強迫你把 code 上傳到 SaaS | Metadata 就在 `.git/` 旁的 `.ait/` — daemon 純本機 Unix socket、不對外連網、無 telemetry |
 | 「上個月寫過的那個 prompt 在哪？」→ grep shell history | 用結構化 DSL 直接查 attempts、intents、commits |
 
 完整深入的解析請看 [為什麼用 ait](why-ait.md)。

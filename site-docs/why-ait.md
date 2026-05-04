@@ -85,9 +85,9 @@ shared history.
 require uploading prompts, diffs, and source. Off the table for many
 repos.
 
-**ait.** Everything lives under `.ait/` next to `.git/`. No daemon, no
-telemetry, no SaaS, no cross-machine sync. Suitable for security-sensitive
-repos.
+**ait.** Everything lives under `.ait/` next to `.git/`. The harness
+daemon is local-only — Unix socket, no network. No telemetry, no SaaS,
+no cross-machine sync. Suitable for security-sensitive repos.
 
 ## 9. Self-reported success is unverifiable
 

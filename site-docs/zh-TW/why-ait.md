@@ -76,8 +76,9 @@ output、產生的 commits 串成一筆可查的紀錄。`ait attempt show <id>`
 **痛點：** 多數 agent provenance / observability 工具是 SaaS。需要把
 prompt、diff、原始碼上傳。對很多 repo 而言不可能。
 
-**解法：** 一切活在 `.git/` 旁的 `.ait/` 裡。沒 daemon、沒 telemetry、
-沒 SaaS、沒跨機器同步。安全敏感的 repo 也能用。
+**解法：** 一切活在 `.git/` 旁的 `.ait/` 裡。Harness daemon 純本機 —
+Unix socket、不對外連網。沒 telemetry、沒 SaaS、沒跨機器同步。安全敏感
+的 repo 也能用。
 
 ## 9. 自述的成功不可驗證
 

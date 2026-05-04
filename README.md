@@ -60,7 +60,7 @@ The package is named `ait-vcs` on PyPI and npm. The installed command is
 | Two agents on the same task stomp each other | Each attempt has its own worktree — run N agents in parallel |
 | Did the agent really fix it, or just claim it did? | Explicit `ait attempt promote` keeps speculative changes out of main until you decide |
 | Cross-agent hand-offs lose every previous decision | Memory layer auto-imports `CLAUDE.md`, `AGENTS.md`, and prior attempts |
-| Provenance tooling wants to ship your code to a SaaS | Metadata stays in `.ait/` next to `.git/` — local, no telemetry, no daemon |
+| Provenance tooling wants to ship your code to a SaaS | Metadata stays in `.ait/` next to `.git/` — harness daemon is local-only (Unix socket, no network), no telemetry |
 | "Where's that prompt I wrote last month?" → grep shell history | Query attempts, intents, and commits with a structured DSL |
 
 `ait` is not another agent. It is the Git layer around the agents you
