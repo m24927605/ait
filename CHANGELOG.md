@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.55.37 - 2026-05-04
+
+### Added
+
+- `ait query` now searches intent text. Both `intent.title` and
+  `intent.description` are queryable with all the standard operators,
+  including the substring `~` operator. The headline use case
+  ("Where's that prompt I wrote last month for the query parser?")
+  now works:
+  ```bash
+  ait query --on intent 'title~"query parser"'
+  ait query --on attempt 'title~"auth"'
+  ait query --on intent 'description~"staging session"'
+  ```
+- Every wrapped attempt now records the launched command as
+  `evidence_summary.raw_prompt_ref`, stored under
+  `.ait/prompts/<attempt-id>.txt`. Native-hook adapters (Claude Code,
+  Codex, Gemini) still capture richer per-turn prompts via their hook
+  bridges; this fallback guarantees every attempt has *some* prompt
+  reference instead of `null`.
+
+### Changed
+
+- Reword the "local-first" claim across README, the docs site, and
+  why-ait.md. The previous "no daemon" wording was literally wrong —
+  ait does run `src/ait/daemon.py` on every wrapped run. New wording
+  is accurate: "harness daemon is local-only — Unix socket, no
+  network. No telemetry, no SaaS, no cross-machine sync."
+
+These three changes close the gaps surfaced in the Staff QA audit of
+the why-ait.md value-prop claims. After the fixes, all 10 claims hold
+up to behavioural verification.
+
 ## 0.55.36 - 2026-05-04
 
 ### Added
