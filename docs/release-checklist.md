@@ -1,5 +1,24 @@
 # Release Checklist
 
+## SEO Drift Audit
+
+Before any release that touches user-facing copy, verify the canonical
+messaging architecture defined in [docs/seo-strategy.md](seo-strategy.md):
+
+1. `mkdocs.yml site_description` matches the canonical L string.
+2. `pyproject.toml` `description` matches canonical M.
+3. `npm/ait-vcs/package.json` `description` matches canonical M.
+4. README hero subhead and lead paragraph use canonical L.
+5. `site-docs/llms.txt` blockquote matches canonical L (and all
+   linked URLs return HTTP 200).
+6. `overrides/main.html` JSON-LD `description` inherits from
+   `config.site_description` (no hardcoded copy).
+7. `softwareVersion` is **not** present in JSON-LD (drift hazard).
+8. `pyproject.toml` and `npm/ait-vcs/package.json` versions match
+   the intended Git tag.
+
+If any line drifts, fix before tagging.
+
 ## Tagged Release
 
 Before tagging:
