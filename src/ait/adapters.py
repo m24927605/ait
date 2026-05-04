@@ -174,8 +174,12 @@ ADAPTERS: dict[str, AgentAdapter] = {
             "AIT_ADAPTER": "gemini",
             "AIT_CONTEXT_HINT": "Read AIT_CONTEXT_FILE before starting work.",
         },
+        native_hooks=True,
         description="Gemini CLI wrapper with context enabled by default.",
-        setup_hint="Use ait bootstrap gemini to install a repo-local wrapper.",
+        setup_hint=(
+            "Use packaged resources gemini_hook.py and gemini-settings.json "
+            "for native Gemini CLI hook event capture into .ait/transcripts/."
+        ),
     ),
 }
 
@@ -248,12 +252,29 @@ def doctor_adapter(name: str, repo_root: str | Path) -> AdapterDoctorResult:
                 "ait.resources.codex/codex-hooks.json",
             )
         )
+    elif adapter.name == "gemini":
+        hook = _resource_exists("gemini", "gemini_hook.py")
+        settings = _resource_exists("gemini", "gemini-settings.json")
+        checks.append(
+            AdapterDoctorCheck(
+                "gemini_hook_resource",
+                hook,
+                "ait.resources.gemini/gemini_hook.py",
+            )
+        )
+        checks.append(
+            AdapterDoctorCheck(
+                "gemini_settings_resource",
+                settings,
+                "ait.resources.gemini/gemini-settings.json",
+            )
+        )
     else:
         checks.append(
             AdapterDoctorCheck(
                 "native_hooks",
                 not adapter.native_hooks,
-                "native hook doctor is only implemented for claude-code and codex",
+                "native hook doctor is only implemented for claude-code, codex, and gemini",
             )
         )
 
@@ -404,6 +425,8 @@ def setup_adapter(
         hook_path = hook_path / "claude_code_hook.py"
     elif adapter.name == "codex":
         hook_path = hook_path / "codex_hook.py"
+    elif adapter.name == "gemini":
+        hook_path = hook_path / "gemini_hook.py"
     wrapper_path = root / ".ait" / "bin" / adapter.command_name
     direnv_path = root / ".envrc"
     if target is not None:
@@ -412,16 +435,20 @@ def setup_adapter(
         settings_path = root / ".claude" / "settings.json"
     elif adapter.name == "codex":
         settings_path = root / ".codex" / "hooks.json"
+    elif adapter.name == "gemini":
+        settings_path = root / ".gemini" / "settings.json"
     else:
         settings_path = None
     if adapter.name == "claude-code":
         settings = _claude_code_settings()
     elif adapter.name == "codex":
         settings = _codex_hooks_settings()
+    elif adapter.name == "gemini":
+        settings = _gemini_settings()
     else:
         settings = {}
     install_wrapper = install_wrapper or install_direnv
-    if adapter.name not in {"claude-code", "codex"}:
+    if adapter.name not in {"claude-code", "codex", "gemini"}:
         install_wrapper = True
 
     wrote_files: list[str] = []
@@ -440,6 +467,19 @@ def setup_adapter(
             hook_path.parent.mkdir(parents=True, exist_ok=True)
             hook_path.write_text(
                 _read_adapter_resource("codex", "codex_hook.py"),
+                encoding="utf-8",
+            )
+            wrote_files.append(str(hook_path))
+
+            assert settings_path is not None
+            settings_path.parent.mkdir(parents=True, exist_ok=True)
+            merged = _merge_settings(_read_json_object(settings_path), settings)
+            settings_path.write_text(json.dumps(merged, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            wrote_files.append(str(settings_path))
+        elif adapter.name == "gemini":
+            hook_path.parent.mkdir(parents=True, exist_ok=True)
+            hook_path.write_text(
+                _read_adapter_resource("gemini", "gemini_hook.py"),
                 encoding="utf-8",
             )
             wrote_files.append(str(hook_path))
@@ -536,6 +576,22 @@ def _codex_hooks_settings() -> dict[str, object]:
             "PostToolUseFailure": [tool_events],
             "Stop": [session_events],
             "SessionEnd": [session_events],
+        }
+    }
+
+
+def _gemini_settings() -> dict[str, object]:
+    command = (
+        f"{shlex.quote(sys.executable)} "
+        '"$GEMINI_PROJECT_DIR/.ait/adapters/gemini/gemini_hook.py"'
+    )
+    session_events = {"hooks": [{"type": "command", "command": command}]}
+    return {
+        "hooks": {
+            "SessionStart": [session_events],
+            "AfterTool": [session_events],
+            "AfterToolFailure": [session_events],
+            "Stop": [session_events],
         }
     }
 
