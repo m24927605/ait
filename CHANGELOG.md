@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.55.32 - 2026-05-04
+
+### Added
+
+- Pluggable LLM-backed transcript summarizer. The default heuristic
+  summarizer captures structural facts (decisions visible in the last
+  assistant message, tool calls, file touches, failures); the new LLM
+  variant compresses the full transcript into a richer narrative
+  ("chose A over B because …", "tried X, abandoned, then Y") that the
+  heuristic cannot infer.
+- Two providers ship out of the box, both implemented over stdlib
+  `urllib`, no SDK dependency:
+  * `anthropic` — calls `/v1/messages`, default model
+    `claude-haiku-4-5-20251001`.
+  * `openai-compat` — calls `<base_url>/chat/completions`. Works with
+    OpenAI, Azure OpenAI, Together, OpenRouter, vLLM, and Ollama
+    (set `base_url` to `http://localhost:11434/v1`).
+- Memory policy gains an optional `summarizer` block. Off by default —
+  set `summarizer.kind` to `"llm"` to opt in.
+- LLM failures (missing API key, network error, malformed response)
+  log a warning and transparently fall back to the heuristic, so a
+  misconfiguration never blocks the attempt lifecycle.
+
+### Configuration
+
+```jsonc
+{
+  "summarizer": {
+    "kind": "llm",
+    "llm": {
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5-20251001",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "max_chars": 600,
+      "timeout_seconds": 30
+    }
+  }
+}
+```
+
+API keys are never written to `memory-policy.json` — only the env var
+name. `ait` reads the value at summary time, so secrets stay in
+shell config / direnv / your system keychain.
+
 ## 0.55.31 - 2026-05-04
 
 ### Added

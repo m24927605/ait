@@ -42,7 +42,7 @@ ait --version
 Pinned GitHub tag:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.55.31"
+pipx install "git+https://github.com/m24927605/ait.git@v0.55.32"
 ```
 
 ## Initialize a repository
