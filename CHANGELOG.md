@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.55.39 - 2026-05-04
+
+### Added
+
+- `ait init` now auto-installs the per-cd shell hook into the user's
+  rc file (`~/.zshrc` for zsh, `~/.bashrc` for bash) when at least one
+  adapter binary was found on `$PATH` and the hook is not already
+  present. After `ait init` finishes, a single `exec $SHELL` (or new
+  terminal) is enough — no `direnv allow`, no `eval "$(ait init
+  --shell)"`. The block is fenced with the existing markers and `ait
+  shell uninstall` removes it cleanly.
+- `ait init --no-shell-install` opts out for CI, root, hardened
+  sandboxes, or users who manage their rc files by hand.
+
+### Behavior
+
+- The Details section now reports the auto-install outcome:
+  `Shell hook: installed for zsh in ~/.zshrc (run \`ait shell
+  uninstall\` to remove)`, `Shell hook: already installed for zsh`,
+  or `Shell hook: skipped (<reason>)`.
+- Scenarios that skip auto-install: `--no-shell-install`, no adapters
+  installed, shell not zsh/bash (e.g. fish), filesystem write errors.
+  The legacy hint (`ait shell install` / `eval` / `direnv allow`) is
+  shown in those cases.
+
 ## 0.55.38 - 2026-05-04
 
 ### Documentation
