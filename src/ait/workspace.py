@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 import subprocess
 
+from ait.dev_server import cleanup_dev_servers_for_worktree
 from ait.python_env import (
     PythonEnvError,
     cleanup_python_project_environment,
@@ -147,6 +148,8 @@ def _cleanup_failed_worktree_add(repo_root: Path, worktree_path: Path) -> None:
 
 def remove_attempt_workspace(workspace_ref: str | Path) -> None:
     worktree_path = Path(workspace_ref).resolve()
+    if worktree_path.exists():
+        cleanup_dev_servers_for_worktree(worktree_path)
     cleanup_python_project_environment(_python_env_metadata_path(worktree_path))
     if not worktree_path.exists():
         return

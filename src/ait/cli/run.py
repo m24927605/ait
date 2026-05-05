@@ -2,12 +2,40 @@ from __future__ import annotations
 
 from ._shared import *
 
+from ait.dev_server import DEFAULT_DEV_PORTS, DevServerError, start_dev_server
+
 
 def handle(args, repo_root: Path, parser=None) -> int:
     if args.command == "run":
         command = args.run_command
         if command and command[0] == "--":
             command = command[1:]
+        if not args.intent:
+            try:
+                records = start_dev_server(
+                    repo_root,
+                    tuple(command),
+                    ports=tuple(args.dev_ports or args.dev_check_ports or DEFAULT_DEV_PORTS),
+                )
+            except DevServerError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 2
+            if args.format == "json":
+                print(json.dumps([asdict(item) for item in records], indent=2))
+            else:
+                for item in records:
+                    print(
+                        "\n".join(
+                            [
+                                "Started AIT dev server",
+                                f"  pid: {item.pid}",
+                                f"  port: {item.port or 'unknown'}",
+                                f"  cwd: {item.cwd}",
+                                f"  command: {' '.join(item.command)}",
+                            ]
+                        )
+                    )
+            return 0
         try:
             result = run_agent_command(
                 repo_root,
