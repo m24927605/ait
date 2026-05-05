@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -14,6 +16,7 @@ from ait.workspace import (
     get_base_ref,
     get_workspaces_root,
     ref_contains_commits,
+    remove_attempt_workspace,
 )
 
 
@@ -81,6 +84,112 @@ class WorkspaceTests(unittest.TestCase):
                 _git_stdout(worktree_path, "rev-parse", "--verify", "HEAD"),
                 result.base_ref_oid,
             )
+
+    def test_create_attempt_workspace_repairs_poetry_sibling_path_dependency(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp)
+            repo_root = parent / "repo-a"
+            sibling = parent / "repo-b"
+            sibling.mkdir()
+            (sibling / "pyproject.toml").write_text(
+                """
+[tool.poetry]
+name = "repo-b"
+version = "0.1.0"
+description = ""
+authors = ["Test <test@example.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+""".lstrip(),
+                encoding="utf-8",
+            )
+            repo_root.mkdir()
+            _init_git_repo(repo_root)
+            (repo_root / "pyproject.toml").write_text(
+                """
+[tool.poetry]
+name = "repo-a"
+version = "0.1.0"
+description = ""
+authors = ["Test <test@example.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+repo-b = { path = "../repo-b", develop = true }
+""".lstrip(),
+                encoding="utf-8",
+            )
+            _git(repo_root, "add", "pyproject.toml")
+            _git(repo_root, "commit", "-m", "add poetry project")
+            bin_dir = parent / "bin"
+            _write_fake_poetry(bin_dir)
+
+            with patch.dict(os.environ, {"PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"}):
+                result = create_attempt_workspace(
+                    repo_root=repo_root,
+                    attempt_id="repo:01ARZ3NDEKTSV4RRFFQ69G5FAA",
+                    ordinal=1,
+                )
+
+            worktree_path = result.worktree_path
+            repaired_link = repo_root / ".ait" / "workspaces" / "repo-b"
+            self.assertTrue(repaired_link.is_symlink())
+            self.assertEqual(repaired_link.resolve(), sibling.resolve())
+            self.assertTrue((worktree_path / ".venv" / "bin" / "python").exists())
+            settings = json.loads((worktree_path / ".vscode" / "settings.json").read_text(encoding="utf-8"))
+            self.assertEqual(
+                settings["python.defaultInterpreterPath"],
+                str(worktree_path / ".venv" / "bin" / "python"),
+            )
+            metadata = repo_root / ".ait" / "workspaces" / f"{result.worktree_name}.python-env.json"
+            self.assertTrue(metadata.exists())
+            status = _git_stdout(worktree_path, "status", "--short", "--ignored")
+            self.assertIn("!! .venv/", status)
+            self.assertIn("!! .vscode/", status)
+            self.assertIn("!! poetry.toml", status)
+
+            remove_attempt_workspace(worktree_path)
+
+            self.assertFalse(repaired_link.exists())
+            self.assertFalse(metadata.exists())
+
+    def test_create_attempt_workspace_fails_when_source_path_dependency_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo-a"
+            repo_root.mkdir()
+            _init_git_repo(repo_root)
+            (repo_root / "pyproject.toml").write_text(
+                """
+[tool.poetry]
+name = "repo-a"
+version = "0.1.0"
+description = ""
+authors = ["Test <test@example.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+missing = { path = "../missing-repo", develop = true }
+""".lstrip(),
+                encoding="utf-8",
+            )
+            _git(repo_root, "add", "pyproject.toml")
+            _git(repo_root, "commit", "-m", "add missing path dependency")
+
+            with patch.dict(os.environ, {"AIT_SKIP_PYTHON_ENV_SETUP": "1"}):
+                with self.assertRaisesRegex(WorkspaceError, "local path dependency cannot be resolved"):
+                    create_attempt_workspace(
+                        repo_root=repo_root,
+                        attempt_id="repo:01ARZ3NDEKTSV4RRFFQ69G5FAA",
+                        ordinal=1,
+                    )
+
+            location = get_attempt_workspace_location(
+                repo_root,
+                "repo:01ARZ3NDEKTSV4RRFFQ69G5FAA",
+                1,
+            )
+            self.assertFalse(location.worktree_path.exists())
 
     def test_create_attempt_workspace_rejects_existing_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -165,6 +274,40 @@ def _git_stdout(repo_root: Path, *args: str) -> str:
         text=True,
     )
     return completed.stdout.strip()
+
+
+def _write_fake_poetry(bin_dir: Path) -> None:
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    poetry = bin_dir / "poetry"
+    poetry.write_text(
+        """#!/usr/bin/env python3
+from pathlib import Path
+import sys
+
+cmd = sys.argv[1:]
+cwd = Path.cwd()
+if cmd[:4] == ["config", "virtualenvs.in-project", "true", "--local"]:
+    (cwd / "poetry.toml").write_text("[virtualenvs]\\nin-project = true\\n", encoding="utf-8")
+    raise SystemExit(0)
+if cmd == ["check"]:
+    if not (cwd.parent / "repo-b").exists():
+        print("Path ../repo-b does not exist", file=sys.stderr)
+        raise SystemExit(1)
+    raise SystemExit(0)
+if cmd == ["install"]:
+    python = cwd / ".venv" / "bin" / "python"
+    python.parent.mkdir(parents=True, exist_ok=True)
+    python.write_text("#!/usr/bin/env python3\\n", encoding="utf-8")
+    raise SystemExit(0)
+if cmd == ["env", "info", "--path"]:
+    print(cwd / ".venv")
+    raise SystemExit(0)
+print("unsupported fake poetry command: " + " ".join(cmd), file=sys.stderr)
+raise SystemExit(2)
+""",
+        encoding="utf-8",
+    )
+    poetry.chmod(0o755)
 
 
 if __name__ == "__main__":

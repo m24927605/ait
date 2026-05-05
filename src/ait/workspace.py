@@ -5,6 +5,12 @@ from pathlib import Path
 import shutil
 import subprocess
 
+from ait.python_env import (
+    PythonEnvError,
+    cleanup_python_project_environment,
+    prepare_python_project_environment,
+)
+
 
 class WorkspaceError(RuntimeError):
     """Raised when attempt workspace provisioning fails."""
@@ -111,6 +117,15 @@ def create_attempt_workspace(
     except WorkspaceError:
         _cleanup_failed_worktree_add(root, location.worktree_path)
         raise
+    try:
+        prepare_python_project_environment(
+            root,
+            location.worktree_path,
+            metadata_path=_python_env_metadata_path(location.worktree_path),
+        )
+    except PythonEnvError as exc:
+        _cleanup_failed_worktree_add(root, location.worktree_path)
+        raise WorkspaceError(str(exc)) from exc
 
     return AttemptWorkspaceResult(
         attempt_id=attempt_id,
@@ -132,6 +147,7 @@ def _cleanup_failed_worktree_add(repo_root: Path, worktree_path: Path) -> None:
 
 def remove_attempt_workspace(workspace_ref: str | Path) -> None:
     worktree_path = Path(workspace_ref).resolve()
+    cleanup_python_project_environment(_python_env_metadata_path(worktree_path))
     if not worktree_path.exists():
         return
     repo_root = _resolve_worktree_repo_root(worktree_path)
@@ -142,6 +158,10 @@ def remove_attempt_workspace(workspace_ref: str | Path) -> None:
         "--force",
         str(worktree_path),
     )
+
+
+def _python_env_metadata_path(worktree_path: Path) -> Path:
+    return worktree_path.parent / f"{worktree_path.name}.python-env.json"
 
 
 def list_attempt_commit_oids(workspace_ref: str | Path, base_ref_oid: str) -> tuple[str, ...]:
