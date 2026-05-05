@@ -80,6 +80,12 @@ def list_intent_attempts(conn: sqlite3.Connection, intent_id: str) -> list[Attem
     ).fetchall()
     return [_row_to_attempt(row) for row in rows]
 
+def list_attempts(conn: sqlite3.Connection) -> list[AttemptRecord]:
+    rows = conn.execute(
+        "SELECT * FROM attempts ORDER BY started_at ASC, ordinal ASC"
+    ).fetchall()
+    return [_row_to_attempt(row) for row in rows]
+
 def insert_attempt(conn: sqlite3.Connection, new_attempt: NewAttempt) -> AttemptRecord:
     with conn:
         intent_row = conn.execute(
@@ -508,6 +514,8 @@ __all__ = [
     "get_intent",
 
     "list_intent_attempts",
+
+    "list_attempts",
 
     "insert_attempt",
 

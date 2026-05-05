@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AIT cleanup report",
+  "type": "object",
+  "required": [
+    "mode",
+    "repo_root",
+    "workspaces_root",
+    "scanned_count",
+    "remove_count",
+    "skip_count",
+    "reclaimed_bytes",
+    "would_reclaim_bytes",
+    "items"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": ["dry-run", "apply"]
+    },
+    "repo_root": {
+      "type": "string"
+    },
+    "workspaces_root": {
+      "type": "string"
+    },
+    "scanned_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "remove_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "skip_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "reclaimed_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "would_reclaim_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/cleanup_item"
+      }
+    }
+  },
+  "$defs": {
+    "cleanup_item": {
+      "type": "object",
+      "required": [
+        "path",
+        "kind",
+        "attempt_id",
+        "reported_status",
+        "verified_status",
+        "action",
+        "reason",
+        "dirty",
+        "bytes",
+        "deleted",
+        "error"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["worktree", "artifact", "orphan"]
+        },
+        "attempt_id": {
+          "type": ["string", "null"]
+        },
+        "reported_status": {
+          "type": ["string", "null"]
+        },
+        "verified_status": {
+          "type": ["string", "null"]
+        },
+        "action": {
+          "type": "string",
+          "enum": ["remove", "retain", "skip"]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "dirty": {
+          "type": "boolean"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deleted": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": ["string", "null"]
+        }
+      }
+    }
+  }
+}

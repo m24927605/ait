@@ -19,6 +19,7 @@ from ait.db import (
     insert_intent,
     insert_memory_fact_edge,
     insert_memory_retrieval_event,
+    list_attempts,
     list_memory_fact_edges,
     list_memory_fact_entities,
     list_memory_facts,
@@ -45,6 +46,7 @@ class RepositoryTests(unittest.TestCase):
         self.assertIs(records.NewMemoryFact, NewMemoryFact)
         self.assertIs(core_repositories.insert_intent, insert_intent)
         self.assertIs(core_repositories.get_attempt, get_attempt)
+        self.assertIs(core_repositories.list_attempts, list_attempts)
         self.assertIs(memory_repositories.upsert_memory_fact, upsert_memory_fact)
         self.assertIs(memory_repositories.list_memory_facts, list_memory_facts)
 
@@ -121,6 +123,10 @@ class RepositoryTests(unittest.TestCase):
 
         self.assertEqual(1, first.ordinal)
         self.assertEqual(2, second.ordinal)
+        self.assertEqual(
+            ["repo:01ATTEMPT1", "repo:01ATTEMPT2"],
+            [attempt.id for attempt in list_attempts(self.conn)],
+        )
         evidence = get_evidence_summary(self.conn, first.id)
         assert evidence is not None
         self.assertEqual(0, evidence.observed_tool_calls)

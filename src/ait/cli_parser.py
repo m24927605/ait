@@ -86,6 +86,15 @@ def build_parser() -> argparse.ArgumentParser:
     blame_parser = subparsers.add_parser("blame")
     blame_parser.add_argument("target")
 
+    cleanup_parser = subparsers.add_parser("cleanup")
+    cleanup_parser.add_argument("--apply", action="store_true")
+    cleanup_parser.add_argument("--force", action="store_true")
+    cleanup_parser.add_argument("--format", choices=("text", "json"), default="text")
+    cleanup_parser.add_argument("--older-than", type=int)
+    cleanup_parser.add_argument("--include-orphans", action="store_true")
+    cleanup_parser.add_argument("--artifacts", action="store_true")
+    cleanup_parser.add_argument("--worktrees", action="store_true", default=True)
+
     run_parser = subparsers.add_parser("run")
     run_parser.add_argument("--adapter", choices=tuple(sorted(ADAPTERS)), default="shell")
     run_parser.add_argument("--agent")

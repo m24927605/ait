@@ -105,6 +105,17 @@ ait attempt promote <attempt-id> --to main
 
 Until promotion, your root checkout stays unchanged.
 
+Inspect cleanup candidates before reclaiming old attempt worktrees:
+
+```bash
+ait cleanup
+ait cleanup --apply
+```
+
+`ait cleanup` defaults to a dry run. Apply mode removes safe terminal
+worktrees such as promoted or discarded attempts while retaining active,
+pending, and reviewable attempts by default.
+
 ## Core Features
 
 | Feature | Description |
@@ -113,6 +124,7 @@ Until promotion, your root checkout stays unchanged.
 | Attempt provenance | Commands, status, output, changed files, and commits stay linked |
 | Agent wrappers | Repo-local `claude`, `codex`, `aider`, `gemini`, and `cursor` wrappers |
 | Auto commit capture | Successful changes become attempt-linked commits, without duplicating existing commits |
+| Cleanup dry-run | Inspect and reclaim safe terminal attempt worktrees without touching reviewable work |
 | Local memory | Prior attempts, commits, notes, and imported agent memory feed future runs |
 | Review flow | Promote, discard, rebase, inspect, and query attempts using normal Git concepts |
 
