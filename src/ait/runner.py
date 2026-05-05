@@ -1,44 +1,34 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import errno
 import os
 from pathlib import Path
-import pty
-import select
 import shlex
 import subprocess
 import sys
-import termios
 import time
-import tty
 
 from ait.adapters import get_adapter
 from ait.app import AttemptShowResult, create_attempt, create_intent, show_attempt, verify_attempt
-from ait.brain import build_auto_briefing_query, build_repo_brain_briefing_from_graph, render_repo_brain_briefing, write_repo_brain
-from ait.context import build_agent_context, render_agent_context_text
 from ait.daemon import start_daemon
 from ait.db import connect_db, get_attempt
 from ait.db.core import utc_now
 from ait.events import process_event
 from ait.harness import AitHarness, HarnessError
 from ait.ids import new_ulid
-from ait.memory import (
-    add_attempt_memory_note,
-    build_relevant_memory_recall,
-    build_repo_memory,
-    ensure_agent_memory_imported,
-    render_relevant_memory_recall,
-    render_repo_memory_text,
-)
-from ait.memory_policy import EXCLUDED_MARKER, init_memory_policy, load_memory_policy, transcript_excluded
-from ait.redaction import redact_text
+from ait.memory import add_attempt_memory_note, ensure_agent_memory_imported
+from ait.memory_policy import init_memory_policy
 from ait.run_report import refresh_run_reports
-from ait.transcript import normalize_transcript, strip_terminal_control
+from ait.runner_context import AIT_CONTEXT_BUDGET_CHARS, _write_context_file
+from ait.runner_pty import _run_command_with_pty_transcript, _stdio_is_tty
+from ait.runner_semantics import _semantic_exit_code
+from ait.runner_transcript import (
+    AIT_TRANSCRIPT_FIELD_BUDGET_CHARS,
+    _fit_transcript_field_budget,
+    _strip_terminal_control,
+    _write_command_transcript,
+)
 from ait.workspace import WorkspaceError, create_attempt_commit
-
-AIT_CONTEXT_BUDGET_CHARS = 16000
-AIT_TRANSCRIPT_FIELD_BUDGET_CHARS = 1_000_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,14 +40,6 @@ class RunResult:
     command_stdout: str | None
     command_stderr: str | None
     attempt: AttemptShowResult
-
-
-@dataclass(frozen=True, slots=True)
-class _PtyCompletedProcess:
-    args: list[str]
-    returncode: int
-    stdout: str
-    stderr: str = ""
 
 
 class _LocalRunHarness:
@@ -367,156 +349,6 @@ def _record_command_as_prompt(
     return relative_ref
 
 
-def _stdio_is_tty() -> bool:
-    return (
-        hasattr(sys.stdin, "isatty")
-        and hasattr(sys.stdout, "isatty")
-        and sys.stdin.isatty()
-        and sys.stdout.isatty()
-    )
-
-
-def _run_command_with_pty_transcript(
-    command: list[str],
-    *,
-    cwd: Path,
-    env: dict[str, str],
-) -> _PtyCompletedProcess:
-    master_fd, slave_fd = pty.openpty()
-    old_stdin_attrs = None
-    output = bytearray()
-    stdout_buffer = getattr(sys.stdout, "buffer", None)
-    stdin_is_tty = sys.stdin.isatty()
-    stdin_fd = sys.stdin.fileno() if stdin_is_tty else None
-    if stdin_is_tty:
-        assert stdin_fd is not None
-        old_stdin_attrs = termios.tcgetattr(stdin_fd)
-        tty.setraw(stdin_fd)
-    try:
-        process = subprocess.Popen(
-            command,
-            cwd=cwd,
-            env=env,
-            stdin=slave_fd,
-            stdout=slave_fd,
-            stderr=slave_fd,
-            close_fds=True,
-        )
-    finally:
-        os.close(slave_fd)
-
-    try:
-        while True:
-            read_fds = [master_fd]
-            if stdin_fd is not None and process.poll() is None:
-                read_fds.append(stdin_fd)
-            readable, _, _ = select.select(read_fds, [], [], 0.05)
-            if master_fd in readable:
-                try:
-                    data = os.read(master_fd, 4096)
-                except OSError as exc:
-                    if exc.errno != errno.EIO:
-                        raise
-                    data = b""
-                if data:
-                    output.extend(data)
-                    _write_terminal_bytes(stdout_buffer, data)
-                elif process.poll() is not None:
-                    break
-            if stdin_fd is not None and stdin_fd in readable:
-                data = os.read(stdin_fd, 4096)
-                if data:
-                    os.write(master_fd, data)
-            if process.poll() is not None:
-                try:
-                    while True:
-                        data = os.read(master_fd, 4096)
-                        if not data:
-                            break
-                        output.extend(data)
-                        _write_terminal_bytes(stdout_buffer, data)
-                except OSError as exc:
-                    if exc.errno != errno.EIO:
-                        raise
-                break
-        return _PtyCompletedProcess(
-            args=command,
-            returncode=process.wait(),
-            stdout=output.decode("utf-8", errors="replace"),
-        )
-    finally:
-        if old_stdin_attrs is not None:
-            termios.tcsetattr(stdin_fd, termios.TCSADRAIN, old_stdin_attrs)
-        os.close(master_fd)
-
-
-def _write_terminal_bytes(stdout_buffer: object, data: bytes) -> None:
-    if stdout_buffer is not None:
-        stdout_buffer.write(data)  # type: ignore[attr-defined]
-        stdout_buffer.flush()  # type: ignore[attr-defined]
-        return
-    sys.stdout.write(data.decode("utf-8", errors="replace"))
-    sys.stdout.flush()
-
-
-def _semantic_exit_code(
-    exit_code: int,
-    *,
-    transcript: str,
-    workspace: Path,
-    context_file: Path | None,
-) -> int:
-    if exit_code != 0:
-        return exit_code
-    if not _looks_like_agent_refusal(transcript):
-        return exit_code
-    if _has_workspace_changes(workspace, context_file=context_file):
-        return exit_code
-    return 3
-
-
-def _looks_like_agent_refusal(transcript: str) -> bool:
-    text = transcript.lower()
-    refusal_markers = (
-        "don't have permission",
-        "do not have permission",
-        "cannot make changes",
-        "can't make changes",
-        "cannot edit",
-        "can't edit",
-        "cannot write",
-        "can't write",
-        "permission denied",
-        "operation not permitted",
-        "refusing to",
-        "i won't",
-        "i cannot",
-        "i can't",
-        "unable to modify",
-        "unable to write",
-    )
-    return any(marker in text for marker in refusal_markers)
-
-
-def _has_workspace_changes(workspace: Path, *, context_file: Path | None) -> bool:
-    completed = subprocess.run(
-        ["git", "status", "--porcelain"],
-        cwd=workspace,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if completed.returncode != 0:
-        return False
-    ignored = str(context_file.relative_to(workspace)) if context_file is not None else None
-    for line in completed.stdout.splitlines():
-        path = line[3:].strip()
-        if ignored is not None and path == ignored:
-            continue
-        return True
-    return False
-
-
 def _resolve_commit_message(*, explicit: str | None, intent_title: str, adapter_name: str) -> str:
     if explicit is not None and explicit.strip():
         return explicit.strip()
@@ -524,71 +356,6 @@ def _resolve_commit_message(*, explicit: str | None, intent_title: str, adapter_
     if cleaned_title:
         return f"{adapter_name}: {cleaned_title}"
     return f"{adapter_name}: agent changes"
-
-
-def _write_context_file(
-    repo_root: Path,
-    workspace: Path,
-    intent_id: str,
-    *,
-    attempt_id: str,
-    command: tuple[str, ...] = (),
-    agent_id: str | None = None,
-) -> Path:
-    context = build_agent_context(repo_root, intent_id=intent_id)
-    memory = build_repo_memory(repo_root)
-    brain = write_repo_brain(repo_root)
-    intent = context.intent
-    auto_query = build_auto_briefing_query(
-        repo_root,
-        intent_title=str(intent.get("title") or ""),
-        description=str(intent.get("description") or ""),
-        kind=str(intent.get("kind") or ""),
-        command=command,
-        agent_id=agent_id,
-    )
-    briefing = build_repo_brain_briefing_from_graph(
-        brain,
-        auto_query.query,
-        sources=auto_query.sources,
-    )
-    recall = build_relevant_memory_recall(
-        repo_root,
-        auto_query.query,
-        budget_chars=4000,
-        attempt_id=attempt_id,
-    )
-    relevant_memory = render_relevant_memory_recall(recall)
-    path = workspace / ".ait-context.md"
-    context_text = (
-        render_agent_context_text(context)
-        + "\n"
-        + relevant_memory
-        + "\n"
-        + render_repo_memory_text(
-            memory,
-            budget_chars=12000,
-            include_advisory_attempt_memory=False,
-        )
-        + "\n"
-        + render_repo_brain_briefing(briefing, budget_chars=5000)
-    )
-    path.write_text(_fit_context_budget(context_text), encoding="utf-8")
-    return path
-
-
-def _fit_context_budget(text: str, *, budget_chars: int = AIT_CONTEXT_BUDGET_CHARS) -> str:
-    if budget_chars <= 0:
-        return ""
-    if len(text) <= budget_chars:
-        return text
-    marker = (
-        "\n\n[ait context truncated: total context exceeded "
-        f"{budget_chars} character budget]\n"
-    )
-    if len(marker) >= budget_chars:
-        return marker[:budget_chars]
-    return text[: budget_chars - len(marker)].rstrip() + marker
 
 
 def _finish_attempt_locally(
@@ -622,63 +389,6 @@ def _finish_attempt_locally(
         conn.close()
 
 
-def _write_command_transcript(
-    repo_root: Path,
-    attempt_id: str,
-    *,
-    command: list[str],
-    stdout: str,
-    stderr: str,
-    exit_code: int,
-) -> str:
-    trace_dir = repo_root / ".ait" / "traces"
-    trace_dir.mkdir(parents=True, exist_ok=True)
-    path = trace_dir / f"{_safe_trace_name(attempt_id)}.txt"
-    stdout = _strip_terminal_control(stdout)
-    stderr = _strip_terminal_control(stderr)
-    raw_transcript = "\n".join([" ".join(command), stdout, stderr])
-    if transcript_excluded(raw_transcript, load_memory_policy(repo_root)):
-        path.write_text(
-            "\n".join(
-                [
-                    "AIT Agent Transcript",
-                    f"Attempt-Id: {attempt_id}",
-                    f"Exit-Code: {exit_code}",
-                    "Excluded-By-Memory-Policy: true",
-                    "",
-                    EXCLUDED_MARKER,
-                ]
-            ),
-            encoding="utf-8",
-        )
-        return str(path.relative_to(repo_root))
-
-    stdout, stdout_redacted = redact_text(stdout)
-    stderr, stderr_redacted = redact_text(stderr)
-    command_text, command_redacted = redact_text(" ".join(command))
-    path.write_text(
-        "\n".join(
-            [
-                "AIT Agent Transcript",
-                f"Attempt-Id: {attempt_id}",
-                f"Command: {command_text}",
-                f"Exit-Code: {exit_code}",
-                f"Redacted: {str(command_redacted or stdout_redacted or stderr_redacted).lower()}",
-                "",
-                "STDOUT:",
-                stdout,
-                "",
-                "STDERR:",
-                stderr,
-            ]
-        ),
-        encoding="utf-8",
-    )
-    raw_trace_ref = str(path.relative_to(repo_root))
-    _write_normalized_transcript(repo_root, attempt_id, raw_trace_ref=raw_trace_ref)
-    return raw_trace_ref
-
-
 def _write_command_transcript_best_effort(
     repo_root: Path,
     attempt_id: str,
@@ -703,63 +413,6 @@ def _write_command_transcript_best_effort(
     except KeyboardInterrupt:
         print("ait warning: interrupted while writing command transcript", file=sys.stderr)
         return None, True
-
-
-def _strip_terminal_control(text: str) -> str:
-    return strip_terminal_control(_fit_transcript_field_budget(text))
-
-
-def _fit_transcript_field_budget(
-    text: str,
-    *,
-    budget_chars: int = AIT_TRANSCRIPT_FIELD_BUDGET_CHARS,
-) -> str:
-    if budget_chars <= 0 or len(text) <= budget_chars:
-        return text
-    marker = (
-        "\n\n[ait transcript truncated: field exceeded "
-        f"{budget_chars} character budget]\n\n"
-    )
-    if len(marker) >= budget_chars:
-        return marker[:budget_chars]
-    head_budget = (budget_chars - len(marker)) // 2
-    tail_budget = budget_chars - len(marker) - head_budget
-    return text[:head_budget].rstrip() + marker + text[-tail_budget:].lstrip()
-
-
-def _write_normalized_transcript(repo_root: Path, attempt_id: str, *, raw_trace_ref: str) -> str | None:
-    raw_path = repo_root / raw_trace_ref
-    try:
-        raw_text = raw_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
-    adapter = _adapter_from_trace(raw_text)
-    normalized = normalize_transcript(raw_text, adapter=adapter)
-    if not normalized:
-        return None
-    normalized_dir = repo_root / ".ait" / "traces" / "normalized"
-    normalized_dir.mkdir(parents=True, exist_ok=True)
-    normalized_path = normalized_dir / f"{_safe_trace_name(attempt_id)}.txt"
-    normalized_path.write_text(normalized, encoding="utf-8")
-    return str(normalized_path.relative_to(repo_root))
-
-
-def _adapter_from_trace(trace_text: str) -> str | None:
-    for line in trace_text.splitlines():
-        if line.startswith("Command: "):
-            command = line[len("Command: ") :]
-            if "codex" in command:
-                return "codex"
-            if "claude" in command:
-                return "claude-code"
-            if "gemini" in command:
-                return "gemini"
-            return None
-    return None
-
-
-def _safe_trace_name(attempt_id: str) -> str:
-    return "".join(char if char.isalnum() or char in "-_." else "_" for char in attempt_id)
 
 
 def _stage_all_changes(workspace: Path) -> None:
