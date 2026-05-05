@@ -14,14 +14,14 @@ marked complete.
 
 ## Technical Context
 
-**Language/Version**: Python 3.14+  
-**Primary Dependencies**: Python standard library only; no new runtime dependencies  
-**Storage**: Existing SQLite tables accessed through supplied `sqlite3.Connection`  
-**Testing**: `pytest` and existing `unittest`-style tests  
-**Target Platform**: Local POSIX CLI environments supported by AIT  
-**Project Type**: Python CLI/library package  
-**Performance Goals**: Preserve current query result ordering and avoid extra SQL round trips  
-**Constraints**: Preserve public imports from `ait.query`; no SQLite schema, CLI flag, JSON key, or daemon protocol changes  
+**Language/Version**: Python 3.14+
+**Primary Dependencies**: Python standard library only; no new runtime dependencies
+**Storage**: Existing SQLite tables accessed through supplied `sqlite3.Connection`
+**Testing**: `pytest` and existing `unittest`-style tests
+**Target Platform**: Local POSIX CLI environments supported by AIT
+**Project Type**: Python CLI/library package
+**Performance Goals**: Preserve current query result ordering and avoid extra SQL round trips
+**Constraints**: Preserve public imports from `ait.query`; no SQLite schema, CLI flag, JSON key, or daemon protocol changes
 **Scale/Scope**: Query module refactor only; no new query operators or fields
 
 ## Constitution Check

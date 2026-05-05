@@ -1,8 +1,8 @@
 # Feature Specification: Split Query Module
 
-**Feature Branch**: `002-split-query-module`  
-**Created**: 2026-05-06  
-**Status**: Draft  
+**Feature Branch**: `002-split-query-module`
+**Created**: 2026-05-06
+**Status**: Draft
 **Input**: User description: "Refactor the oversized query module into cohesive parser, SQL lowering, execution, and blame modules while preserving ait query and blame public behavior and fixing any discovered query bugs."
 
 ## User Scenarios & Testing *(mandatory)*
