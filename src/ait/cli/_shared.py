@@ -40,6 +40,7 @@ from ait.app import (
     create_intent,
     discard_attempt,
     init_repo,
+    land_attempt,
     promote_attempt,
     rebase_attempt,
     show_attempt,

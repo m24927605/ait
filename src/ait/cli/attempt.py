@@ -37,7 +37,15 @@ def handle(args, repo_root: Path, parser=None) -> int:
     if args.command == "attempt" and args.attempt_command == "promote":
         try:
             result = promote_attempt(repo_root, attempt_id=args.attempt_id, target_ref=args.to)
-        except WorkspaceError as exc:
+        except (ValueError, WorkspaceError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        print(json.dumps(asdict(result), indent=2))
+        return 0
+    if args.command == "attempt" and args.attempt_command == "land":
+        try:
+            result = land_attempt(repo_root, attempt_id=args.attempt_id, target_ref=args.to)
+        except (ValueError, WorkspaceError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
         print(json.dumps(asdict(result), indent=2))
@@ -45,7 +53,7 @@ def handle(args, repo_root: Path, parser=None) -> int:
     if args.command == "attempt" and args.attempt_command == "rebase":
         try:
             result = rebase_attempt(repo_root, attempt_id=args.attempt_id, onto_ref=args.onto)
-        except WorkspaceError as exc:
+        except (ValueError, WorkspaceError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
         print(json.dumps(asdict(result), indent=2))

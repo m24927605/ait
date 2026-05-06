@@ -45,6 +45,14 @@ class RebaseWorkspaceResult:
     head_oid: str
 
 
+@dataclass(slots=True, frozen=True)
+class LandWorkspaceResult:
+    ref_name: str
+    branch_name: str
+    head_oid: str
+    worktree_removed: bool
+
+
 def get_workspaces_root(repo_root: str | Path) -> Path:
     return Path(repo_root).resolve() / ".ait" / "workspaces"
 
@@ -161,6 +169,20 @@ def remove_attempt_workspace(workspace_ref: str | Path) -> None:
         "--force",
         str(worktree_path),
     )
+
+
+def worktree_status_short(workspace_ref: str | Path) -> str:
+    worktree_path = Path(workspace_ref).resolve()
+    return _git_stdout(
+        worktree_path,
+        "status",
+        "--porcelain",
+        allow_failure=True,
+    )
+
+
+def has_worktree_changes(workspace_ref: str | Path) -> bool:
+    return bool(worktree_status_short(workspace_ref).strip())
 
 
 def _python_env_metadata_path(worktree_path: Path) -> Path:
@@ -368,6 +390,71 @@ def update_ref_to_workspace_head(repo_root: str | Path, ref_name: str, workspace
 
     _git_run(root, "update-ref", ref_name, head_oid)
     return head_oid
+
+
+def land_workspace_head(
+    repo_root: str | Path,
+    ref_name: str,
+    workspace_ref: str | Path,
+    *,
+    remove_workspace: bool = True,
+) -> LandWorkspaceResult:
+    root = Path(repo_root).resolve()
+    worktree_path = Path(workspace_ref).resolve()
+    head_oid = _git_stdout(worktree_path, "rev-parse", "--verify", "HEAD")
+    branch_name = ref_name.removeprefix("refs/heads/")
+
+    if has_worktree_changes(worktree_path):
+        raise WorkspaceError(
+            "refusing to land attempt: the attempt workspace has uncommitted "
+            "or untracked changes. Commit those changes inside the attempt "
+            "first, or discard them before retrying."
+        )
+    if has_worktree_changes(root):
+        raise WorkspaceError(
+            "refusing to land attempt: the original repository has uncommitted "
+            "or untracked changes. Commit or stash those changes first."
+        )
+
+    _detach_worktree_if_needed(worktree_path)
+    _git_run(root, "update-ref", ref_name, head_oid)
+    _git_run(root, "checkout", branch_name)
+
+    if _git_stdout(root, "rev-parse", "--verify", "HEAD") != head_oid:
+        raise WorkspaceError(
+            f"landed branch {branch_name} did not end at the attempt commit"
+        )
+    if has_worktree_changes(root):
+        raise WorkspaceError(
+            f"landed branch {branch_name} but the original repository is not clean"
+        )
+
+    worktree_removed = False
+    if remove_workspace:
+        remove_attempt_workspace(worktree_path)
+        worktree_removed = True
+
+    return LandWorkspaceResult(
+        ref_name=ref_name,
+        branch_name=branch_name,
+        head_oid=head_oid,
+        worktree_removed=worktree_removed,
+    )
+
+
+def _detach_worktree_if_needed(worktree_path: Path) -> None:
+    if not worktree_path.exists():
+        return
+    current = _git_stdout(
+        worktree_path,
+        "symbolic-ref",
+        "--quiet",
+        "--short",
+        "HEAD",
+        allow_failure=True,
+    )
+    if current:
+        _git_run(worktree_path, "checkout", "--detach", "HEAD")
 
 
 def rebase_attempt_workspace(

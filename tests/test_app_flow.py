@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -15,6 +16,7 @@ from ait.app import (
     create_attempt,
     create_intent,
     discard_attempt,
+    land_attempt,
     promote_attempt,
     rebase_attempt,
     show_attempt,
@@ -27,6 +29,125 @@ from ait.workspace import commit_message
 
 
 class AppFlowTests(unittest.TestCase):
+    def test_show_attempt_materializes_plain_git_commit_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            intent = create_intent(repo_root, title="Plain commit", description=None, kind="chore")
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+
+            worktree = Path(attempt.workspace_ref)
+            _git(worktree, "config", "user.email", "test@example.com")
+            _git(worktree, "config", "user.name", "Test User")
+            (worktree / "plain.py").write_text("value = 1\n", encoding="utf-8")
+            _git(worktree, "add", "plain.py")
+            _git(worktree, "commit", "-m", "plain git commit")
+
+            shown = show_attempt(repo_root, attempt_id=attempt.attempt_id)
+
+            self.assertEqual(1, len(shown.commits))
+            self.assertEqual(("plain.py",), shown.files["changed"])
+            self.assertEqual(
+                _git_stdout(worktree, "rev-parse", "--verify", "HEAD"),
+                shown.commits[0]["commit_oid"],
+            )
+
+    def test_land_attempt_checks_out_target_branch_in_original_repo_and_removes_worktree(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            intent = create_intent(repo_root, title="Land", description=None, kind="chore")
+            _commit_ait_gitignore_if_needed(repo_root)
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+
+            worktree = Path(attempt.workspace_ref)
+            _git(worktree, "config", "user.email", "test@example.com")
+            _git(worktree, "config", "user.name", "Test User")
+            (worktree / "landed.py").write_text("value = 1\n", encoding="utf-8")
+            _git(worktree, "add", "landed.py")
+            _git(worktree, "commit", "-m", "landed")
+            attempt_head = _git_stdout(worktree, "rev-parse", "--verify", "HEAD")
+
+            landed = land_attempt(repo_root, attempt_id=attempt.attempt_id, target_ref="feature/land")
+
+            self.assertEqual("feature/land", _git_stdout(repo_root, "symbolic-ref", "--short", "HEAD"))
+            self.assertEqual(attempt_head, _git_stdout(repo_root, "rev-parse", "--verify", "HEAD"))
+            self.assertEqual(attempt_head, landed.commit_oid)
+            self.assertTrue((repo_root / "landed.py").exists())
+            self.assertFalse(worktree.exists())
+            self.assertTrue(landed.worktree_cleaned)
+            self.assertEqual("", _git_stdout(repo_root, "status", "--short"))
+            self.assertEqual("promoted", landed.attempt["verified_status"])
+
+    def test_land_attempt_releases_branch_checked_out_by_attempt_worktree(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            intent = create_intent(repo_root, title="Occupied branch", description=None, kind="chore")
+            _commit_ait_gitignore_if_needed(repo_root)
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+
+            worktree = Path(attempt.workspace_ref)
+            _git(worktree, "config", "user.email", "test@example.com")
+            _git(worktree, "config", "user.name", "Test User")
+            _git(worktree, "checkout", "-b", "feature/occupied")
+            (worktree / "occupied.py").write_text("value = 1\n", encoding="utf-8")
+            _git(worktree, "add", "occupied.py")
+            _git(worktree, "commit", "-m", "occupied")
+            attempt_head = _git_stdout(worktree, "rev-parse", "--verify", "HEAD")
+
+            land_attempt(repo_root, attempt_id=attempt.attempt_id, target_ref="feature/occupied")
+
+            self.assertEqual("feature/occupied", _git_stdout(repo_root, "symbolic-ref", "--short", "HEAD"))
+            self.assertEqual(attempt_head, _git_stdout(repo_root, "rev-parse", "--verify", "HEAD"))
+            self.assertFalse(worktree.exists())
+            _git(repo_root, "checkout", "feature/occupied")
+
+    def test_cli_land_reports_original_repo_delivery(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            intent = create_intent(repo_root, title="CLI land", description=None, kind="chore")
+            _commit_ait_gitignore_if_needed(repo_root)
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+            worktree = Path(attempt.workspace_ref)
+            _git(worktree, "config", "user.email", "test@example.com")
+            _git(worktree, "config", "user.name", "Test User")
+            (worktree / "cli_land.py").write_text("value = 1\n", encoding="utf-8")
+            _git(worktree, "add", "cli_land.py")
+            _git(worktree, "commit", "-m", "cli land")
+            attempt_head = _git_stdout(worktree, "rev-parse", "--verify", "HEAD")
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "ait.cli",
+                    "attempt",
+                    "land",
+                    attempt.attempt_id,
+                    "--to",
+                    "feature/cli-land",
+                ],
+                cwd=repo_root,
+                env={**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")},
+                capture_output=True,
+                text=True,
+            )
+            payload = json.loads(completed.stdout)
+
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            self.assertEqual(str(repo_root.resolve()), payload["repo_root"])
+            self.assertEqual("feature/cli-land", payload["branch"])
+            self.assertEqual(attempt_head, payload["commit_oid"])
+            self.assertTrue(payload["worktree_cleaned"])
+            self.assertEqual(attempt_head, _git_stdout(repo_root, "rev-parse", "--verify", "HEAD"))
+            self.assertEqual("", _git_stdout(repo_root, "status", "--short"))
+
     def test_verify_and_promote_attempt_materializes_commits_and_changes_status(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
@@ -735,6 +856,12 @@ def _git_stdout(repo_root: Path, *args: str) -> str:
         text=True,
     )
     return completed.stdout.strip()
+
+
+def _commit_ait_gitignore_if_needed(repo_root: Path) -> None:
+    if (repo_root / ".gitignore").exists() and _git_stdout(repo_root, "status", "--short", ".gitignore"):
+        _git(repo_root, "add", ".gitignore")
+        _git(repo_root, "commit", "-m", "ignore ait state")
 
 
 if __name__ == "__main__":

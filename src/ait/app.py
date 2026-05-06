@@ -37,6 +37,7 @@ from ait.verifier import verify_attempt_with_connection
 from ait.workspace import (
     create_attempt_commit,
     create_attempt_workspace,
+    land_workspace_head,
     rebase_attempt_workspace,
     remove_attempt_workspace,
     update_ref_to_workspace_head,
@@ -78,6 +79,20 @@ class IntentShowResult:
 
 @dataclass(slots=True)
 class AttemptShowResult:
+    attempt: dict[str, object]
+    evidence_summary: dict[str, object] | None
+    outcome: dict[str, object] | None
+    files: dict[str, tuple[str, ...]]
+    commits: list[dict[str, object]]
+
+
+@dataclass(slots=True)
+class AttemptLandResult:
+    repo_root: str
+    branch: str
+    promotion_ref: str
+    commit_oid: str
+    worktree_cleaned: bool
     attempt: dict[str, object]
     evidence_summary: dict[str, object] | None
     outcome: dict[str, object] | None
@@ -278,6 +293,7 @@ def show_attempt(repo_root: str | Path, *, attempt_id: str) -> AttemptShowResult
         attempt = get_attempt(conn, attempt_id)
         if attempt is None:
             raise ValueError(f"Unknown attempt: {attempt_id}")
+        _refresh_attempt_git_state(conn, init_result.repo_root, attempt_id)
         evidence = get_evidence_summary(conn, attempt_id)
         outcome = get_attempt_outcome(conn, attempt_id)
         files = list_evidence_files(conn, attempt_id)
@@ -337,6 +353,7 @@ def promote_attempt(
             raise ValueError(f"Intent is {intent.status}: {intent.id}")
         if attempt.reported_status != "finished":
             raise ValueError(f"Attempt is not finished: {attempt_id}")
+        _refresh_attempt_git_state(conn, init_result.repo_root, attempt_id)
         ref_name = _normalize_target_branch_ref(target_ref)
         update_ref_to_workspace_head(init_result.repo_root, ref_name, attempt.workspace_ref)
         update_attempt(conn, attempt_id, result_promotion_ref=ref_name)
@@ -344,6 +361,74 @@ def promote_attempt(
     finally:
         conn.close()
     return show_attempt(repo_root, attempt_id=attempt_id)
+
+
+def land_attempt(
+    repo_root: str | Path,
+    *,
+    attempt_id: str,
+    target_ref: str | None = None,
+) -> AttemptLandResult:
+    init_result = init_repo(repo_root)
+    conn = connect_db(init_result.db_path)
+    try:
+        attempt_id = resolve_attempt_id(conn, attempt_id)
+        attempt = get_attempt(conn, attempt_id)
+        if attempt is None:
+            raise ValueError(f"Unknown attempt: {attempt_id}")
+        intent = get_intent(conn, attempt.intent_id)
+        if intent is None:
+            raise ValueError(f"Missing intent for attempt: {attempt_id}")
+        if intent.status in {"abandoned", "superseded"}:
+            raise ValueError(f"Intent is {intent.status}: {intent.id}")
+        if attempt.verified_status in {"discarded", "promoted"}:
+            raise ValueError(f"Attempt is already {attempt.verified_status}: {attempt_id}")
+
+        _refresh_attempt_git_state(conn, init_result.repo_root, attempt_id)
+        commits = list_attempt_commits(conn, attempt_id)
+        if not commits:
+            raise ValueError(f"Attempt has no committed work to land: {attempt_id}")
+
+        if attempt.reported_status != "finished":
+            update_attempt(
+                conn,
+                attempt_id,
+                reported_status="finished",
+                ended_at=utc_now(),
+                result_exit_code=0,
+            )
+            attempt = get_attempt(conn, attempt_id)
+            if attempt is None:
+                raise ValueError(f"Unknown attempt after update: {attempt_id}")
+
+        ref_name = _normalize_target_branch_ref(
+            target_ref or attempt.base_ref_name or _current_branch_name(init_result.repo_root)
+        )
+        landed = land_workspace_head(
+            init_result.repo_root,
+            ref_name,
+            attempt.workspace_ref,
+            remove_workspace=False,
+        )
+        update_attempt(conn, attempt_id, result_promotion_ref=landed.ref_name)
+        verify_attempt_with_connection(conn, init_result.repo_root, attempt_id)
+        remove_attempt_workspace(attempt.workspace_ref)
+    finally:
+        conn.close()
+
+    shown = show_attempt(repo_root, attempt_id=attempt_id)
+    return AttemptLandResult(
+        repo_root=str(init_result.repo_root),
+        branch=landed.branch_name,
+        promotion_ref=landed.ref_name,
+        commit_oid=landed.head_oid,
+        worktree_cleaned=True,
+        attempt=shown.attempt,
+        evidence_summary=shown.evidence_summary,
+        outcome=shown.outcome,
+        files=shown.files,
+        commits=shown.commits,
+    )
 
 
 def _normalize_target_branch_ref(target_ref: str) -> str:
@@ -357,6 +442,31 @@ def _normalize_target_branch_ref(target_ref: str) -> str:
     if branch_name in {"", ".", ".."} or branch_name.endswith("/") or "//" in branch_name:
         raise ValueError(f"invalid branch name: {target_ref}")
     return branch_ref
+
+
+def _current_branch_name(repo_root: Path) -> str:
+    import subprocess
+
+    completed = subprocess.run(
+        ["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    branch = completed.stdout.strip()
+    if completed.returncode != 0 or not branch:
+        raise ValueError("target branch is required when the repository HEAD is detached")
+    return branch
+
+
+def _refresh_attempt_git_state(conn, repo_root: Path, attempt_id: str) -> None:
+    attempt = get_attempt(conn, attempt_id)
+    if attempt is None:
+        raise ValueError(f"Unknown attempt: {attempt_id}")
+    if not Path(attempt.workspace_ref).exists():
+        return
+    verify_attempt_with_connection(conn, repo_root, attempt_id)
 
 
 def rebase_attempt(
