@@ -71,8 +71,9 @@ init = json.loads(Path('init.json').read_text())
 config = json.loads(Path('.ait/config.json').read_text())
 assert Path('.git').exists()
 assert init['git_initialized'] is True, init
+assert init['baseline_commit_created'] is True, init
 assert init['installed_adapters'] == ['claude-code'], init
-assert config['repo_identity'].startswith('unborn:'), config
+assert not config['repo_identity'].startswith('unborn:'), config
 print('plain-directory init smoke ok')
 PY
 ```
