@@ -26,6 +26,7 @@ from ait.hooks import install_post_rewrite_hook
 from ait.ids import new_ulid
 from ait.idresolver import resolve_attempt_id, resolve_intent_id
 from ait.lifecycle import refresh_intent_status
+from ait.local_artifacts import ReconciliationReport, reconcile_local_artifacts
 from ait.repo import (
     compose_repo_id,
     derive_repo_identity,
@@ -37,7 +38,10 @@ from ait.verifier import verify_attempt_with_connection
 from ait.workspace import (
     create_attempt_commit,
     create_attempt_workspace,
+    current_branch_name,
+    is_current_branch_ref,
     land_workspace_head,
+    normalize_target_branch_ref,
     rebase_attempt_workspace,
     remove_attempt_workspace,
     update_ref_to_workspace_head,
@@ -84,6 +88,7 @@ class AttemptShowResult:
     outcome: dict[str, object] | None
     files: dict[str, tuple[str, ...]]
     commits: list[dict[str, object]]
+    local_artifacts: ReconciliationReport | None = None
 
 
 @dataclass(slots=True)
@@ -98,6 +103,7 @@ class AttemptLandResult:
     outcome: dict[str, object] | None
     files: dict[str, tuple[str, ...]]
     commits: list[dict[str, object]]
+    local_artifacts: ReconciliationReport
 
 
 def object_id(repo_id: str) -> str:
@@ -354,13 +360,17 @@ def promote_attempt(
         if attempt.reported_status != "finished":
             raise ValueError(f"Attempt is not finished: {attempt_id}")
         _refresh_attempt_git_state(conn, init_result.repo_root, attempt_id)
-        ref_name = _normalize_target_branch_ref(target_ref)
+        ref_name = normalize_target_branch_ref(target_ref)
+        materializes_current_branch = is_current_branch_ref(init_result.repo_root, ref_name)
         update_ref_to_workspace_head(init_result.repo_root, ref_name, attempt.workspace_ref)
         update_attempt(conn, attempt_id, result_promotion_ref=ref_name)
         verify_attempt_with_connection(conn, init_result.repo_root, attempt_id)
+        local_artifacts = reconcile_local_artifacts(attempt.workspace_ref, init_result.repo_root) if materializes_current_branch else None
     finally:
         conn.close()
-    return show_attempt(repo_root, attempt_id=attempt_id)
+    shown = show_attempt(repo_root, attempt_id=attempt_id)
+    shown.local_artifacts = local_artifacts
+    return shown
 
 
 def land_attempt(
@@ -401,8 +411,8 @@ def land_attempt(
             if attempt is None:
                 raise ValueError(f"Unknown attempt after update: {attempt_id}")
 
-        ref_name = _normalize_target_branch_ref(
-            target_ref or attempt.base_ref_name or _current_branch_name(init_result.repo_root)
+        ref_name = normalize_target_branch_ref(
+            target_ref or attempt.base_ref_name or current_branch_name(init_result.repo_root)
         )
         landed = land_workspace_head(
             init_result.repo_root,
@@ -412,7 +422,11 @@ def land_attempt(
         )
         update_attempt(conn, attempt_id, result_promotion_ref=landed.ref_name)
         verify_attempt_with_connection(conn, init_result.repo_root, attempt_id)
-        remove_attempt_workspace(attempt.workspace_ref)
+        local_artifacts = reconcile_local_artifacts(attempt.workspace_ref, init_result.repo_root)
+        worktree_cleaned = False
+        if local_artifacts.cleanup_allowed:
+            remove_attempt_workspace(attempt.workspace_ref)
+            worktree_cleaned = True
     finally:
         conn.close()
 
@@ -422,43 +436,14 @@ def land_attempt(
         branch=landed.branch_name,
         promotion_ref=landed.ref_name,
         commit_oid=landed.head_oid,
-        worktree_cleaned=True,
+        worktree_cleaned=worktree_cleaned,
         attempt=shown.attempt,
         evidence_summary=shown.evidence_summary,
         outcome=shown.outcome,
         files=shown.files,
         commits=shown.commits,
+        local_artifacts=local_artifacts,
     )
-
-
-def _normalize_target_branch_ref(target_ref: str) -> str:
-    ref = target_ref.strip()
-    if not ref:
-        raise ValueError("target ref must not be empty")
-    if ref.startswith("refs/") and not ref.startswith("refs/heads/"):
-        raise ValueError("target ref must be a branch under refs/heads/")
-    branch_ref = ref if ref.startswith("refs/heads/") else f"refs/heads/{ref}"
-    branch_name = branch_ref.removeprefix("refs/heads/")
-    if branch_name in {"", ".", ".."} or branch_name.endswith("/") or "//" in branch_name:
-        raise ValueError(f"invalid branch name: {target_ref}")
-    return branch_ref
-
-
-def _current_branch_name(repo_root: Path) -> str:
-    import subprocess
-
-    completed = subprocess.run(
-        ["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
-        cwd=repo_root,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    branch = completed.stdout.strip()
-    if completed.returncode != 0 or not branch:
-        raise ValueError("target branch is required when the repository HEAD is detached")
-    return branch
-
 
 def _refresh_attempt_git_state(conn, repo_root: Path, attempt_id: str) -> None:
     attempt = get_attempt(conn, attempt_id)
@@ -467,7 +452,6 @@ def _refresh_attempt_git_state(conn, repo_root: Path, attempt_id: str) -> None:
     if not Path(attempt.workspace_ref).exists():
         return
     verify_attempt_with_connection(conn, repo_root, attempt_id)
-
 
 def rebase_attempt(
     repo_root: str | Path,

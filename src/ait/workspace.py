@@ -404,11 +404,11 @@ def land_workspace_head(
     head_oid = _git_stdout(worktree_path, "rev-parse", "--verify", "HEAD")
     branch_name = ref_name.removeprefix("refs/heads/")
 
-    if has_worktree_changes(worktree_path):
+    if _has_uncommitted_changes(worktree_path):
         raise WorkspaceError(
             "refusing to land attempt: the attempt workspace has uncommitted "
-            "or untracked changes. Commit those changes inside the attempt "
-            "first, or discard them before retrying."
+            "tracked changes. Commit those changes inside the attempt first, "
+            "or discard them before retrying."
         )
     if has_worktree_changes(root):
         raise WorkspaceError(
@@ -455,6 +455,34 @@ def _detach_worktree_if_needed(worktree_path: Path) -> None:
     )
     if current:
         _git_run(worktree_path, "checkout", "--detach", "HEAD")
+
+
+def normalize_target_branch_ref(target_ref: str) -> str:
+    ref = target_ref.strip()
+    if not ref:
+        raise ValueError("target ref must not be empty")
+    if ref.startswith("refs/") and not ref.startswith("refs/heads/"):
+        raise ValueError("target ref must be a branch under refs/heads/")
+    branch_ref = ref if ref.startswith("refs/heads/") else f"refs/heads/{ref}"
+    branch_name = branch_ref.removeprefix("refs/heads/")
+    if branch_name in {"", ".", ".."} or branch_name.endswith("/") or "//" in branch_name:
+        raise ValueError(f"invalid branch name: {target_ref}")
+    return branch_ref
+
+
+def current_branch_name(repo_root: str | Path) -> str:
+    root = Path(repo_root).resolve()
+    branch = _git_stdout(root, "symbolic-ref", "--quiet", "--short", "HEAD", allow_failure=True)
+    if not branch:
+        raise ValueError("target branch is required when the repository HEAD is detached")
+    return branch
+
+
+def is_current_branch_ref(repo_root: str | Path, ref_name: str) -> bool:
+    try:
+        return normalize_target_branch_ref(current_branch_name(repo_root)) == ref_name
+    except ValueError:
+        return False
 
 
 def rebase_attempt_workspace(

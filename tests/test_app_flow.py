@@ -106,6 +106,89 @@ class AppFlowTests(unittest.TestCase):
             self.assertFalse(worktree.exists())
             _git(repo_root, "checkout", "feature/occupied")
 
+    def test_land_attempt_retains_worktree_for_ignored_env_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            intent = create_intent(repo_root, title="Local env", description=None, kind="chore")
+            _append_gitignore(repo_root, ".env.local")
+            _git(repo_root, "add", ".gitignore")
+            _git(repo_root, "commit", "-m", "ignore local env")
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+
+            worktree = Path(attempt.workspace_ref)
+            _git(worktree, "config", "user.email", "test@example.com")
+            _git(worktree, "config", "user.name", "Test User")
+            (worktree / "app.py").write_text("value = 1\n", encoding="utf-8")
+            _git(worktree, "add", "app.py")
+            create_commit_for_attempt(
+                repo_root,
+                attempt_id=attempt.attempt_id,
+                message="add app",
+            )
+            (worktree / ".env.local").write_text("API_URL=http://localhost\n", encoding="utf-8")
+
+            landed = land_attempt(repo_root, attempt_id=attempt.attempt_id, target_ref="feature/local-env")
+
+            self.assertTrue((repo_root / "app.py").exists())
+            self.assertTrue(worktree.exists())
+            self.assertFalse(landed.worktree_cleaned)
+            self.assertEqual([".env.local"], [decision.path for decision in landed.local_artifacts.pending])
+            self.assertFalse((repo_root / ".env.local").exists())
+
+    def test_cli_land_reports_copied_local_artifacts_in_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            intent = create_intent(repo_root, title="Editor settings", description=None, kind="chore")
+            _append_gitignore(repo_root, ".vscode/")
+            _git(repo_root, "add", ".gitignore")
+            _git(repo_root, "commit", "-m", "ignore vscode")
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+            worktree = Path(attempt.workspace_ref)
+            _git(worktree, "config", "user.email", "test@example.com")
+            _git(worktree, "config", "user.name", "Test User")
+            (worktree / "settings.py").write_text("value = 1\n", encoding="utf-8")
+            _git(worktree, "add", "settings.py")
+            create_commit_for_attempt(
+                repo_root,
+                attempt_id=attempt.attempt_id,
+                message="add settings",
+            )
+            (worktree / ".vscode").mkdir()
+            (worktree / ".vscode" / "settings.json").write_text('{"python.testing.pytestEnabled": true}\n', encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "ait.cli",
+                    "attempt",
+                    "land",
+                    attempt.attempt_id,
+                    "--to",
+                    "feature/editor-settings",
+                ],
+                cwd=repo_root,
+                env={**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")},
+                capture_output=True,
+                text=True,
+            )
+            payload = json.loads(completed.stdout)
+
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            self.assertTrue(payload["worktree_cleaned"])
+            self.assertEqual(
+                [".vscode/settings.json"],
+                [decision["path"] for decision in payload["local_artifacts"]["copied"]],
+            )
+            self.assertEqual(
+                '{"python.testing.pytestEnabled": true}\n',
+                (repo_root / ".vscode" / "settings.json").read_text(encoding="utf-8"),
+            )
+
     def test_cli_land_reports_original_repo_delivery(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
@@ -189,6 +272,42 @@ class AppFlowTests(unittest.TestCase):
             self.assertEqual(
                 _git_stdout(repo_root, "rev-parse", "--verify", "refs/heads/fix/auth"),
                 promoted.commits[0]["commit_oid"],
+            )
+
+    def test_promote_to_current_branch_reconciles_safe_local_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            head_branch = _git_stdout(repo_root, "symbolic-ref", "--short", "HEAD")
+
+            intent = create_intent(repo_root, title="Promote settings", description=None, kind="chore")
+            _append_gitignore(repo_root, ".vscode/")
+            _git(repo_root, "add", ".gitignore")
+            _git(repo_root, "commit", "-m", "ignore vscode")
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+            worktree = Path(attempt.workspace_ref)
+            _git(worktree, "config", "user.email", "test@example.com")
+            _git(worktree, "config", "user.name", "Test User")
+            (worktree / "promoted.py").write_text("value = 1\n", encoding="utf-8")
+            _git(worktree, "add", "promoted.py")
+            create_commit_for_attempt(
+                repo_root,
+                attempt_id=attempt.attempt_id,
+                message="promote settings",
+            )
+            (worktree / ".vscode").mkdir()
+            (worktree / ".vscode" / "settings.json").write_text('{"editor.formatOnSave": true}\n', encoding="utf-8")
+
+            promoted = promote_attempt(repo_root, attempt_id=attempt.attempt_id, target_ref=head_branch)
+
+            self.assertIsNotNone(promoted.local_artifacts)
+            self.assertEqual(
+                [".vscode/settings.json"],
+                [decision.path for decision in promoted.local_artifacts.copied],
+            )
+            self.assertEqual(
+                '{"editor.formatOnSave": true}\n',
+                (repo_root / ".vscode" / "settings.json").read_text(encoding="utf-8"),
             )
 
     def test_promote_rejects_non_branch_target_ref(self) -> None:
@@ -862,6 +981,14 @@ def _commit_ait_gitignore_if_needed(repo_root: Path) -> None:
     if (repo_root / ".gitignore").exists() and _git_stdout(repo_root, "status", "--short", ".gitignore"):
         _git(repo_root, "add", ".gitignore")
         _git(repo_root, "commit", "-m", "ignore ait state")
+
+
+def _append_gitignore(repo_root: Path, entry: str) -> None:
+    gitignore = repo_root / ".gitignore"
+    lines = gitignore.read_text(encoding="utf-8").splitlines() if gitignore.exists() else []
+    if entry not in lines:
+        lines.append(entry)
+    gitignore.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

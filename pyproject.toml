@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ait-vcs"
-version = "0.55.42"
+version = "0.55.43"
 description = "Git worktree isolation and provenance for AI coding agents — wraps Claude Code, Codex, Aider, Gemini CLI, Cursor. MIT, Python, no SaaS."
 readme = "README.md"
 requires-python = ">=3.14"

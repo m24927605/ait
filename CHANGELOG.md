@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.55.43 - 2026-05-06
+
+### Added
+
+- `ait attempt land` now reconciles ignored and untracked local artifacts
+  before cleaning an accepted attempt worktree. Safe low-risk local files
+  such as `.vscode/settings.json` can be copied back to the original
+  repository, while risky files such as `.env.local` are reported as
+  pending and keep the attempt worktree available for review.
+- `ait attempt promote` also reconciles local artifacts when the target is
+  the currently checked-out branch, so materialized current-branch
+  promotions do not drop safe local configuration files.
+- Land JSON results now include additive `local_artifacts` details with
+  copied, skipped, pending, blocked, and cleanup status categories.
+
+### Safety
+
+- Local artifact handling uses deterministic guardrails: AIT skips generated
+  dependency/build artifacts, refuses symlinks and binary files, avoids
+  overwriting conflicting destinations, and never auto-copies secret-like
+  env files.
+
 ## 0.55.40 - 2026-05-05
 
 ### Documentation
