@@ -409,9 +409,8 @@ class CleanupTests(unittest.TestCase):
             stdout = io.StringIO()
             schema_path = (
                 Path(__file__).resolve().parents[1]
-                / "specs"
-                / "001-worktree-cleanup"
-                / "contracts"
+                / "tests"
+                / "fixtures"
                 / "cleanup-report.schema.json"
             )
             schema = json.loads(schema_path.read_text(encoding="utf-8"))

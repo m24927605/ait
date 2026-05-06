@@ -1,19 +1,17 @@
 # Changelog
 
-## 0.55.44 - 2026-05-06
+## 0.55.45 - 2026-05-06
 
 ### Changed
 
+- Remove bundled specification-workflow artifacts, templates, local skills,
+  and workflow metadata so AIT remains independent of any specific planning
+  workflow.
 - Split daemon lifecycle, status, process-state, and reaper behavior out of
   `src/ait/daemon.py` into focused `daemon_*` modules while keeping
   `ait.daemon` as the public API and monkey-patch surface.
 - Preserve the existing daemon protocol, socket/PID paths, CLI behavior,
   startup/shutdown handling, and stale-attempt recovery behavior.
-
-### Documentation
-
-- Add the `005-split-daemon-module` Spec Kit artifacts covering the
-  refactor plan, contracts, data model, quickstart, audit, and task list.
 
 ## 0.55.43 - 2026-05-06
 
