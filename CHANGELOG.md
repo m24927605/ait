@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.55.46 - 2026-05-08
+
+### Added
+
+- Add the minimal-interruption `ait apply` / `ait recover` workflow,
+  workspace leases, decision reports, and status recovery dashboard.
+- Add integration attempts for dirty-checkout recovery, including dirty
+  snapshots, path classification, safe non-overlap replay, text
+  three-way merge handling, durable integration artifacts, and
+  conservative hold decisions for unsafe overlaps.
+
+### Changed
+
+- Shift daily CLI and docs language toward apply/recover while keeping
+  low-level attempt/worktree details available in debug and JSON output.
+- Tighten cleanup retention so internal workspaces with conflicts,
+  active dev servers, dirty state, or missing durable results are kept
+  explainably.
+
 ## 0.55.45 - 2026-05-06
 
 ### Changed
