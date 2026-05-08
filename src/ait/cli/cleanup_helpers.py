@@ -3,6 +3,10 @@ from __future__ import annotations
 from dataclasses import asdict
 from pathlib import Path
 
+from ait.decision_codes import cleanup_reason_code
+from ait.decision_report import decision_payload, decision_report
+from ait.dev_server import dev_servers_for_worktree
+
 
 def _cleanup_payload(report) -> dict[str, object]:
     return {
@@ -14,8 +18,51 @@ def _cleanup_payload(report) -> dict[str, object]:
         "skip_count": report.skip_count,
         "reclaimed_bytes": report.reclaimed_bytes,
         "would_reclaim_bytes": report.would_reclaim_bytes,
-        "items": [asdict(item) for item in report.items],
+        "items": [_cleanup_item_payload(report.repo_root, item) for item in report.items],
     }
+
+
+def _cleanup_item_payload(repo_root: str, item) -> dict[str, object]:
+    payload = asdict(item)
+    dev_servers = _dev_server_payload(repo_root, item.path)
+    payload["decision_report"] = decision_payload(
+        decision_report(
+            subject="cleanup",
+            subject_id=item.attempt_id,
+            decision=item.action,
+            safety_level=_cleanup_safety_level(item),
+            reason_code=cleanup_reason_code(item.reason),
+            reason_message=item.error or item.reason,
+            paths=(item.path,),
+            debug={
+                "kind": item.kind,
+                "dirty": item.dirty,
+                "deleted": item.deleted,
+                "bytes": item.bytes,
+                "reported_status": item.reported_status,
+                "verified_status": item.verified_status,
+                "dev_servers": dev_servers,
+            },
+        )
+    )
+    return payload
+
+
+def _dev_server_payload(repo_root: str, workspace_ref: str) -> list[dict[str, object]]:
+    try:
+        return [asdict(record) for record in dev_servers_for_worktree(repo_root, workspace_ref)]
+    except Exception:
+        return []
+
+
+def _cleanup_safety_level(item) -> str:
+    if item.error:
+        return "unknown"
+    if item.action == "remove":
+        return "safe"
+    if item.action == "retain":
+        return "caution"
+    return "unknown"
 
 
 def _format_cleanup(report) -> str:

@@ -129,18 +129,21 @@ def handle(args, repo_root: Path, parser=None) -> int:
             installation = _installation_payload()
             daemon = _daemon_status_payload(repo_root)
             payload = [
-                _status_payload(
-                    result,
-                    memory_status=memory_status,
-                    installation=installation,
-                    daemon=daemon,
+                _status_payload_with_recovery(
+                    _status_payload(
+                        result,
+                        memory_status=memory_status,
+                        installation=installation,
+                        daemon=daemon,
+                    ),
+                    repo_root,
                 )
                 for result in results
             ]
             if args.format == "json":
                 print(json.dumps(payload, indent=2))
             else:
-                print(_format_status_all(payload))
+                print(_format_status_all(payload, debug=args.debug))
                 _maybe_emit_status_all_hint(args, repo_root, results)
             return 0
         result = doctor_automation(args.name, repo_root)

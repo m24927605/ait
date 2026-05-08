@@ -123,6 +123,8 @@ class IntegrationTests(unittest.TestCase):
 
             self.assertEqual("conflict", result.status)
             self.assertEqual("integration.merge_file_conflict", result.decision_report.reasons[0].code)
+            self.assertEqual(("README.md",), result.decision_report.reasons[0].paths)
+            self.assertEqual("text_overlap", result.decision_report.reasons[0].debug["classification"])
             self.assertTrue(Path(result.workspace_ref or "").exists())
             lease = read_workspace_lease(result.workspace_ref or "")
             self.assertIsNotNone(lease)
@@ -206,6 +208,8 @@ class IntegrationTests(unittest.TestCase):
             self.assertIn("workspace_ref", payload)
             self.assertIn("decision_report", payload)
             self.assertIn("classification", payload["debug"])
+            self.assertIn("debug", payload["decision_report"]["reasons"][0])
+            self.assertIn("paths", payload["decision_report"]["reasons"][0])
 
     def test_cleanup_gates_integration_workspace_with_durable_artifact_and_dev_server(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

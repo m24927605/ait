@@ -92,6 +92,11 @@ def build_parser() -> argparse.ArgumentParser:
     blame_parser = subparsers.add_parser("blame")
     blame_parser.add_argument("target")
 
+    config_parser = subparsers.add_parser("config")
+    config_subparsers = config_parser.add_subparsers(dest="config_command")
+    config_show = config_subparsers.add_parser("show")
+    config_show.add_argument("--format", choices=("text", "json"), default="text")
+
     cleanup_parser = subparsers.add_parser("cleanup", help="inspect or remove safe internal AIT state")
     cleanup_parser.add_argument("--apply", action="store_true")
     cleanup_parser.add_argument("--force", action="store_true")

@@ -8,7 +8,9 @@ import subprocess
 
 from ait.app import create_attempt, create_commit_for_attempt, create_intent, discard_attempt, init_repo
 from ait.db import connect_db, get_attempt, list_attempt_commits, list_attempts
+from ait.decision_codes import RecoverCode
 from ait.decision_report import DecisionReport, daily_step, decision_report
+from ait.dev_server import dev_servers_for_worktree
 from ait.idresolver import resolve_attempt_id
 from ait.integration import create_integration_attempt as _create_integration_attempt
 from ait.workspace import WorkspaceError
@@ -56,6 +58,7 @@ def recover_attempt(
     changed_files = tuple(sorted({path for commit in commits for path in commit.touched_files}))
     workspace = Path(attempt.workspace_ref)
     lease = lease_payload(attempt.workspace_ref)
+    dev_servers = _dev_server_payload(root, attempt.workspace_ref)
     integration_artifact = _integration_artifact_payload(root, attempt_id)
     recoverable = workspace.exists() and attempt.verified_status not in {"discarded", "promoted"}
     if attempt.verified_status == "promoted":
@@ -96,6 +99,7 @@ def recover_attempt(
             "workspace_ref": attempt.workspace_ref,
             "workspace_exists": workspace.exists(),
             "lease_path": str(workspace_lease_path(attempt.workspace_ref)),
+            "dev_servers": dev_servers,
             **(
                 {
                     "strategy": integration_artifact.get("strategy"),
@@ -242,21 +246,22 @@ def _recover_decision_report(
         safety_level="recoverable" if recoverable else "terminal",
         reason_code=_recover_reason_code(status),
         reason_message=message,
+        debug={"recoverable": recoverable},
         next_steps=tuple(daily_step(step, "continue recovery") for step in next_steps),
     )
 
 
 def _recover_reason_code(status: str) -> str:
     return {
-        "applied": "recover.already_applied",
-        "discarded": "recover.discarded",
-        "missing": "recover.missing_state",
-        "conflict": "recover.conflict",
-        "integration_created": "recover.integration_created",
-        "held": "recover.held",
-        "failed": "recover.failed",
-        "succeeded": "recover.ready_to_apply",
-        "active": "recover.active",
+        "applied": RecoverCode.ALREADY_APPLIED,
+        "discarded": RecoverCode.DISCARDED,
+        "missing": RecoverCode.MISSING_STATE,
+        "conflict": RecoverCode.CONFLICT,
+        "integration_created": RecoverCode.INTEGRATION_CREATED,
+        "held": RecoverCode.HELD,
+        "failed": RecoverCode.FAILED,
+        "succeeded": RecoverCode.READY_TO_APPLY,
+        "active": RecoverCode.ACTIVE,
     }.get(status, f"recover.{status}")
 
 
@@ -317,6 +322,13 @@ def _recover_status(reported_status: str | None, verified_status: str | None, le
     if verified_status == "succeeded":
         return "succeeded"
     return "active"
+
+
+def _dev_server_payload(repo_root: Path, workspace_ref: str) -> list[dict[str, object]]:
+    try:
+        return [asdict(record) for record in dev_servers_for_worktree(repo_root, workspace_ref)]
+    except Exception:
+        return []
 
 
 def _dirty_tracked_files(root: Path) -> tuple[str, ...]:

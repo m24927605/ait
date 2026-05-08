@@ -13,6 +13,7 @@ from ait.db import (
     list_attempt_commits,
     list_attempts,
 )
+from ait.decision_codes import ApplyCode
 from ait.decision_report import DecisionReport, daily_step, decision_report
 from ait.idresolver import resolve_attempt_id
 from ait.local_artifacts import scan_local_artifacts
@@ -136,6 +137,7 @@ def apply_attempt(
             workspace_ref,
             "AIT kept the result for recovery.",
             "apply mode is none",
+            reason_code=ApplyCode.MODE_NONE,
         )
 
     if not workspace.exists():
@@ -153,6 +155,7 @@ def apply_attempt(
             workspace_ref,
             "AIT cannot apply this result because its recoverable state is missing.",
             "missing workspace",
+            reason_code=ApplyCode.MISSING_RECOVERY_STATE,
         )
 
     if attempt.verified_status != "succeeded":
@@ -178,6 +181,7 @@ def apply_attempt(
             "AIT kept the result for recovery because the attempt is not marked successful.",
             f"attempt is {attempt.verified_status}",
             status="held",
+            reason_code=ApplyCode.ATTEMPT_NOT_SUCCESSFUL,
         )
 
     if not changed_files:
@@ -196,6 +200,7 @@ def apply_attempt(
             workspace_ref,
             "AIT found no committed result to apply.",
             "no committed changes",
+            reason_code=ApplyCode.EMPTY_RESULT,
         )
 
     snapshot = checkout_snapshot(root)
@@ -217,6 +222,7 @@ def apply_attempt(
             workspace_ref,
             "AIT held the result because branch mode cannot move your current checkout.",
             "target branch is currently checked out",
+            reason_code=ApplyCode.TARGET_CURRENT_BRANCH,
         )
 
     if not target_is_current:
@@ -344,6 +350,7 @@ def _apply_to_non_current_branch(
             workspace_ref,
             "AIT could not update the target branch safely.",
             _human_apply_error(str(exc)),
+            reason_code=ApplyCode.TARGET_BRANCH_UPDATE_FAILED,
         )
     cleaned, cleanup_reason = _cleanup_applied_workspace(
         workspace_ref,
@@ -402,6 +409,7 @@ def _apply_to_clean_current_branch(
             workspace_ref,
             "AIT could not apply directly to your checkout.",
             _human_apply_error(str(exc)),
+            reason_code=ApplyCode.CURRENT_BRANCH_UPDATE_FAILED,
         )
     return _result(
         attempt_id=attempt_id,
@@ -450,6 +458,7 @@ def _rebase_if_target_advanced(
             workspace_ref,
             "AIT held the result because the target branch moved.",
             "result workspace has uncommitted changes",
+            reason_code=ApplyCode.TARGET_MOVED_UNCOMMITTED_RESULT,
         )
     try:
         rebase_attempt(root, attempt_id=attempt_id, onto_ref=target_ref)
@@ -469,6 +478,7 @@ def _rebase_if_target_advanced(
             workspace_ref,
             "AIT could not integrate the result with the updated target branch.",
             _human_apply_error(str(exc)),
+            reason_code=ApplyCode.TARGET_MOVED,
         )
     return None
 
@@ -504,6 +514,7 @@ def _apply_patch_to_dirty_current_branch(
             workspace_ref,
             "AIT kept the result for recovery because this repo is configured to hold on local edits.",
             "dirty checkout policy is hold",
+            reason_code=ApplyCode.DIRTY_POLICY_HOLD,
         )
     touched = set(_attempt_touched_files(workspace_ref, base_ref_oid))
     unsafe = _unsafe_patch_statuses(workspace_ref, base_ref_oid)
@@ -522,6 +533,7 @@ def _apply_patch_to_dirty_current_branch(
             "AIT kept the result for recovery because this patch needs review before applying to your edited checkout.",
             "result includes deletes, renames, type changes, or unresolved paths",
             debug={"unsafe_statuses": tuple(unsafe)},
+            reason_code=ApplyCode.UNSAFE_PATCH_STATUS,
         )
     overlap = tuple(sorted(set(snapshot.dirty_tracked_files) & touched))
     integration_artifact = _integration_artifact_payload(root, attempt_id)
@@ -541,6 +553,7 @@ def _apply_patch_to_dirty_current_branch(
             "overlapping local edits: " + ", ".join(overlap),
             status="conflict",
             debug={"overlap": overlap},
+            reason_code=ApplyCode.DIRTY_OVERLAP,
         )
     untracked_conflicts = tuple(sorted(set(snapshot.untracked_files) & touched))
     if untracked_conflicts:
@@ -559,6 +572,7 @@ def _apply_patch_to_dirty_current_branch(
             "untracked files would be overwritten: " + ", ".join(untracked_conflicts),
             status="conflict",
             debug={"untracked_conflicts": untracked_conflicts},
+            reason_code=ApplyCode.UNTRACKED_OVERWRITE,
         )
     head_oid = _git_stdout(Path(workspace_ref), "rev-parse", "--verify", "HEAD")
     patch = _git(Path(workspace_ref), "diff", "--binary", f"{base_ref_oid}..{head_oid}").stdout
@@ -571,6 +585,7 @@ def _apply_patch_to_dirty_current_branch(
             workspace_ref,
             "AIT found no patch to apply.",
             "empty patch",
+            reason_code=ApplyCode.EMPTY_RESULT,
         )
     check = _git(
         root,
@@ -596,6 +611,7 @@ def _apply_patch_to_dirty_current_branch(
             "AIT kept the result for recovery because the patch did not apply cleanly.",
             _human_apply_error(check.stderr.strip() or "patch check failed"),
             status="conflict",
+            reason_code=ApplyCode.PATCH_CHECK_FAILED,
         )
     applied = _git(
         root,
@@ -620,6 +636,7 @@ def _apply_patch_to_dirty_current_branch(
             "AIT kept the result for recovery because applying it created a conflict.",
             _human_apply_error(applied.stderr.strip() or "patch apply failed"),
             status="conflict",
+            reason_code=ApplyCode.CONFLICT,
         )
     _unstage_paths(root, tuple(sorted(touched)))
     conflict_markers = _paths_with_conflict_markers(root, tuple(sorted(touched)))
@@ -639,6 +656,7 @@ def _apply_patch_to_dirty_current_branch(
             "conflict markers in: " + ", ".join(conflict_markers),
             status="conflict",
             debug={"conflict_markers": conflict_markers},
+            reason_code=ApplyCode.CONFLICT_MARKERS,
         )
     patch_ref, result_ref = _write_result_artifacts(
         root,
@@ -875,6 +893,7 @@ def _held(
     *,
     status: str = "held",
     debug: dict[str, object] | None = None,
+    reason_code: str | None = None,
 ) -> ApplyResult:
     return _result(
         attempt_id=attempt_id,
@@ -888,6 +907,7 @@ def _held(
         cleanup_reason="kept for recovery",
         message=message,
         reason=reason,
+        reason_code=reason_code,
         workspace_ref=workspace_ref,
         debug=debug or {},
     )
@@ -923,6 +943,8 @@ def _result(
         safety_level=_safety_level_for_apply(status),
         reason_code=reason_code or _reason_code_for_apply(status, plan, reason, cleanup_reason),
         reason_message=reason or plan.reason,
+        paths=_reason_paths_for_apply(debug_payload, changed_files),
+        debug=debug_payload,
         next_steps=() if status in {"applied", "already_applied"} else (daily_step(f"ait recover {attempt_id}", "review the recoverable result"),),
         metadata={
             "landing_plan": asdict(plan),
@@ -976,28 +998,36 @@ def _reason_code_for_apply(
     text = " ".join(item for item in (status, plan.kind, plan.reason, reason or "", cleanup_reason or "") if item)
     lower = text.lower()
     if status == "already_applied":
-        return "apply.already_applied"
+        return ApplyCode.ALREADY_APPLIED
     if status == "applied" and plan.kind == "patch_apply_clean_overlap":
-        return "apply.dirty_patch_applied"
+        return ApplyCode.DIRTY_PATCH_APPLIED
     if status == "applied":
-        return "apply.applied"
+        return ApplyCode.APPLIED
     if "apply mode is none" in lower:
-        return "apply.mode_none"
+        return ApplyCode.MODE_NONE
     if "missing workspace" in lower:
-        return "apply.missing_recovery_state"
+        return ApplyCode.MISSING_RECOVERY_STATE
     if "no committed" in lower or "empty patch" in lower:
-        return "apply.empty_result"
+        return ApplyCode.EMPTY_RESULT
     if "currently checked out" in lower:
-        return "apply.target_current_branch"
-    if "overlap" in lower:
-        return "apply.dirty_overlap"
+        return ApplyCode.TARGET_CURRENT_BRANCH
     if "untracked" in lower:
-        return "apply.untracked_overwrite"
+        return ApplyCode.UNTRACKED_OVERWRITE
+    if "overlap" in lower:
+        return ApplyCode.DIRTY_OVERLAP
     if "moved" in lower or "rebase" in lower:
-        return "apply.target_moved"
+        return ApplyCode.TARGET_MOVED
     if "conflict" in lower:
-        return "apply.conflict"
-    return "apply.held"
+        return ApplyCode.CONFLICT
+    return ApplyCode.HELD
+
+
+def _reason_paths_for_apply(debug: dict[str, object], changed_files: tuple[str, ...]) -> tuple[str, ...]:
+    for key in ("overlap", "untracked_conflicts", "conflict_markers"):
+        value = debug.get(key)
+        if isinstance(value, tuple | list):
+            return tuple(sorted(str(item) for item in value if str(item)))
+    return tuple(changed_files)
 
 
 def _git_stdout(

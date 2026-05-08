@@ -11,6 +11,7 @@ from pathlib import Path
 
 from ait.app import create_attempt, create_commit_for_attempt, create_intent, init_repo
 from ait.db import connect_db, get_attempt, list_attempt_commits, list_attempts
+from ait.decision_codes import IntegrationCode
 from ait.decision_report import DecisionReport, daily_step, decision_payload, decision_report
 from ait.idresolver import resolve_attempt_id
 from ait.policy import (
@@ -128,18 +129,18 @@ def classify_paths(
     untracked_conflicts = tuple(sorted({path.path for path in snapshot.untracked} & agent_path_set))
     blocked: list[str] = []
     classification = "safe_non_overlap"
-    reason_code = "integration.safe_non_overlap"
+    reason_code = IntegrationCode.SAFE_NON_OVERLAP
     reason = "Local tracked edits do not overlap with the AIT result."
     safe_to_auto_run = True
 
     if not agent_paths:
         classification = "no_agent_patch"
-        reason_code = "integration.no_agent_patch"
+        reason_code = IntegrationCode.NO_AGENT_PATCH
         reason = "AIT could not find a patch for the result."
         safe_to_auto_run = False
     elif untracked_conflicts:
         classification = "untracked_conflict"
-        reason_code = "integration.untracked_conflict"
+        reason_code = IntegrationCode.UNTRACKED_CONFLICT
         reason = "The AIT result would conflict with untracked files in your checkout."
         blocked.extend(untracked_conflicts)
         safe_to_auto_run = False
@@ -148,36 +149,36 @@ def classify_paths(
         user_by_path = {path.path: path for path in snapshot.tracked}
         if any(status.startswith("R") for status in overlap_statuses.values()):
             classification = "rename_overlap"
-            reason_code = "integration.rename_overlap"
+            reason_code = IntegrationCode.RENAME_OVERLAP
             reason = "Overlapping rename changes need manual review."
             blocked.extend(overlap)
             safe_to_auto_run = False
         elif any("D" in (status + user_by_path[path].status) for path, status in overlap_statuses.items()):
             classification = "delete_overlap"
-            reason_code = "integration.delete_overlap"
+            reason_code = IntegrationCode.DELETE_OVERLAP
             reason = "Overlapping delete/edit changes need manual review."
             blocked.extend(overlap)
             safe_to_auto_run = allow_delete_merge
         elif any(path in set(agent_binary_paths) or user_by_path[path].binary for path in overlap):
             classification = "binary_overlap"
-            reason_code = "integration.binary_overlap"
+            reason_code = IntegrationCode.BINARY_OVERLAP
             reason = "Overlapping binary changes need manual review."
             blocked.extend(overlap)
             safe_to_auto_run = allow_binary_merge
         elif any(_unsupported_status(status) or _unsupported_status(user_by_path[path].status) for path, status in overlap_statuses.items()):
             classification = "unsafe_status"
-            reason_code = "integration.unsafe_status"
+            reason_code = IntegrationCode.UNSAFE_STATUS
             reason = "One or more overlapping paths have unsupported Git status."
             blocked.extend(overlap)
             safe_to_auto_run = False
         else:
             classification = "text_overlap"
-            reason_code = "integration.text_overlap"
+            reason_code = IntegrationCode.TEXT_OVERLAP
             reason = "AIT can create an integration attempt for overlapping tracked text edits."
             safe_to_auto_run = True
     elif any(_unsupported_status(status) for status in statuses.values()):
         classification = "unsafe_status"
-        reason_code = "integration.unsafe_status"
+        reason_code = IntegrationCode.UNSAFE_STATUS
         reason = "The AIT result contains unsupported Git status."
         blocked.extend(path for path, status in statuses.items() if _unsupported_status(status))
         safe_to_auto_run = False
@@ -227,7 +228,7 @@ def create_integration_attempt(
             plan=_with_plan_ids(plan, attempt_id=base_attempt_id, base_attempt_id=base_attempt_id),
             changed_files=(),
             workspace_ref=base_attempt.workspace_ref,
-            reason_code="integration.no_agent_patch",
+            reason_code=IntegrationCode.NO_AGENT_PATCH,
             message=plan.reason,
             debug={"patch_source": agent_patch.source},
         )
@@ -285,7 +286,7 @@ def create_integration_attempt(
             plan=plan,
             changed_files=agent_patch.paths,
             workspace_ref=attempt.workspace_ref,
-            reason_code="integration.replay_user_failed",
+            reason_code=IntegrationCode.REPLAY_USER_FAILED,
             message="AIT could not replay your tracked local edits into an integration attempt.",
             debug={"replay_user": replay.stderr.strip()},
         )
@@ -339,7 +340,7 @@ def create_integration_attempt(
             plan=plan,
             changed_files=(),
             workspace_ref=attempt.workspace_ref,
-            reason_code="integration.replay_agent_failed",
+            reason_code=IntegrationCode.REPLAY_AGENT_FAILED,
             message="AIT found no integration changes to record.",
         )
     test = _run_validation(workspace, test_command or integration_auto_test_command(root))
@@ -353,7 +354,7 @@ def create_integration_attempt(
             plan=plan,
             changed_files=agent_patch.paths,
             workspace_ref=attempt.workspace_ref,
-            reason_code="integration.semantic_merge_failed" if auto_integrate else "integration.replay_agent_failed",
+            reason_code=IntegrationCode.SEMANTIC_MERGE_FAILED if auto_integrate else IntegrationCode.REPLAY_AGENT_FAILED,
             message="AIT created an integration attempt, but validation failed.",
             debug={"validation": test.stderr.strip() or test.stdout.strip()},
         )
@@ -371,7 +372,7 @@ def create_integration_attempt(
         changed_files=changed,
         workspace_ref=attempt.workspace_ref,
         commit_oid=commit_oid,
-        reason_code="integration.succeeded",
+        reason_code=IntegrationCode.SUCCEEDED,
         message="AIT created an integration attempt.",
         debug={
             "patch_source": agent_patch.source,
@@ -416,8 +417,8 @@ def _run_merge_ladder(
     if plan.classification == "safe_non_overlap":
         applied = _apply_patch(workspace, agent_patch.patch)
         if applied.returncode != 0:
-            return _MergeOutcome(1, "integration.replay_agent_failed", applied.stderr.strip(), {"git_apply": applied.stderr.strip()})
-        return _marker_check(workspace, agent_patch.paths, "integration.succeeded")
+            return _MergeOutcome(1, IntegrationCode.REPLAY_AGENT_FAILED, applied.stderr.strip(), {"git_apply": applied.stderr.strip()})
+        return _marker_check(workspace, agent_patch.paths, IntegrationCode.SUCCEEDED)
     if plan.classification != "text_overlap":
         return _MergeOutcome(1, plan.reason_code, plan.reason)
 
@@ -425,12 +426,12 @@ def _run_merge_ladder(
     if non_overlap:
         applied = _apply_patch(workspace, agent_patch.patch, exclude=plan.overlap_paths)
         if applied.returncode != 0:
-            return _MergeOutcome(1, "integration.replay_agent_failed", applied.stderr.strip(), {"git_apply": applied.stderr.strip()})
+            return _MergeOutcome(1, IntegrationCode.REPLAY_AGENT_FAILED, applied.stderr.strip(), {"git_apply": applied.stderr.strip()})
     for rel_path in plan.overlap_paths:
         merged = _merge_text_path(root, workspace, base_workspace, snapshot, rel_path)
         if merged.returncode != 0:
             return merged
-    return _marker_check(workspace, tuple(sorted(set(non_overlap) | set(plan.overlap_paths))), "integration.succeeded")
+    return _marker_check(workspace, tuple(sorted(set(non_overlap) | set(plan.overlap_paths))), IntegrationCode.SUCCEEDED)
 
 
 def _merge_text_path(root: Path, workspace: Path, base_workspace: Path, snapshot: DirtySnapshot, rel_path: str) -> _MergeOutcome:
@@ -442,7 +443,7 @@ def _merge_text_path(root: Path, workspace: Path, base_workspace: Path, snapshot
         _write_git_file(root, snapshot.head_oid, rel_path, base)
         source = root / rel_path
         if not source.exists():
-            return _MergeOutcome(1, "integration.delete_overlap", "local path was deleted")
+            return _MergeOutcome(1, IntegrationCode.DELETE_OVERLAP, "local path was deleted")
         shutil.copy2(source, user)
         _write_git_file(base_workspace, "HEAD", rel_path, agent)
         completed = subprocess.run(
@@ -455,14 +456,14 @@ def _merge_text_path(root: Path, workspace: Path, base_workspace: Path, snapshot
         if completed.returncode != 0 or _contains_conflict_markers(completed.stdout.encode("utf-8", errors="replace")):
             return _MergeOutcome(
                 1,
-                "integration.merge_file_conflict",
+                IntegrationCode.MERGE_FILE_CONFLICT,
                 completed.stderr.strip() or "file-level three-way merge conflict",
                 {"path": rel_path, "merge_file_stderr": completed.stderr.strip()},
             )
         target = workspace / rel_path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(completed.stdout, encoding="utf-8")
-    return _MergeOutcome(0, "integration.succeeded")
+    return _MergeOutcome(0, IntegrationCode.SUCCEEDED)
 
 
 def _replay_tracked_dirty(root: Path, workspace: Path, snapshot: DirtySnapshot) -> subprocess.CompletedProcess[str]:
@@ -502,7 +503,7 @@ def _apply_patch(workspace: Path, patch: str, *, exclude: tuple[str, ...] = ()) 
 def _marker_check(workspace: Path, paths: tuple[str, ...], success_code: str) -> _MergeOutcome:
     markers = _paths_with_conflict_markers(workspace, paths)
     if markers:
-        return _MergeOutcome(1, "integration.merge_file_conflict", "conflict markers detected", {"conflict_markers": markers})
+        return _MergeOutcome(1, IntegrationCode.MERGE_FILE_CONFLICT, "conflict markers detected", {"conflict_markers": markers})
     return _MergeOutcome(0, success_code)
 
 
@@ -519,13 +520,13 @@ def _maybe_semantic_merge(
     if not auto_integrate or not adapter:
         return _MergeOutcome(
             1,
-            "integration.merge_file_conflict",
+            IntegrationCode.MERGE_FILE_CONFLICT,
             "AIT held this integration because semantic merge is not enabled.",
             {"semantic_enabled": False},
         )
     return _MergeOutcome(
         1,
-        "integration.semantic_merge_failed",
+        IntegrationCode.SEMANTIC_MERGE_FAILED,
         "AIT held this integration because the semantic merge adapter scaffold is not configured for automatic writes.",
         {"adapter": adapter, "attempt_id": attempt_id, "workspace": str(workspace)},
     )
@@ -753,6 +754,13 @@ def _result(
         safety_level="recoverable" if status in {"held", "conflict"} else "automated",
         reason_code=reason_code,
         reason_message=message,
+        paths=tuple(sorted(set(plan.overlap_paths) | set(plan.blocked_paths))),
+        debug={
+            "base_attempt_id": base_attempt_id,
+            "strategy": plan.strategy,
+            "classification": plan.classification,
+            **(debug or {}),
+        },
         next_steps=(daily_step(f"ait apply {attempt_id}", "apply the integrated result"),)
         if status == "integration_created"
         else (daily_step(f"ait recover {attempt_id} --debug", "inspect integration details"),),

@@ -306,6 +306,18 @@ def list_dev_servers(repo_root: str | Path) -> tuple[DevServerRecord, ...]:
     return tuple(_load_records(resolve_repo_root(repo_root)))
 
 
+def dev_servers_for_worktree(repo_root: str | Path, worktree_path: str | Path) -> tuple[DevServerRecord, ...]:
+    worktree = Path(worktree_path).resolve()
+    records: list[DevServerRecord] = []
+    for record in list_dev_servers(repo_root):
+        try:
+            if Path(record.worktree_path).resolve() == worktree:
+                records.append(record)
+        except OSError:
+            continue
+    return tuple(records)
+
+
 def stop_dev_server(
     repo_root: str | Path,
     *,

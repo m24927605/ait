@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -89,6 +91,9 @@ class LandingTests(unittest.TestCase):
             self.assertTrue(workspace.exists())
             self.assertEqual("local edit\n", (repo_root / "README.md").read_text(encoding="utf-8"))
             self.assertIn("overlap", result.reason or "")
+            self.assertIsNotNone(result.decision_report)
+            self.assertEqual("apply.dirty_overlap", result.decision_report.reasons[0].code)
+            self.assertEqual(("README.md",), result.decision_report.reasons[0].paths)
 
     def test_dirty_current_checkout_holds_when_untracked_file_would_be_overwritten(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -103,6 +108,9 @@ class LandingTests(unittest.TestCase):
             self.assertTrue(workspace.exists())
             self.assertEqual("local\n", (repo_root / "agent.txt").read_text(encoding="utf-8"))
             self.assertIn("untracked", result.reason or "")
+            self.assertIsNotNone(result.decision_report)
+            self.assertEqual("apply.untracked_overwrite", result.decision_report.reasons[0].code)
+            self.assertEqual(("agent.txt",), result.decision_report.reasons[0].paths)
 
     def test_recover_latest_finds_recent_unapplied_attempt_without_text_workspace_noise(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -163,6 +171,119 @@ class LandingTests(unittest.TestCase):
             self.assertNotIn(".ait/workspaces", normal.getvalue())
             self.assertIn(".ait/workspaces", debug.getvalue())
             self.assertIn("Reason code: status.ready_to_apply", debug.getvalue())
+            self.assertIn("Apply readiness: ready_to_apply", debug.getvalue())
+
+    def test_status_json_keeps_recovery_decision_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            _succeeded_attempt(repo_root, "Status JSON", "json-status.py", "value = 1\n")
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "status", "--format", "json"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+            payload = json.loads(stdout.getvalue())
+            recovery = payload["recovery"]
+            decision = recovery["decision_report"]
+            self.assertEqual(0, exit_code)
+            self.assertEqual("ready_to_apply", recovery["status"])
+            self.assertEqual("status.ready_to_apply", decision["reasons"][0]["code"])
+            self.assertEqual(["json-status.py"], decision["reasons"][0]["paths"])
+            self.assertIn(".ait/workspaces", decision["reasons"][0]["debug"]["workspace_ref"])
+
+    def test_status_reports_conflict_missing_and_applied_recovery_states(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            conflict_id, _workspace = _succeeded_attempt(repo_root, "Conflict status", "README.md", "attempt\n")
+            (repo_root / "README.md").write_text("local\n", encoding="utf-8")
+            apply_attempt(repo_root, attempt_selector=conflict_id)
+            conflict_payload = _status_json(repo_root)
+
+            self.assertEqual("needs_recovery", conflict_payload["recovery"]["status"])
+            self.assertEqual("status.conflict", conflict_payload["recovery"]["decision_report"]["reasons"][0]["code"])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            _attempt_id, workspace = _succeeded_attempt(repo_root, "Missing status", "missing.py", "value = 1\n")
+            shutil.rmtree(workspace)
+            missing_payload = _status_json(repo_root)
+
+            self.assertEqual("held", missing_payload["recovery"]["status"])
+            self.assertEqual(
+                "status.missing_recovery_state",
+                missing_payload["recovery"]["decision_report"]["reasons"][0]["code"],
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            _attempt_id, _workspace = _succeeded_attempt(repo_root, "Applied status", "applied.py", "value = 1\n")
+            _commit_ait_gitignore_if_needed(repo_root)
+            apply_attempt(repo_root, attempt_selector="latest")
+            applied_payload = _status_json(repo_root)
+
+            self.assertEqual("applied", applied_payload["recovery"]["status"])
+            self.assertEqual("status.latest_applied", applied_payload["recovery"]["decision_report"]["reasons"][0]["code"])
+
+    def test_status_all_includes_repo_recovery_summary_without_text_workspace_noise(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            _succeeded_attempt(repo_root, "Status all", "all.py", "value = 1\n")
+            normal = io.StringIO()
+            debug = io.StringIO()
+            json_out = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "status", "--all"]):
+                    with redirect_stdout(normal):
+                        normal_code = cli.main()
+                with patch("sys.argv", ["ait", "status", "--all", "--debug"]):
+                    with redirect_stdout(debug):
+                        debug_code = cli.main()
+                with patch("sys.argv", ["ait", "status", "--all", "--format", "json"]):
+                    with redirect_stdout(json_out):
+                        json_code = cli.main()
+
+            self.assertEqual(0, normal_code)
+            self.assertEqual(0, debug_code)
+            self.assertEqual(0, json_code)
+            self.assertIn("AIT Recovery", normal.getvalue())
+            self.assertIn("- latest: ready_to_apply", normal.getvalue())
+            self.assertNotIn(".ait/workspaces", normal.getvalue())
+            self.assertIn(".ait/workspaces", debug.getvalue())
+            payload = json.loads(json_out.getvalue())
+            self.assertIsInstance(payload, list)
+            self.assertTrue(payload)
+            self.assertEqual("ready_to_apply", payload[0]["recovery"]["status"])
+            self.assertEqual("status.ready_to_apply", payload[0]["recovery"]["decision_report"]["reasons"][0]["code"])
+
+    def test_status_and_recover_debug_include_dev_server_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            _attempt_id, workspace = _succeeded_attempt(repo_root, "Dev metadata", "dev.py", "value = 1\n")
+            _write_dev_server_record(repo_root, workspace, port=8124)
+            status_debug = io.StringIO()
+            recover_debug = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "status", "--debug"]):
+                    with redirect_stdout(status_debug):
+                        self.assertEqual(0, cli.main())
+                with patch("sys.argv", ["ait", "recover", "latest", "--debug"]):
+                    with redirect_stdout(recover_debug):
+                        self.assertEqual(0, cli.main())
+
+            self.assertIn("Dev server: pid=", status_debug.getvalue())
+            self.assertIn("port=8124", status_debug.getvalue())
+            self.assertIn("Dev server: pid=", recover_debug.getvalue())
+            self.assertIn("port=8124", recover_debug.getvalue())
 
     def test_recover_retry_apply_executes_apply_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -248,6 +369,41 @@ def _commit_ait_gitignore_if_needed(repo_root: Path) -> None:
         return
     _git(repo_root, "add", ".gitignore")
     _git(repo_root, "commit", "-m", "ignore ait state")
+
+
+def _status_json(repo_root: Path) -> dict[str, object]:
+    stdout = io.StringIO()
+    with chdir(repo_root):
+        with patch("sys.argv", ["ait", "status", "--format", "json"]):
+            with redirect_stdout(stdout):
+                exit_code = cli.main()
+    if exit_code != 0:
+        raise AssertionError(f"status failed: {exit_code}")
+    payload = json.loads(stdout.getvalue())
+    if not isinstance(payload, dict):
+        raise AssertionError("status JSON payload must be an object")
+    return payload
+
+
+def _write_dev_server_record(repo_root: Path, workspace: Path, *, port: int) -> None:
+    path = repo_root / ".ait" / "dev-servers.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema_version": 1,
+        "servers": [
+            {
+                "port": port,
+                "pid": os.getpid(),
+                "command": ["python", "-m", "http.server"],
+                "cwd": str(workspace),
+                "branch": None,
+                "worktree_path": str(workspace),
+                "started_at": "2026-05-08T00:00:00+00:00",
+                "log_path": str(repo_root / ".ait" / "dev-servers" / "test.log"),
+            }
+        ],
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
 def _git(repo_root: Path, *args: str) -> None:

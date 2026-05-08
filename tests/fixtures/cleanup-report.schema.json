@@ -66,7 +66,8 @@
         "dirty",
         "bytes",
         "deleted",
-        "error"
+        "error",
+        "decision_report"
       ],
       "additionalProperties": false,
       "properties": {
@@ -105,6 +106,77 @@
         },
         "error": {
           "type": ["string", "null"]
+        },
+        "decision_report": {
+          "$ref": "#/$defs/decision_report"
+        }
+      }
+    },
+    "decision_report": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "subject",
+        "subject_id",
+        "decision",
+        "safety_level",
+        "reasons",
+        "next_steps",
+        "metadata"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "type": "integer"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "subject_id": {
+          "type": ["string", "null"]
+        },
+        "decision": {
+          "type": "string"
+        },
+        "safety_level": {
+          "type": "string"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/decision_reason"
+          }
+        },
+        "next_steps": {
+          "type": "array"
+        },
+        "metadata": {
+          "type": "object"
+        }
+      }
+    },
+    "decision_reason": {
+      "type": "object",
+      "required": ["code", "message", "paths", "debug", "metadata"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "debug": {
+          "type": "object"
+        },
+        "metadata": {
+          "type": "object"
         }
       }
     }

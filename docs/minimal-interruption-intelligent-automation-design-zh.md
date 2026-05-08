@@ -110,23 +110,36 @@ Recover: ait recover latest
 - dirty checkout 無 tracked/untracked 重疊時可 patch apply。
 - dirty overlap、untracked overwrite、unsafe patch 會 hold/recover。
 - 成功 apply 且有 durable branch/ref 時可清理 internal workspace。
+- 新增 `DecisionReport` 統一模型，reason 包含 stable code、paths、debug metadata。
+- apply/recover/status/integration/cleanup JSON/debug 均已接入 decision report。
+- 新增集中式 reason code registry：`src/ait/decision_codes.py`。
+- `ait status --debug` 會顯示 latest attempt、workspace、lease、reason code、apply readiness、next step。
+- `ait status --all` 保留 agent readiness，並加入 repo-level recovery summary；normal text 不顯示 internal workspace。
+- `ait recover --retry-apply`、`--create-integration`、`--auto-integrate`、`--discard` 已成為可執行 recovery 入口。
+- dirty tracked overlap 可建立 integration attempt；成功結果可 apply，conflict 會保留 workspace 與 decision report。
+- dirty checkout patch apply 會寫 durable patch/result artifact，成功後可安全清理 internal workspace。
+- run startup 會執行 safe prune，低噪音清理已確定安全的 terminal workspace。
+- active dev server workspace 會被 cleanup retain，reason=`active-dev-server`，debug/json 顯示 pid/port/log。
+- 新增 `ait config show` 顯示 effective policy 與 invalid config warnings。
+- 日常 text smoke tests 覆蓋 run/apply/recover/status/status --all/cleanup 不顯示 internal workspace path。
+- dogfood matrix 的主要 workflow 已由 landing/cleanup/integration/cli_run/dev_server 測試覆蓋。
 - README、getting-started、command reference、CLI help 已轉向 `run/apply/recover`。
 
-## 剩餘缺口
+## 剩餘缺口 / Future Work
 
-要達到「最低干擾高度智能自動化」，仍需補齊以下能力。
+核心低干擾自動化路徑已完成。剩餘項目目前屬於 hardening / future work，
+不阻擋將 AIT 視為達到「最低干擾且高度智能自動化」的產品狀態。
 
-### 1. Decision Report 統一模型
+### 已完成：Decision Report 統一模型
 
-目前 apply/cleanup/recover 各自有 reason，但還沒有統一的決策報告模型。
-
-需要新增：
+已新增：
 
 ```text
 src/ait/decision_report.py
+src/ait/decision_codes.py
 ```
 
-核心資料：
+核心資料已落地：
 
 ```json
 {
@@ -150,24 +163,26 @@ src/ait/decision_report.py
 }
 ```
 
-使用位置：
+已接入：
 
 - `ait apply`
 - `ait recover`
 - `ait cleanup`
 - `ait status --debug`
-- run auto-apply hold warnings
+- `ait status --all`
+- integration attempt
 
-驗收：
+已完成驗收：
 
 - 所有 hold/skip/retain/remove decision 都有 stable reason code。
 - text 顯示人話。
 - JSON/debug 顯示完整 reason code、paths、workspace/lease metadata。
 - 測試覆蓋每個 reason code。
 
-### 2. `ait status --debug` Recovery Dashboard
+### 已完成：`ait status --debug` / `status --all` Recovery Dashboard
 
-`ait status` 應能低噪音呈現日常狀態，`--debug` 顯示完整 lifecycle。
+`ait status` 已能低噪音呈現日常狀態，`--debug` 顯示完整 lifecycle。
+`ait status --all` 保留 adapter readiness，並加入 repo-level recovery summary。
 
 Text mode：
 
@@ -190,7 +205,7 @@ Workspace: ...
 Cleanup: retained because local edits overlap
 ```
 
-需要：
+已完成：
 
 - `status --debug` parser option。
 - status payload include latest attempt, lease, cleanup decision, apply readiness。
@@ -202,9 +217,9 @@ Cleanup: retained because local edits overlap
 - latest conflict/failed 顯示 `recoverable`。
 - debug 顯示 lease path/workspace path/reason codes。
 
-### 3. Recovery Engine 從「提示」升級為「可執行修復」
+### 已完成：Recovery Engine 從「提示」升級為「可執行修復」
 
-目前 `ait recover` 偏查詢與下一步提示。目標是能執行安全修復。
+`ait recover` 已能執行安全修復入口。
 
 新增模式：
 
@@ -216,10 +231,11 @@ ait recover latest --create-integration
 ait recover latest --discard
 ```
 
-行為：
+已完成行為：
 
 - `--retry-apply`：重新產生 LandingPlan，再跑 apply。
 - `--create-integration`：針對 dirty overlap 建 integration attempt。
+- `--auto-integrate`：在 policy 允許的範圍內建立並執行 integration attempt。
 - `--discard`：只有在無未保存結果或使用者明確要求時 discard。
 
 驗收：
@@ -229,7 +245,7 @@ ait recover latest --discard
 - `--create-integration` 成功時產生新的 integration attempt。
 - 非互動模式不做 destructive 動作。
 
-### 4. Integration Attempt
+### 已完成：Integration Attempt
 
 Dirty checkout 有重疊時，AIT 應提供「讓 AIT 幫你整合」而不是只 hold。
 
@@ -256,7 +272,7 @@ Dirty checkout 有重疊時，AIT 應提供「讓 AIT 幫你整合」而不是�
 - replay conflict 後 root checkout 不變。
 - recover 顯示 parent attempt 與 integration attempt 關係。
 
-### 5. Run Startup Safe Prune
+### 已完成：Run Startup Safe Prune
 
 AIT 可在低成本入口自動清理已確定安全的狀態：
 
@@ -287,11 +303,11 @@ AIT 可在低成本入口自動清理已確定安全的狀態：
 - debug/report 可看到 prune decision。
 - dirty/orphan/dev-server workspace 被 retain 並有 reason。
 
-### 6. Dev Server Lease Awareness
+### 已完成：Dev Server Lease Awareness
 
-目前 remove path 會 cleanup dev servers，但 decision/report 還不完整。
+cleanup/status/recover debug 已能引用 dev server records。
 
-需要：
+已完成：
 
 - dev server records 寫入 workspace lease 或被 lease report 引用。
 - cleanup evaluate 時若 workspace 有 active dev server，action=`retain`，reason=`active-dev-server`。
@@ -303,11 +319,9 @@ AIT 可在低成本入口自動清理已確定安全的狀態：
 - stopped server record 可 prune。
 - debug report 顯示 pid/port。
 
-### 7. Durable Result Artifact
+### 已完成：Durable Result Artifact
 
-Dirty checkout patch apply 不移動 durable branch/ref，因此目前保守保留 workspace。
-
-可新增 durable patch artifact：
+Dirty checkout patch apply 會保存 durable patch artifact：
 
 ```text
 .ait/results/<attempt-id>.patch
@@ -319,17 +333,17 @@ Dirty checkout patch apply 不移動 durable branch/ref，因此目前保守保�
 - dirty checkout apply 成功後，如果 patch artifact 已保存，可安全 cleanup workspace。
 - recover 即使 workspace 被清理，也能指出 result 已 applied 或可重放。
 
-驗收：
+已完成驗收：
 
 - artifact 包含 base oid、head oid、patch sha、changed paths。
 - cleanup 可因 durable patch artifact 移除 clean applied workspace。
 - JSON/API 顯示 artifact ref。
 
-### 8. Config Policy 完整化
+### 已完成：Config Policy 完整化
 
-目前 `run.apply` 可讀但未有完整 config schema/helper。
+已新增 minimal effective policy helper 與 `ait config show`。
 
-建議 config：
+支援 config：
 
 ```json
 {
@@ -355,15 +369,15 @@ Dirty checkout patch apply 不移動 durable branch/ref，因此目前保守保�
 - `apply.integration_attempt`: `never|ask|auto`
 - `apply.cleanup_after_apply`: `never|auto`
 
-驗收：
+已完成驗收：
 
 - invalid config 顯示 warning 並 fallback safe default。
-- `ait config show` 或既有 status debug 可顯示 effective policy。
+- `ait config show` 可顯示 effective policy。
 - tests 覆蓋 CLI override > repo config > default。
 
-### 9. Text/Error Copy 全面盤點
+### Future Work：Text/Error Copy 持續盤點
 
-需要掃描所有日常 text output，避免出現：
+日常 smoke tests 已覆蓋主要命令。後續新增 CLI 時仍需避免 normal text 出現：
 
 - `Commit or stash`
 - `go into worktree`
@@ -384,15 +398,15 @@ Dirty checkout patch apply 不移動 durable branch/ref，因此目前保守保�
 - advanced `attempt` commands。
 - historical docs/spec。
 
-驗收：
+已完成基線：
 
 - CLI text smoke tests assert no `.ait/workspaces` for daily commands。
 - dirty errors 不要求 stash。
 - debug text 可顯示 workspace path。
 
-### 10. End-to-End Dogfood Matrix
+### Future Work：End-to-End Dogfood Matrix 擴充
 
-建立固定 smoke matrix，可手動或自動跑：
+主要 matrix 已由現有 unittest 覆蓋；可再擴充手動或自動 smoke script：
 
 ```text
 clean run -> apply latest -> workspace cleaned

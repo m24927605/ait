@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.55.47 - 2026-05-08
+
+### Added
+
+- Add centralized decision reason codes and richer decision reports with
+  paths/debug metadata across apply, recover, status, integration, and
+  cleanup flows.
+- Add `ait config show` for effective policy inspection, including safe
+  fallback warnings for invalid repo config.
+- Add repo-level recovery summary to `ait status --all` while keeping
+  internal workspace paths limited to debug and JSON output.
+
+### Changed
+
+- Complete the minimal-interruption automation path with dev-server-aware
+  cleanup/recover/status debug metadata and active-dev-server retention.
+- Update the minimal-interruption design document to mark the core
+  workflow complete and move remaining items to hardening/future work.
+
 ## 0.55.46 - 2026-05-08
 
 ### Added

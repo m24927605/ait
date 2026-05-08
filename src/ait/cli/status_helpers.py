@@ -29,7 +29,9 @@ from ait.db import (
     list_memory_retrieval_events,
     run_migrations,
 )
+from ait.decision_codes import StatusCode
 from ait.decision_report import daily_step, decision_payload, decision_report
+from ait.dev_server import dev_servers_for_worktree
 from ait.memory import (
     agent_memory_status,
     build_repo_memory,
@@ -101,7 +103,7 @@ def _recovery_dashboard_payload(repo_root: str | Path) -> dict[str, object]:
                     subject_id=None,
                     decision="not_initialized",
                     safety_level="informational",
-                    reason_code="status.not_initialized",
+                    reason_code=StatusCode.NOT_INITIALIZED,
                     reason_message="AIT has no recorded attempts in this repo.",
                 )
             ),
@@ -120,7 +122,7 @@ def _recovery_dashboard_payload(repo_root: str | Path) -> dict[str, object]:
                         subject_id=None,
                         decision="empty",
                         safety_level="informational",
-                        reason_code="status.no_attempts",
+                        reason_code=StatusCode.NO_ATTEMPTS,
                         reason_message="AIT has no recorded attempts in this repo.",
                     )
                 ),
@@ -132,6 +134,7 @@ def _recovery_dashboard_payload(repo_root: str | Path) -> dict[str, object]:
     changed_files = tuple(sorted({path for commit in commits for path in commit.touched_files}))
     lease = lease_payload(attempt.workspace_ref)
     workspace = Path(attempt.workspace_ref)
+    dev_servers = _dev_server_payload(root, attempt.workspace_ref)
     status, code, message, next_command = _classify_recovery_attempt(attempt, workspace.exists(), lease)
     integration = _integration_artifact_payload(root, attempt.id)
     if integration:
@@ -149,6 +152,17 @@ def _recovery_dashboard_payload(repo_root: str | Path) -> dict[str, object]:
         safety_level="informational" if status in {"idle", "applied"} else "recoverable",
         reason_code=code,
         reason_message=message,
+        paths=changed_files,
+        debug={
+            "attempt_id": attempt.id,
+            "workspace_ref": attempt.workspace_ref,
+            "workspace_exists": workspace.exists(),
+            "lease_path": str(workspace_lease_path(attempt.workspace_ref)),
+            "lease": lease or {},
+            "dev_servers": dev_servers,
+            "apply_readiness": status,
+            "next_step": next_command,
+        },
         next_steps=() if next_command is None else (daily_step(next_command, "continue the daily workflow"),),
         metadata={
             "attempt_id": attempt.id,
@@ -171,6 +185,7 @@ def _recovery_dashboard_payload(repo_root: str | Path) -> dict[str, object]:
         "workspace_exists": workspace.exists(),
         "lease": lease,
         "lease_path": str(workspace_lease_path(attempt.workspace_ref)),
+        "dev_servers": dev_servers,
         "integration": integration or {},
         "next_step": next_command,
         "decision_report": decision_payload(report),
@@ -196,20 +211,20 @@ def _safe_attempt_filename(attempt_id: str) -> str:
 
 def _classify_recovery_attempt(attempt, workspace_exists: bool, lease: dict[str, object] | None):
     if attempt.verified_status == "promoted":
-        return "applied", "status.latest_applied", "Latest AIT result is already applied.", None
+        return "applied", StatusCode.LATEST_APPLIED, "Latest AIT result is already applied.", None
     if attempt.verified_status == "discarded":
-        return "discarded", "status.latest_discarded", "Latest AIT result was discarded.", None
+        return "discarded", StatusCode.LATEST_DISCARDED, "Latest AIT result was discarded.", None
     if lease and lease.get("state") == "conflict":
-        return "needs_recovery", "status.conflict", "Latest AIT result is held for recovery.", "ait recover latest"
+        return "needs_recovery", StatusCode.CONFLICT, "Latest AIT result is held for recovery.", "ait recover latest"
     if lease and lease.get("state") == "active":
-        return "running", "status.active", "AIT has an active attempt.", None
+        return "running", StatusCode.ACTIVE, "AIT has an active attempt.", None
     if attempt.verified_status == "succeeded" and workspace_exists:
-        return "ready_to_apply", "status.ready_to_apply", "Latest AIT result is ready to apply.", "ait apply latest"
+        return "ready_to_apply", StatusCode.READY_TO_APPLY, "Latest AIT result is ready to apply.", "ait apply latest"
     if attempt.verified_status == "failed" or attempt.reported_status == "crashed":
-        return "needs_recovery", "status.failed", "Latest AIT result failed and is recoverable if its state is still present.", "ait recover latest"
+        return "needs_recovery", StatusCode.FAILED, "Latest AIT result failed and is recoverable if its state is still present.", "ait recover latest"
     if not workspace_exists:
-        return "held", "status.missing_recovery_state", "Latest AIT result has no recoverable workspace.", "ait recover latest --debug"
-    return "held", "status.reviewable", "Latest AIT result is held for review.", "ait recover latest"
+        return "held", StatusCode.MISSING_RECOVERY_STATE, "Latest AIT result has no recoverable workspace.", "ait recover latest --debug"
+    return "held", StatusCode.REVIEWABLE, "Latest AIT result is held for review.", "ait recover latest"
 
 
 def _format_status(payload: dict[str, object], *, debug: bool = False) -> str:
@@ -300,6 +315,18 @@ def _format_status(payload: dict[str, object], *, debug: bool = False) -> str:
             lines.append(f"  Attempt: {recovery.get('attempt_id')}")
             lines.append(f"  Workspace: {recovery.get('workspace_ref')}")
             lines.append(f"  Lease: {recovery.get('lease_path')}")
+            lines.append(f"  Apply readiness: {recovery.get('status', 'unknown')}")
+            if next_step:
+                lines.append(f"  Recover next: {next_step}")
+            dev_servers = recovery.get("dev_servers", [])
+            if isinstance(dev_servers, list) and dev_servers:
+                for server in dev_servers:
+                    if isinstance(server, dict):
+                        lines.append(
+                            "  Dev server: "
+                            f"pid={server.get('pid')} port={server.get('port')} "
+                            f"log={server.get('log_path')}"
+                        )
             integration = recovery.get("integration")
             if isinstance(integration, dict) and integration:
                 lines.append(f"  Base attempt: {integration.get('base_attempt_id')}")
@@ -340,7 +367,7 @@ def _ait_health_payload(memory_status: dict[str, object]) -> dict[str, object]:
         }
     return {"status": "pass" if eval_status == "pass" else "unknown", "reasons": [], "next_steps": []}
 
-def _format_status_all(payload: list[dict[str, object]]) -> str:
+def _format_status_all(payload: list[dict[str, object]], *, debug: bool = False) -> str:
     lines = []
     if payload:
         installation = payload[0].get("installation")
@@ -351,6 +378,37 @@ def _format_status_all(payload: list[dict[str, object]]) -> str:
         installation = payload[0].get("installation")
         if isinstance(installation, dict):
             lines.extend(_format_installation_lines(installation, include_next_steps=False))
+        recovery = payload[0].get("recovery")
+        if isinstance(recovery, dict):
+            lines.append("AIT Recovery")
+            lines.append(f"- latest: {recovery.get('status', 'unknown')}")
+            message = recovery.get("message")
+            if message:
+                lines.append(f"  detail: {message}")
+            changed_files = recovery.get("changed_files", [])
+            if isinstance(changed_files, list) and changed_files:
+                lines.append(f"  changed: {len(changed_files)} files")
+            next_step = recovery.get("next_step")
+            if next_step:
+                lines.append(f"  next: {next_step}")
+            if debug:
+                lines.append(f"  attempt: {recovery.get('attempt_id')}")
+                lines.append(f"  workspace: {recovery.get('workspace_ref')}")
+                lines.append(f"  lease: {recovery.get('lease_path')}")
+                dev_servers = recovery.get("dev_servers", [])
+                if isinstance(dev_servers, list) and dev_servers:
+                    for server in dev_servers:
+                        if isinstance(server, dict):
+                            lines.append(
+                                "  dev server: "
+                                f"pid={server.get('pid')} port={server.get('port')} "
+                                f"log={server.get('log_path')}"
+                            )
+                decision = recovery.get("decision_report", {})
+                if isinstance(decision, dict):
+                    reasons = decision.get("reasons", [])
+                    if isinstance(reasons, (list, tuple)) and reasons and isinstance(reasons[0], dict):
+                        lines.append(f"  reason code: {reasons[0].get('code')}")
     for item in payload:
         command = _agent_command_name(str(item["adapter"]))
         daemon = item.get("daemon", {})
@@ -377,3 +435,10 @@ def _format_status_all(payload: list[dict[str, object]]) -> str:
         if next_steps:
             lines.append(f"  next: {', '.join(str(step) for step in next_steps)}")
     return "\n".join(lines)
+
+
+def _dev_server_payload(repo_root: str | Path, workspace_ref: str) -> list[dict[str, object]]:
+    try:
+        return [asdict(record) for record in dev_servers_for_worktree(repo_root, workspace_ref)]
+    except Exception:
+        return []

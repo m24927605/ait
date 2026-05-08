@@ -75,6 +75,15 @@ def _format_recover_result(result, *, debug: bool = False) -> str:
                 lines.append(f"  Classification: {result.debug.get('classification')}")
             if result.debug.get("reason_code"):
                 lines.append(f"  Reason code: {result.debug.get('reason_code')}")
+            dev_servers = result.debug.get("dev_servers")
+            if isinstance(dev_servers, list) and dev_servers:
+                for server in dev_servers:
+                    if isinstance(server, dict):
+                        lines.append(
+                            "  Dev server: "
+                            f"pid={server.get('pid')} port={server.get('port')} "
+                            f"log={server.get('log_path')}"
+                        )
     else:
         lines.append(f"Attempt: {result.attempt_id.rsplit(':', 1)[-1]}")
     return "\n".join(lines)

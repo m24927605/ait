@@ -8,6 +8,8 @@ from typing import Any
 class DecisionReason:
     code: str
     message: str
+    paths: tuple[str, ...] = ()
+    debug: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -38,6 +40,8 @@ def decision_report(
     safety_level: str,
     reason_code: str,
     reason_message: str,
+    paths: tuple[str, ...] = (),
+    debug: dict[str, Any] | None = None,
     next_steps: tuple[DecisionNextStep, ...] = (),
     metadata: dict[str, Any] | None = None,
 ) -> DecisionReport:
@@ -47,7 +51,7 @@ def decision_report(
         subject_id=subject_id,
         decision=decision,
         safety_level=safety_level,
-        reasons=(DecisionReason(reason_code, reason_message),),
+        reasons=(DecisionReason(reason_code, reason_message, paths=paths, debug=debug or {}),),
         next_steps=next_steps,
         metadata=metadata or {},
     )

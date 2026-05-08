@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -452,6 +453,47 @@ class CleanupTests(unittest.TestCase):
             self.assertIn(payload["mode"], schema["properties"]["mode"]["enum"])
             self.assertIn(payload["items"][0]["kind"], item_schema["properties"]["kind"]["enum"])
             self.assertIn(payload["items"][0]["action"], item_schema["properties"]["action"]["enum"])
+            decision = payload["items"][0]["decision_report"]
+            self.assertEqual("cleanup", decision["subject"])
+            self.assertEqual("cleanup.promoted", decision["reasons"][0]["code"])
+            self.assertEqual([payload["items"][0]["path"]], decision["reasons"][0]["paths"])
+
+    def test_cli_cleanup_json_decision_reports_orphan_skip_and_remove(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            create_intent(repo_root, title="Initialize AIT", description=None, kind="test")
+            orphan = repo_root / ".ait" / "workspaces" / "attempt-orphan"
+            orphan.mkdir(parents=True)
+            (orphan / "orphan.txt").write_text("keep\n", encoding="utf-8")
+
+            skipped = _cleanup_json(repo_root, "cleanup", "--format", "json")
+            skipped_item = skipped["items"][0]
+            self.assertEqual("skip", skipped_item["action"])
+            self.assertEqual("cleanup.unknown-attempt", skipped_item["decision_report"]["reasons"][0]["code"])
+            self.assertEqual([str(orphan.resolve())], skipped_item["decision_report"]["reasons"][0]["paths"])
+
+            removed = _cleanup_json(repo_root, "cleanup", "--format", "json", "--apply", "--include-orphans")
+            removed_item = removed["items"][0]
+            self.assertEqual("remove", removed_item["action"])
+            self.assertTrue(removed_item["deleted"])
+            self.assertEqual("cleanup.unknown-attempt", removed_item["decision_report"]["reasons"][0]["code"])
+
+    def test_cli_cleanup_json_includes_active_dev_server_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            attempt_id, workspace = _succeeded_attempt_with_workspace(repo_root)
+            _write_dev_server_record(repo_root, workspace, port=8123)
+
+            payload = _cleanup_json(repo_root, "cleanup", "--format", "json", "--apply")
+
+            item = next(item for item in payload["items"] if item["attempt_id"] == attempt_id)
+            self.assertEqual("retain", item["action"])
+            self.assertEqual("active-dev-server", item["reason"])
+            debug = item["decision_report"]["reasons"][0]["debug"]
+            self.assertEqual(8123, debug["dev_servers"][0]["port"])
+            self.assertEqual(os.getpid(), debug["dev_servers"][0]["pid"])
 
     def test_cli_cleanup_rejects_negative_older_than(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -545,6 +587,41 @@ def _item_for_path(report, path: Path):
         if item.path == resolved:
             return item
     raise AssertionError(f"cleanup item not found for path {resolved}")
+
+
+def _cleanup_json(repo_root: Path, *argv: str) -> dict[str, object]:
+    stdout = io.StringIO()
+    with chdir(repo_root):
+        with patch("sys.argv", ["ait", *argv]):
+            with redirect_stdout(stdout):
+                exit_code = cli.main()
+    if exit_code != 0:
+        raise AssertionError(f"cleanup failed: {exit_code}")
+    payload = json.loads(stdout.getvalue())
+    if not isinstance(payload, dict):
+        raise AssertionError("cleanup JSON payload must be an object")
+    return payload
+
+
+def _write_dev_server_record(repo_root: Path, workspace: Path, *, port: int) -> None:
+    path = repo_root / ".ait" / "dev-servers.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema_version": 1,
+        "servers": [
+            {
+                "port": port,
+                "pid": os.getpid(),
+                "command": ["python", "-m", "http.server"],
+                "cwd": str(workspace),
+                "branch": None,
+                "worktree_path": str(workspace),
+                "started_at": datetime.now(tz=UTC).isoformat(),
+                "log_path": str(repo_root / ".ait" / "dev-servers" / "test.log"),
+            }
+        ],
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
 def _set_attempt_status(

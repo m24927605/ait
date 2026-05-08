@@ -327,6 +327,47 @@ class CliRunTests(unittest.TestCase):
             self.assertEqual("applied", payload["apply"]["status"])
             self.assertTrue((repo_root / "configured.txt").exists())
 
+    def test_config_show_reports_effective_policy_and_invalid_warnings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            _init_ait_and_commit_gitignore(repo_root)
+            config_path = repo_root / ".ait" / "config.json"
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            config["run"] = {"apply": "ask", "auto_prune": False}
+            config["apply"] = {
+                "dirty_strategy": "bad",
+                "integration_attempt": "auto",
+                "cleanup_after_apply": False,
+                "semantic_integration": "auto",
+            }
+            config["integration"] = {
+                "allow_untracked_replay": True,
+                "allow_binary_merge": True,
+                "allow_delete_merge": True,
+                "auto_test_command": "pytest -q",
+                "semantic_adapter": "codex",
+            }
+            config_path.write_text(json.dumps(config), encoding="utf-8")
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "config", "show", "--format", "json"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+            payload = json.loads(stdout.getvalue())
+            policy = payload["policy"]
+            self.assertEqual(0, exit_code)
+            self.assertEqual("never", policy["run"]["apply"])
+            self.assertFalse(policy["run"]["auto_prune"])
+            self.assertEqual("safe-patch", policy["apply"]["dirty_strategy"])
+            self.assertEqual("auto", policy["apply"]["integration_attempt"])
+            self.assertFalse(policy["apply"]["cleanup_after_apply"])
+            self.assertEqual("codex", policy["integration"]["semantic_adapter"])
+            self.assertIn("run.apply ask is non-interactive; using never", payload["warnings"])
+            self.assertIn("apply.dirty_strategy invalid; using safe-patch", payload["warnings"])
+
     def test_query_parse_error_returns_cli_error_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
