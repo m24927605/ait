@@ -69,21 +69,20 @@ claude -p --permission-mode bypassPermissions "重構 auth 模組"
 
 ```bash
 ait status
-ait attempt list
-ait attempt show <attempt-id>
 ```
 
-確認後 promote：
+確認後 apply：
 
 ```bash
-ait attempt promote <attempt-id> --to main
+ait apply latest
 ```
 
-Promote 之前 root checkout 完全不變。
+Apply 之前 root checkout 完全不變。若 run 失敗或無法安全套用，使用
+`ait recover latest`。
 
 ## 接下來
 
-- [在 worktree 裡跑 Claude Code](integrations/claude-code.md)
+- [安全地跑 Claude Code](integrations/claude-code.md)
 - [安全地跑 Codex CLI](integrations/codex.md)
 - [跑 Aider 帶 provenance](integrations/aider.md)
 - [指令參考](reference/commands.md)

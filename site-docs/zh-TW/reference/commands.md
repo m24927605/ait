@@ -1,8 +1,9 @@
 ---
 title: ait 指令參考
 description: >-
-  常用 ait 指令參考 — init、status、doctor、adapter、attempt、intent、
-  context、memory、graph、repair、upgrade、shell auto-activation。
+  常用 ait 指令參考 — init、run、apply、recover、status、doctor、
+  adapter、attempt、intent、memory、graph、repair、upgrade、shell
+  auto-activation。
 ---
 
 # 指令參考
@@ -27,16 +28,35 @@ ait adapter setup claude-code
 
 `claude-code` 可換成 `codex`、`aider`、`gemini`、`cursor`、`shell`。
 
+## 日常 run / apply flow
+
+```bash
+ait run --adapter claude-code --intent "重構 query parser" -- claude
+ait run --apply auto --adapter codex --intent "實作 parser edge cases" -- codex
+ait apply latest
+ait recover latest
+ait recover latest --debug
+```
+
+`ait apply` 是日常套用成功結果的入口。`ait recover` 是 held、failed、
+interrupted、conflicted 結果的日常復原入口。
+
 ## Attempts 與 intents
 
 ```bash
 ait attempt list
 ait attempt show <attempt-id>
-ait attempt promote <attempt-id> --to main
-ait attempt discard <attempt-id>
 
 ait intent show <intent-id>
 ait context <intent-id>
+```
+
+需要低階 Git 控制時，仍可使用進階 attempt 指令：
+
+```bash
+ait attempt promote <attempt-id> --to main
+ait attempt rebase <attempt-id> --onto main
+ait attempt discard <attempt-id>
 ```
 
 ## Memory

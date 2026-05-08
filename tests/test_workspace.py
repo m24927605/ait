@@ -18,6 +18,7 @@ from ait.workspace import (
     ref_contains_commits,
     remove_attempt_workspace,
 )
+from ait.workspace_lease import read_workspace_lease, workspace_lease_path
 
 
 class WorkspaceTests(unittest.TestCase):
@@ -84,6 +85,12 @@ class WorkspaceTests(unittest.TestCase):
                 _git_stdout(worktree_path, "rev-parse", "--verify", "HEAD"),
                 result.base_ref_oid,
             )
+            lease = read_workspace_lease(worktree_path)
+            self.assertIsNotNone(lease)
+            assert lease is not None
+            self.assertEqual(result.attempt_id, lease.attempt_id)
+            self.assertEqual(result.workspace_ref, lease.workspace_ref)
+            self.assertEqual("active", lease.state)
 
     def test_create_attempt_workspace_repairs_poetry_sibling_path_dependency(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -153,6 +160,7 @@ repo-b = { path = "../repo-b", develop = true }
 
             self.assertFalse(repaired_link.exists())
             self.assertFalse(metadata.exists())
+            self.assertFalse(workspace_lease_path(worktree_path).exists())
 
     def test_create_attempt_workspace_fails_when_source_path_dependency_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

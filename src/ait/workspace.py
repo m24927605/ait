@@ -11,6 +11,7 @@ from ait.python_env import (
     cleanup_python_project_environment,
     prepare_python_project_environment,
 )
+from ait.workspace_lease import create_workspace_lease, remove_workspace_lease
 
 
 class WorkspaceError(RuntimeError):
@@ -136,6 +137,15 @@ def create_attempt_workspace(
         _cleanup_failed_worktree_add(root, location.worktree_path)
         raise WorkspaceError(str(exc)) from exc
 
+    create_workspace_lease(
+        repo_root=root,
+        workspace_ref=location.worktree_path,
+        attempt_id=attempt_id,
+        base_ref_oid=base_ref_oid,
+        base_ref_name=base_ref_name,
+        owner_command="ait workspace",
+    )
+
     return AttemptWorkspaceResult(
         attempt_id=attempt_id,
         ordinal=ordinal,
@@ -160,6 +170,7 @@ def remove_attempt_workspace(workspace_ref: str | Path) -> None:
         cleanup_dev_servers_for_worktree(worktree_path)
     cleanup_python_project_environment(_python_env_metadata_path(worktree_path))
     if not worktree_path.exists():
+        remove_workspace_lease(worktree_path)
         return
     repo_root = _resolve_worktree_repo_root(worktree_path)
     _git_run(
@@ -169,6 +180,7 @@ def remove_attempt_workspace(workspace_ref: str | Path) -> None:
         "--force",
         str(worktree_path),
     )
+    remove_workspace_lease(worktree_path)
 
 
 def worktree_status_short(workspace_ref: str | Path) -> str:
@@ -417,8 +429,12 @@ def land_workspace_head(
         )
 
     _detach_worktree_if_needed(worktree_path)
-    _git_run(root, "update-ref", ref_name, head_oid)
-    _git_run(root, "checkout", branch_name)
+    head_branch = _git_stdout(root, "symbolic-ref", "--quiet", "HEAD", allow_failure=True)
+    if head_branch and head_branch == ref_name:
+        _git_run(root, "merge", "--ff-only", head_oid)
+    else:
+        _git_run(root, "update-ref", ref_name, head_oid)
+        _git_run(root, "checkout", branch_name)
 
     if _git_stdout(root, "rev-parse", "--verify", "HEAD") != head_oid:
         raise WorkspaceError(

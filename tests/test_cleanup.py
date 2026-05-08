@@ -20,6 +20,7 @@ from ait.app import (
 )
 from ait.cleanup import CleanupPolicy, cleanup_policy_from_config, cleanup_repo
 from ait.db import connect_db, update_attempt
+from ait.workspace_lease import create_workspace_lease
 
 
 class CleanupTests(unittest.TestCase):
@@ -51,6 +52,29 @@ class CleanupTests(unittest.TestCase):
             self.assertEqual("remove", item.action)
             self.assertTrue(item.deleted)
             self.assertGreaterEqual(report.reclaimed_bytes, 0)
+
+    def test_cleanup_retains_active_lease_for_orphan_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            create_intent(repo_root, title="Initialize AIT", description=None, kind="test")
+            workspace = repo_root / ".ait" / "workspaces" / "attempt-active-orphan"
+            workspace.mkdir(parents=True)
+            create_workspace_lease(
+                repo_root=repo_root,
+                workspace_ref=workspace,
+                attempt_id="repo:missing",
+                base_ref_oid=_git_stdout(repo_root, "rev-parse", "--verify", "HEAD"),
+                base_ref_name="main",
+                owner_command="ait test",
+            )
+
+            report = cleanup_repo(repo_root, CleanupPolicy(apply=True))
+
+            self.assertTrue(workspace.exists())
+            item = _item_for_path(report, workspace)
+            self.assertEqual("retain", item.action)
+            self.assertEqual("active-lease", item.reason)
 
     def test_cleanup_apply_handles_discarded_missing_worktree(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -573,3 +597,14 @@ def _git(repo_root: Path, *args: str) -> None:
         text=True,
         capture_output=True,
     )
+
+
+def _git_stdout(repo_root: Path, *args: str) -> str:
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=repo_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return completed.stdout.strip()

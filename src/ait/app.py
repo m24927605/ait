@@ -46,6 +46,7 @@ from ait.workspace import (
     remove_attempt_workspace,
     update_ref_to_workspace_head,
 )
+from ait.workspace_lease import update_workspace_lease
 
 
 @dataclass(slots=True)
@@ -227,6 +228,14 @@ def create_attempt(
                 agent_harness=harness_prefix,
             ),
         )
+        update_workspace_lease(
+            workspace.workspace_ref,
+            intent_id=intent_id,
+            repo_root=init_result.repo_root,
+            owner_command="ait run",
+            state="active",
+            clear_preserve_reason=True,
+        )
         if conn.in_transaction:
             conn.commit()
     except Exception:
@@ -335,6 +344,7 @@ def discard_attempt(repo_root: str | Path, *, attempt_id: str) -> AttemptShowRes
         refresh_intent_status(conn, attempt.intent_id)
     finally:
         conn.close()
+    update_workspace_lease(attempt.workspace_ref, state="discarded", clear_preserve_reason=True)
     remove_attempt_workspace(attempt.workspace_ref)
     return show_attempt(repo_root, attempt_id=attempt_id)
 
@@ -365,6 +375,12 @@ def promote_attempt(
         update_ref_to_workspace_head(init_result.repo_root, ref_name, attempt.workspace_ref)
         update_attempt(conn, attempt_id, result_promotion_ref=ref_name)
         verify_attempt_with_connection(conn, init_result.repo_root, attempt_id)
+        update_workspace_lease(
+            attempt.workspace_ref,
+            state="applied",
+            cleanup_policy="auto",
+            clear_preserve_reason=True,
+        )
         local_artifacts = reconcile_local_artifacts(attempt.workspace_ref, init_result.repo_root) if materializes_current_branch else None
     finally:
         conn.close()
@@ -427,6 +443,13 @@ def land_attempt(
         if local_artifacts.cleanup_allowed:
             remove_attempt_workspace(attempt.workspace_ref)
             worktree_cleaned = True
+        else:
+            update_workspace_lease(
+                attempt.workspace_ref,
+                state="applied",
+                cleanup_policy="hold",
+                preserve_reason="local artifacts require review before cleanup",
+            )
     finally:
         conn.close()
 
@@ -486,6 +509,13 @@ def rebase_attempt(
             base_ref_oid=result.base_ref_oid,
             base_ref_name=result.onto_ref,
         )
+        update_workspace_lease(
+            attempt.workspace_ref,
+            base_ref_oid=result.base_ref_oid,
+            base_ref_name=result.onto_ref,
+            state="succeeded" if attempt.reported_status == "finished" else "active",
+            clear_preserve_reason=True,
+        )
         if attempt.reported_status == "finished":
             verify_attempt_with_connection(conn, init_result.repo_root, attempt_id)
     finally:
@@ -540,6 +570,12 @@ def create_commit_for_attempt(
             ended_at=utc_now(),
             result_exit_code=0,
         )
+        update_workspace_lease(
+            attempt.workspace_ref,
+            state="succeeded",
+            cleanup_policy="auto",
+            clear_preserve_reason=True,
+        )
     finally:
         conn.close()
     return verify_attempt(repo_root, attempt_id=attempt_id)
@@ -593,3 +629,30 @@ def supersede_intent(
     finally:
         conn.close()
     return show_intent(repo_root, intent_id=intent_id)
+
+
+def apply_attempt(
+    repo_root: str | Path,
+    *,
+    attempt_selector: str = "latest",
+    target_ref: str | None = None,
+    mode: str = "auto",
+):
+    from ait.landing import apply_attempt as _apply_attempt
+
+    return _apply_attempt(
+        repo_root,
+        attempt_selector=attempt_selector,
+        target_ref=target_ref,
+        mode=mode,
+    )
+
+
+def recover_attempt(
+    repo_root: str | Path,
+    *,
+    attempt_selector: str = "latest",
+):
+    from ait.recovery import recover_attempt as _recover_attempt
+
+    return _recover_attempt(repo_root, attempt_selector=attempt_selector)

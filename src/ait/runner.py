@@ -29,6 +29,7 @@ from ait.runner_transcript import (
     _write_command_transcript,
 )
 from ait.workspace import WorkspaceError, create_attempt_commit
+from ait.workspace_lease import update_workspace_lease
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,6 +107,13 @@ def run_agent_command(
         kind=kind or f"{adapter.name}-run",
     )
     attempt = create_attempt(root, intent_id=intent.intent_id, agent_id=resolved_agent_id)
+    update_workspace_lease(
+        attempt.workspace_ref,
+        owner_pid=os.getpid(),
+        owner_command="ait run",
+        state="active",
+        clear_preserve_reason=True,
+    )
     workspace = Path(attempt.workspace_ref)
     _record_command_as_prompt(
         root,
@@ -281,6 +289,12 @@ def run_agent_command(
         refresh_run_reports(root, latest_attempt_id=attempt.attempt_id)
     except Exception:
         pass
+    update_workspace_lease(
+        attempt.workspace_ref,
+        state=_lease_state_for_run_result(shown.attempt.get("verified_status"), effective_exit_code),
+        cleanup_policy="auto",
+        clear_preserve_reason=True,
+    )
 
     return RunResult(
         intent_id=intent.intent_id,
@@ -298,6 +312,14 @@ def _add_attempt_memory_note_with_warning(repo_root: Path, shown: AttemptShowRes
         add_attempt_memory_note(repo_root, shown)
     except Exception as exc:
         print(f"ait warning: add_attempt_memory_note failed: {exc}", file=sys.stderr)
+
+
+def _lease_state_for_run_result(verified_status: object, exit_code: int) -> str:
+    if verified_status == "promoted":
+        return "applied"
+    if verified_status == "succeeded" and exit_code == 0:
+        return "succeeded"
+    return "failed"
 
 
 def _record_command_as_prompt(
@@ -384,6 +406,12 @@ def _finish_attempt_locally(
                 "ownership_token": attempt.ownership_token,
                 "payload": payload,
             },
+        )
+        update_workspace_lease(
+            attempt.workspace_ref,
+            state="failed" if exit_code else "active",
+            owner_pid=os.getpid(),
+            owner_command="ait run",
         )
     finally:
         conn.close()

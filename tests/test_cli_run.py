@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from ait import cli
+from ait.app import init_repo
 from ait.db import (
     connect_db,
     insert_attempt,
@@ -84,6 +85,8 @@ class CliRunTests(unittest.TestCase):
         payload = json.loads(stdout.getvalue())
         self.assertEqual(0, exit_code)
         self.assertEqual(0, payload["exit_code"])
+        self.assertIn("workspace_ref", payload)
+        self.assertIn(".ait/workspaces", payload["workspace_ref"])
         self.assertEqual("agent out\n", payload["command_stdout"])
         self.assertEqual("agent err\n", payload["command_stderr"])
 
@@ -211,8 +214,118 @@ class CliRunTests(unittest.TestCase):
 
         self.assertEqual(0, exit_code)
         self.assertEqual("", stdout.getvalue())
-        self.assertIn("AIT run", stderr.getvalue())
+        self.assertIn("AIT run finished", stderr.getvalue())
         self.assertIn("Exit code: 0", stderr.getvalue())
+        self.assertIn("Next: ait apply latest", stderr.getvalue())
+        self.assertNotIn(".ait/workspaces", stderr.getvalue())
+
+    def test_run_apply_auto_text_applies_result_without_workspace_noise(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            _init_ait_and_commit_gitignore(repo_root)
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "run",
+                        "--format",
+                        "text",
+                        "--apply",
+                        "auto",
+                        "--intent",
+                        "Apply generated change",
+                        "--",
+                        sys.executable,
+                        "-c",
+                        "from pathlib import Path; Path('agent.txt').write_text('ok\\n')",
+                    ],
+                ):
+                    with redirect_stdout(stdout), redirect_stderr(stderr):
+                        exit_code = cli.main()
+
+            text = stderr.getvalue()
+            self.assertEqual(0, exit_code)
+            self.assertEqual("", stdout.getvalue())
+            self.assertTrue((repo_root / "agent.txt").exists())
+            self.assertIn("Status: applied", text)
+            self.assertIn("Cleanup: internal workspace removed", text)
+            self.assertNotIn(".ait/workspaces", text)
+
+    def test_run_apply_auto_json_keeps_run_and_apply_workspace_refs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            _init_ait_and_commit_gitignore(repo_root)
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "run",
+                        "--format",
+                        "json",
+                        "--apply",
+                        "auto",
+                        "--intent",
+                        "Apply JSON change",
+                        "--",
+                        sys.executable,
+                        "-c",
+                        "from pathlib import Path; Path('json-agent.txt').write_text('ok\\n')",
+                    ],
+                ):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(0, exit_code)
+            self.assertEqual("auto", payload["run_apply_policy"])
+            self.assertIn(".ait/workspaces", payload["workspace_ref"])
+            self.assertEqual("applied", payload["apply"]["status"])
+            self.assertIn(".ait/workspaces", payload["apply"]["workspace_ref"])
+
+    def test_run_uses_repo_config_apply_policy_when_cli_omits_apply(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            _init_ait_and_commit_gitignore(repo_root)
+            config_path = repo_root / ".ait" / "config.json"
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            config["run"] = {"apply": "auto"}
+            config_path.write_text(json.dumps(config), encoding="utf-8")
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "run",
+                        "--format",
+                        "json",
+                        "--intent",
+                        "Configured apply",
+                        "--",
+                        sys.executable,
+                        "-c",
+                        "from pathlib import Path; Path('configured.txt').write_text('ok\\n')",
+                    ],
+                ):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(0, exit_code)
+            self.assertEqual("auto", payload["run_apply_policy"])
+            self.assertEqual("applied", payload["apply"]["status"])
+            self.assertTrue((repo_root / "configured.txt").exists())
 
     def test_query_parse_error_returns_cli_error_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1435,6 +1548,14 @@ def _init_git_repo(repo_root: Path) -> None:
     (repo_root / "README.md").write_text("hello\n", encoding="utf-8")
     subprocess.run(["git", "add", "README.md"], cwd=repo_root, check=True, capture_output=True)
     subprocess.run(["git", "commit", "-m", "init"], cwd=repo_root, check=True, capture_output=True)
+
+
+def _init_ait_and_commit_gitignore(repo_root: Path) -> None:
+    init_repo(repo_root)
+    gitignore = repo_root / ".gitignore"
+    if gitignore.exists() and _git_stdout(repo_root, "status", "--short", "--", ".gitignore"):
+        _git(repo_root, "add", ".gitignore")
+        _git(repo_root, "commit", "-m", "ignore ait state")
 
 
 def _git_stdout(repo_root: Path, *args: str) -> str:

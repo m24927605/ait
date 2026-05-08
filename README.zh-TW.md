@@ -4,9 +4,8 @@
 
 ### 給 AI coding agents 使用的 Git-native 安全工作流
 
-讓 Claude Code、Codex、Aider、Gemini、Cursor 在隔離的 Git worktree
-中執行，並保留可追溯的 commits、可 review 的 attempts，以及 repo-local
-memory。
+讓 Claude Code、Codex、Aider、Gemini、Cursor 在隔離環境中執行，並
+保留可追溯的 commits、可 review 的 attempts，以及 repo-local memory。
 
 <sub>[English](README.md) · [繁體中文](README.zh-TW.md)</sub>
 
@@ -24,8 +23,8 @@ AI agents 很快，但 Git history、review discipline、handoff context
 通常跟不上。
 
 `ait` 會包住你已經在用的 agent CLI，並把每次執行變成一個可 review
-的 attempt。Agent 會在隔離的 worktree 裡改檔，`ait` 會記錄發生了什麼；
-在你明確 promote 之前，主要 checkout 不會被碰到。
+的 attempt。Agent 會在隔離環境裡改檔，`ait` 會記錄發生了什麼；在你明確
+apply 之前，主要 checkout 不會被碰到。
 
 ```bash
 pipx install ait-vcs
@@ -53,10 +52,10 @@ PyPI 與 npm 上的套件名稱是 `ait-vcs`，安裝後的指令是 `ait`。
 | --- | --- |
 | 一個爛 prompt 在你發現前就改了半個 repo | 每次執行都落在隔離的 Git worktree — root checkout 永遠不動 |
 | diff 沒有 provenance — 不知道是哪個 prompt 產的 | Attempt 把 intent、command output、files、commits 串成一筆紀錄 |
-| 失敗或半成品的執行污染了 working copy | 爛 attempt 留在 worktree 裡，`ait attempt discard` 一鍵清掉 |
+| 失敗或半成品的執行污染了 working copy | 爛 attempt 會被保留成可復原狀態，`ait recover latest` 可查看 |
 | 下一個 agent 又重做你已經花 token 買過的調查 | Repo-local memory 把過去 attempts、commits 餵給下一次執行 |
 | 兩個 agent 跑同一件事會互相覆蓋 | 每個 attempt 自帶 worktree — 可平行跑 N 個 agent |
-| Agent 說「修好了」，但真的修好了嗎？ | 顯式 `ait attempt promote` — 不主動採納，主分支永遠由你決定 |
+| Agent 說「修好了」，但真的修好了嗎？ | 顯式 `ait apply latest` — 不主動採納，主分支永遠由你決定 |
 | 跨 agent hand-off 會弄丟之前所有的決策 | Memory layer 自動匯入 `CLAUDE.md`、`AGENTS.md`、過往 attempts |
 | Provenance 工具強迫你把 code 上傳到 SaaS | Metadata 就在 `.git/` 旁的 `.ait/` — daemon 純本機 Unix socket、不對外連網、無 telemetry |
 | 「上個月寫過的那個 prompt 在哪？」→ grep shell history | 用結構化 DSL 直接查 attempts、intents、commits |
@@ -82,31 +81,32 @@ gemini ...
 cursor ...
 ```
 
-Agent 成功執行後，查看 attempt：
+Agent 成功執行後，查看結果：
 
 ```bash
 ait status
-ait attempt show <attempt-id>
+ait recover latest --debug   # 需要低階細節時才用
 ```
 
-確認沒問題後再 promote：
+確認沒問題後再 apply：
 
 ```bash
-ait attempt promote <attempt-id> --to main
+ait apply latest
 ```
 
-在 promote 之前，你的 root checkout 會保持不變。
+在 apply 之前，你的 root checkout 會保持不變。若你的本地修改與結果重疊，
+AIT 會保守 hold 並保留 recovery handle，不會自動 stash 或覆蓋你的檔案。
 
 ## 核心功能
 
 | 功能 | 說明 |
 | --- | --- |
-| Worktree isolation | Agent 的修改會發生在 root checkout 之外 |
+| Worktree isolation | Agent 的修改會發生在 root checkout 之外；worktree 是內部細節 |
 | Attempt provenance | commands、status、output、changed files、commits 會被串在一起 |
 | Agent wrappers | repo-local 的 `claude`、`codex`、`aider`、`gemini`、`cursor` wrappers |
 | Auto commit capture | 成功的修改會變成 attempt-linked commits；若 agent 已 commit，ait 不會重複 commit |
 | Local memory | 過去的 attempts、commits、notes、imported agent memory 會提供給後續 runs |
-| Review flow | 用 Git 概念 inspect、promote、discard、rebase、query attempts |
+| Review flow | 用 `apply`、`recover`、inspect、query 管理日常 attempt flow |
 
 ## 快速範例
 
@@ -146,22 +146,23 @@ ait repair codex
 
 ## 整合（Integrations）
 
-`ait` 為主流 AI coding agent 提供 first-class adapter，把每次執行都包進
-獨立的 Git worktree，並把過程記錄在 `.ait/`。
+`ait` 為主流 AI coding agent 提供 first-class adapter，把每次執行都放進
+隔離環境，並把過程記錄在 `.ait/`。
 
 `ait init` 會掃 `$PATH` 上每個支援的 agent CLI 並一次裝好——repo-local
 wrapper 在 `.ait/bin/`、hook 設定 merge 進對應的 `.claude/`、`.codex/`、
 `.gemini/`。下面各 adapter 範例都假設你已跑過 `ait init`。要顯式重跑某
 個 agent 的 setup（例如 agent 升級後），用 `ait adapter setup <name>`。
 
-### 在 Git worktree 中執行 Claude Code
+### 安全地執行 Claude Code
 
 ```bash
 claude -p --permission-mode bypassPermissions "Refactor the auth module"
 ```
 
 `ait` 會把 prompt、變更檔案、執行狀態與 commits 紀錄為一次 attempt。確認
-diff 後再用 `ait attempt promote <id> --to main` 推上主線。
+結果後用 `ait apply latest` 套用；若想讓安全結果自動套用，可用
+`ait run --apply auto ...`。
 
 ### 安全地在真實 repo 跑 Codex CLI
 
@@ -169,16 +170,16 @@ diff 後再用 `ait attempt promote <id> --to main` 推上主線。
 ait run --adapter codex --intent "Implement parser edge cases" -- codex
 ```
 
-每個 Codex session 都在隔離 worktree 裡編輯。失敗的 attempt 會留下供
-檢查；只有 promote 過的 attempt 會碰到 root checkout。
+每個 Codex session 都在隔離環境裡編輯。失敗的 attempt 會留下供
+recover；只有 apply 過的 attempt 會碰到 root checkout。
 
-### 在隔離 worktree 中跑 Aider
+### 在隔離環境中跑 Aider
 
 ```bash
 ait run --adapter aider --intent "Fix auth expiry" -- aider src/auth.py
 ```
 
-Aider 的 commits 落在 attempt worktree 內，附帶完整的 prompt、檔案、
+Aider 的 commits 會被捕捉成 attempt result，附帶完整的 prompt、檔案、
 commit 對應關係。
 
 ### Gemini CLI 搭配 attempt 歷史
@@ -196,8 +197,8 @@ Gemini 的 session 與 Claude Code、Codex 一樣會被記錄成 attempt。日�
 ait run --adapter cursor --intent "Migrate to new SDK" -- cursor
 ```
 
-Cursor 的編輯被限制在 attempt worktree 內。Attempt log 保留變更檔案、
-退出狀態與 commits，方便審核與 promote。
+Cursor 的編輯在 apply 之前不會進入 root checkout。Attempt log 保留變更
+檔案、退出狀態與 commits，方便審核與 recover。
 
 ### 包裝其他 shell agent
 
@@ -218,13 +219,13 @@ your prompt
 agent CLI wrapped by ait
     |
     v
-isolated attempt worktree
+internal isolated workspace
     |
     v
 attempt metadata + commits + memory
     |
     v
-review, promote, discard, or rebase
+review、apply、recover 或 inspect
 ```
 
 被包住的 process 會收到：

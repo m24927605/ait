@@ -82,7 +82,7 @@ def list_intent_attempts(conn: sqlite3.Connection, intent_id: str) -> list[Attem
 
 def list_attempts(conn: sqlite3.Connection) -> list[AttemptRecord]:
     rows = conn.execute(
-        "SELECT * FROM attempts ORDER BY started_at ASC, ordinal ASC"
+        "SELECT * FROM attempts ORDER BY started_at ASC, rowid ASC"
     ).fetchall()
     return [_row_to_attempt(row) for row in rows]
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ._shared import *
+from ait.cli.status_helpers import _status_payload_with_recovery
 
 
 def handle(args, repo_root: Path, parser=None) -> int:
@@ -149,10 +150,11 @@ def handle(args, repo_root: Path, parser=None) -> int:
             installation=_installation_payload(),
             daemon=_daemon_status_payload(repo_root),
         )
+        payload = _status_payload_with_recovery(payload, repo_root)
         if args.format == "json":
             print(json.dumps(payload, indent=2))
         else:
-            print(_format_status(payload))
+            print(_format_status(payload, debug=args.debug))
             _maybe_emit_automation_hint(args, repo_root, result)
         return 0
     if args.command == "repair":

@@ -45,20 +45,48 @@ from ait.cli_installation import (
 )
 
 
-def _format_run_result(result) -> str:
+def _format_run_result(result, *, apply_result=None) -> str:
     attempt = result.attempt.attempt
     outcome = result.attempt.outcome or {}
-    return "\n".join(
-        [
-            "AIT run",
-            f"Intent: {result.intent_id}",
-            f"Attempt: {result.attempt_id}",
-            f"Workspace: {result.workspace_ref}",
-            f"Exit code: {result.exit_code}",
-            f"Status: {attempt.get('verified_status')}",
-            f"Outcome: {outcome.get('outcome_class', 'unclassified')}",
-        ]
-    )
+    changed = result.attempt.files.get("changed", ())
+    status = apply_result.status if apply_result is not None and apply_result.status == "applied" else attempt.get("verified_status")
+    lines = [
+        "AIT run finished",
+        f"Status: {status}",
+        f"Exit code: {result.exit_code}",
+        f"Changed: {len(changed)} files",
+        f"Outcome: {outcome.get('outcome_class', 'unclassified')}",
+        f"Attempt: {result.attempt_id.rsplit(':', 1)[-1]}",
+    ]
+    if apply_result is not None:
+        if apply_result.status == "applied":
+            lines.append(f"Branch: {apply_result.branch or 'current'}")
+            if apply_result.worktree_cleaned:
+                lines.append("Cleanup: internal workspace removed")
+            elif apply_result.cleanup_reason:
+                lines.append(f"Cleanup: {apply_result.cleanup_reason}")
+        else:
+            lines.extend(
+                [
+                    "Result: kept for recovery",
+                    "Next: ait recover latest",
+                ]
+            )
+    elif result.exit_code == 0 and status == "succeeded":
+        lines.extend(
+            [
+                "Result: ready to apply",
+                "Next: ait apply latest",
+            ]
+        )
+    elif status in {"failed", "pending"}:
+        lines.extend(
+            [
+                "Result: kept for recovery",
+                "Next: ait recover latest",
+            ]
+        )
+    return "\n".join(lines)
 
 def _format_shell_integration(action: str, result) -> str:
     state = "changed" if result.changed else "already current"

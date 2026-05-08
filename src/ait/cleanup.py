@@ -10,8 +10,14 @@ import subprocess
 from ait.config import local_config_path
 from ait.db import connect_db, list_attempts, run_migrations
 from ait.db.records import AttemptRecord
+from ait.dev_server import list_dev_servers
 from ait.repo import resolve_repo_root
 from ait.workspace import get_workspaces_root, remove_attempt_workspace
+from ait.workspace_lease import (
+    lease_owner_alive,
+    read_workspace_lease,
+    remove_workspace_lease,
+)
 
 
 DEFAULT_FAILED_RETENTION_DAYS = 14
@@ -222,7 +228,51 @@ def _evaluate_worktree(
     size = _path_size(resolved)
     if not _path_is_inside(resolved, workspaces_root):
         return _item(resolved, attempt, "skip", "outside-ait-root", size=size)
+    lease = read_workspace_lease(resolved)
+    lease_block = _lease_cleanup_block(lease, attempt)
+    if lease_block is not None:
+        action, reason = lease_block
+        if attempt is None:
+            return CleanupItem(
+                path=str(resolved),
+                kind="orphan",
+                attempt_id=None,
+                reported_status=None,
+                verified_status=None,
+                action=action,
+                reason=reason,
+                dirty=False,
+                bytes=size,
+            )
+        return _item(resolved, attempt, action, reason, size=size)
+    if _has_active_dev_server(workspaces_root, resolved):
+        if attempt is None:
+            return CleanupItem(
+                path=str(resolved),
+                kind="orphan",
+                attempt_id=None,
+                reported_status=None,
+                verified_status=None,
+                action="retain",
+                reason="active-dev-server",
+                dirty=False,
+                bytes=size,
+            )
+        return _item(resolved, attempt, "retain", "active-dev-server", size=size)
     if attempt is None:
+        dirty = _is_dirty_worktree(resolved)
+        if dirty and not policy.force:
+            return CleanupItem(
+                path=str(resolved),
+                kind="orphan",
+                attempt_id=None,
+                reported_status=None,
+                verified_status=None,
+                action="skip",
+                reason="dirty-orphan",
+                dirty=True,
+                bytes=size,
+            )
         action = "remove" if policy.include_orphans else "skip"
         return CleanupItem(
             path=str(resolved),
@@ -232,7 +282,7 @@ def _evaluate_worktree(
             verified_status=None,
             action=action,
             reason="unknown-attempt",
-            dirty=False,
+            dirty=dirty,
             bytes=size,
         )
     if attempt.reported_status in {"created", "running"}:
@@ -247,6 +297,28 @@ def _evaluate_worktree(
     return _item(resolved, attempt, action, reason, dirty=dirty, size=size)
 
 
+def _lease_cleanup_block(lease, attempt: AttemptRecord | None) -> tuple[str, str] | None:
+    if lease is None:
+        return None
+    if lease.preserve_reason:
+        return "skip", "lease-preserved"
+    if (
+        lease.state == "active"
+        and lease_owner_alive(lease)
+        and attempt is None
+    ):
+        return "retain", "active-lease"
+    if lease.state in {"conflict", "orphan"}:
+        return "retain", lease.state
+    if (
+        lease.state == "active"
+        and attempt is not None
+        and attempt.reported_status in {"created", "running"}
+    ):
+        return "retain", "active"
+    return None
+
+
 def _terminal_decision(attempt: AttemptRecord, policy: CleanupPolicy) -> tuple[str, str]:
     if attempt.verified_status in {"promoted", "discarded"}:
         return "remove", attempt.verified_status
@@ -257,6 +329,22 @@ def _terminal_decision(attempt: AttemptRecord, policy: CleanupPolicy) -> tuple[s
             return "remove", "stale-failed"
         return "retain", "retention-window"
     return "retain", "reviewable"
+
+
+def _has_active_dev_server(workspaces_root: Path, worktree_path: Path) -> bool:
+    repo_root = workspaces_root.parent.parent
+    try:
+        records = list_dev_servers(repo_root)
+    except Exception:
+        return False
+    resolved = worktree_path.resolve()
+    for record in records:
+        try:
+            if Path(record.worktree_path).resolve() == resolved:
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def _older_than_retention(attempt: AttemptRecord, days: int) -> bool:
@@ -306,6 +394,7 @@ def _delete_worktree_item(item: CleanupItem, attempt: AttemptRecord | None) -> C
     try:
         if attempt is None:
             shutil.rmtree(item.path, ignore_errors=False)
+            remove_workspace_lease(item.path)
         else:
             remove_attempt_workspace(attempt.workspace_ref)
     except Exception as exc:
@@ -380,8 +469,15 @@ def _replace_item(item: CleanupItem, **changes: object) -> CleanupItem:
 def _is_dirty_worktree(path: Path) -> bool:
     if not path.exists():
         return False
+    if not _is_git_toplevel(path):
+        return False
     output = _git_stdout(path, "status", "--porcelain", "--untracked-files=all", allow_failure=True)
     return bool(output.strip())
+
+
+def _is_git_toplevel(path: Path) -> bool:
+    top = _git_stdout(path, "rev-parse", "--show-toplevel", allow_failure=True)
+    return bool(top) and Path(top).resolve() == path.resolve()
 
 
 def _path_size(path: Path) -> int:

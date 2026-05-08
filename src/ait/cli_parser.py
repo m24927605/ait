@@ -47,7 +47,10 @@ def build_parser() -> argparse.ArgumentParser:
     intent_list.add_argument("--offset", type=int, default=0)
     intent_list.add_argument("--format", choices=("table", "jsonl"), default="table")
 
-    attempt_parser = subparsers.add_parser("attempt")
+    attempt_parser = subparsers.add_parser(
+        "attempt",
+        help="advanced attempt inspection and low-level Git operations",
+    )
     attempt_subparsers = attempt_parser.add_subparsers(dest="attempt_command")
     attempt_new = attempt_subparsers.add_parser("new")
     attempt_new.add_argument("intent_id")
@@ -89,7 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
     blame_parser = subparsers.add_parser("blame")
     blame_parser.add_argument("target")
 
-    cleanup_parser = subparsers.add_parser("cleanup")
+    cleanup_parser = subparsers.add_parser("cleanup", help="inspect or remove safe internal AIT state")
     cleanup_parser.add_argument("--apply", action="store_true")
     cleanup_parser.add_argument("--force", action="store_true")
     cleanup_parser.add_argument("--format", choices=("text", "json"), default="text")
@@ -98,7 +101,29 @@ def build_parser() -> argparse.ArgumentParser:
     cleanup_parser.add_argument("--artifacts", action="store_true")
     cleanup_parser.add_argument("--worktrees", action="store_true", default=True)
 
-    run_parser = subparsers.add_parser("run")
+    apply_parser = subparsers.add_parser("apply", help="apply a successful AIT result")
+    apply_parser.add_argument("attempt_id", nargs="?", default="latest")
+    apply_parser.add_argument("--to", help="target branch for the result")
+    apply_parser.add_argument(
+        "--mode",
+        choices=("auto", "current", "branch", "none"),
+        default="auto",
+        help="apply strategy: auto, current checkout, non-current branch, or hold",
+    )
+    apply_parser.add_argument("--format", choices=("text", "json"), default="text")
+    apply_parser.add_argument("--debug", action="store_true", help="include internal workspace details")
+
+    recover_parser = subparsers.add_parser("recover", help="show the latest held or failed AIT result")
+    recover_parser.add_argument("attempt_id", nargs="?", default="latest")
+    recover_parser.add_argument("--retry-apply", action="store_true", help="try applying the recoverable result again")
+    recover_parser.add_argument("--create-integration", action="store_true", help="create an integration attempt for local-overlap recovery")
+    recover_parser.add_argument("--auto-integrate", action="store_true", help="create an integration attempt and run enabled automatic integration steps")
+    recover_parser.add_argument("--test", dest="integration_test_command", help="validation command to run inside the integration attempt")
+    recover_parser.add_argument("--discard", action="store_true", help="discard a clean recoverable result")
+    recover_parser.add_argument("--format", choices=("text", "json"), default="text")
+    recover_parser.add_argument("--debug", action="store_true", help="include internal workspace details")
+
+    run_parser = subparsers.add_parser("run", help="run an agent command in an isolated AIT attempt")
     run_parser.add_argument("--adapter", choices=tuple(sorted(ADAPTERS)), default="shell")
     run_parser.add_argument("--agent")
     run_parser.add_argument("--intent")
@@ -106,6 +131,11 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--description")
     run_parser.add_argument("--commit-message")
     run_parser.add_argument("--no-auto-commit", action="store_true")
+    run_parser.add_argument(
+        "--apply",
+        choices=("never", "auto", "current", "branch"),
+        help="apply policy after a successful run; defaults to repo config or never",
+    )
     run_parser.add_argument("--with-context", action="store_true")
     run_parser.add_argument("--format", choices=("json", "text"), default="json")
     run_parser.add_argument("--port", type=int, action="append", dest="dev_ports")
@@ -242,6 +272,7 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser.add_argument("name", choices=tuple(sorted(ADAPTERS)), nargs="?", default="claude-code")
     status_parser.add_argument("--format", choices=("text", "json"), default="text")
     status_parser.add_argument("--all", action="store_true", dest="all_adapters")
+    status_parser.add_argument("--debug", action="store_true", help="include recovery and workspace decision details")
 
     upgrade_parser = subparsers.add_parser("upgrade")
     upgrade_parser.add_argument("--dry-run", action="store_true")

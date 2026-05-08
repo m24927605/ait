@@ -22,16 +22,16 @@
 **`ait` is a Git-native version control layer for AI coding agents
 (Claude Code, Codex CLI, Aider, Gemini CLI, Cursor) — adding worktree
 isolation, attempt provenance, cross-agent memory, and reviewable
-promotion on top of Git. Open source (MIT), Python 3.14+,
+apply/recover flow on top of Git. Open source (MIT), Python 3.14+,
 dependency-free, no SaaS, no telemetry.**
 
 AI agents are fast. Git history, review discipline, and handoff
 context often are not. `ait` closes that gap as a thin layer on top
 of Git — it is not an agent and not a Git replacement. It wraps the
 agent CLIs you already use and turns each run into a reviewable
-attempt: the agent edits an isolated worktree, `ait` records what
-happened, and your main checkout stays untouched until you promote
-the result.
+attempt: the agent edits in an internal isolated environment, `ait`
+records what happened, and your main checkout stays untouched until you
+apply the result.
 
 ```bash
 pipx install ait-vcs
@@ -60,10 +60,10 @@ The package is named `ait-vcs` on PyPI and npm. The installed command is
 | --- | --- |
 | A bad prompt rewrites half your repo before you notice | Each run lands in an isolated Git worktree — your root checkout never moves |
 | The diff has no useful provenance — which prompt produced it? | Attempts link intent, command output, files, and commits in one record |
-| Failed or partial runs leave your working copy half-broken | Bad attempts stay isolated; `ait attempt discard` removes them in one command |
+| Failed or partial runs leave your working copy half-broken | Bad attempts stay recoverable; `ait recover latest` shows what AIT kept |
 | The next agent repeats investigation you already paid tokens for | Repo-local memory feeds prior attempts and commits to the next run |
 | Two agents on the same task stomp each other | Each attempt has its own worktree — run N agents in parallel |
-| Did the agent really fix it, or just claim it did? | Explicit `ait attempt promote` keeps speculative changes out of main until you decide |
+| Did the agent really fix it, or just claim it did? | Explicit `ait apply latest` keeps speculative changes out of main until you decide |
 | Cross-agent hand-offs lose every previous decision | Memory layer auto-imports `CLAUDE.md`, `AGENTS.md`, and prior attempts |
 | Provenance tooling wants to ship your code to a SaaS | Metadata stays in `.ait/` next to `.git/` — harness daemon is local-only (Unix socket, no network), no telemetry |
 | "Where's that prompt I wrote last month?" → grep shell history | Query attempts, intents, and commits with a structured DSL |
@@ -90,22 +90,24 @@ gemini ...
 cursor ...
 ```
 
-After a successful wrapped run, inspect the attempt:
+After a successful wrapped run, inspect the result:
 
 ```bash
 ait status
-ait attempt show <attempt-id>
+ait recover latest --debug   # optional low-level details
 ```
 
-Promote only when you are ready:
+Apply only when you are ready:
 
 ```bash
-ait attempt promote <attempt-id> --to main
+ait apply latest
 ```
 
-Until promotion, your root checkout stays unchanged.
+Until apply, your root checkout stays unchanged. If apply is unsafe
+because your local edits overlap with the result, AIT holds the result
+for recovery instead of stashing or overwriting your work.
 
-Inspect cleanup candidates before reclaiming old attempt worktrees:
+Inspect cleanup candidates before reclaiming old internal workspaces:
 
 ```bash
 ait cleanup
@@ -113,20 +115,20 @@ ait cleanup --apply
 ```
 
 `ait cleanup` defaults to a dry run. Apply mode removes safe terminal
-worktrees such as promoted or discarded attempts while retaining active,
+workspaces such as applied or discarded attempts while retaining active,
 pending, and reviewable attempts by default.
 
 ## Core Features
 
 | Feature | Description |
 | --- | --- |
-| Worktree isolation | Agent edits happen away from your root checkout |
+| Worktree isolation | Agent edits happen away from your root checkout; worktrees are an internal detail |
 | Attempt provenance | Commands, status, output, changed files, and commits stay linked |
 | Agent wrappers | Repo-local `claude`, `codex`, `aider`, `gemini`, and `cursor` wrappers |
 | Auto commit capture | Successful changes become attempt-linked commits, without duplicating existing commits |
-| Cleanup dry-run | Inspect and reclaim safe terminal attempt worktrees without touching reviewable work |
+| Cleanup dry-run | Inspect and reclaim safe terminal attempt workspaces without touching reviewable work |
 | Local memory | Prior attempts, commits, notes, and imported agent memory feed future runs |
-| Review flow | Promote, discard, rebase, inspect, and query attempts using normal Git concepts |
+| Review flow | Apply, recover, inspect, and query attempts without managing worktrees by hand |
 
 ## Quick Examples
 
@@ -177,15 +179,16 @@ sections below assume you already ran `ait init`. To re-run setup
 explicitly (e.g. after upgrading an agent), use `ait adapter setup
 <name>`.
 
-### Run Claude Code in a Git worktree
+### Run Claude Code safely
 
 ```bash
 claude -p --permission-mode bypassPermissions "Refactor the auth module"
 ```
 
 `ait` captures the prompt, edited files, status, and resulting commits as
-one attempt. Promote it with `ait attempt promote <id> --to main` once you
-are happy with the diff.
+one attempt. Apply it with `ait apply latest` once you are happy with the
+result, or use `ait run --apply auto ...` when you want safe results
+applied immediately.
 
 ### Run Codex CLI safely on a real repository
 
@@ -193,16 +196,16 @@ are happy with the diff.
 ait run --adapter codex --intent "Implement parser edge cases" -- codex
 ```
 
-Each Codex session edits an isolated worktree. Failed attempts are kept
-for inspection; only promoted attempts touch your root checkout.
+Each Codex session edits in isolation. Failed attempts are kept for
+recovery; only applied attempts touch your root checkout.
 
-### Run Aider in an isolated worktree
+### Run Aider in isolation
 
 ```bash
 ait run --adapter aider --intent "Fix auth expiry" -- aider src/auth.py
 ```
 
-Aider's commits land inside the attempt worktree, with full provenance
+Aider's commits are captured as attempt results, with full provenance
 linking the prompt, edited files, and commits.
 
 ### Run Gemini CLI with attempt history
@@ -220,9 +223,9 @@ Codex. `ait memory recall` later surfaces what each agent tried.
 ait run --adapter cursor --intent "Migrate to new SDK" -- cursor
 ```
 
-Cursor edits are confined to an attempt worktree. The attempt log keeps
+Cursor edits are confined until you apply them. The attempt log keeps
 the changed files, exit status, and commits available for review and
-promotion.
+recovery.
 
 ### Wrap any other shell agent
 
@@ -240,9 +243,9 @@ agent or script.
 
 | You already use | `ait` adds |
 | --- | --- |
-| **Naked `git worktree` + manual cleanup** | Auto-provisioned worktrees, attempt records, `discard`/`promote` verbs, queryable history — see [ait vs naked git-worktree](https://m24927605.github.io/ait/compare/git-worktree-naked-vs-ait/) |
+| **Naked `git worktree` + manual cleanup** | Auto-managed internal workspaces, attempt records, `apply`/`recover` verbs, queryable history — see [ait vs naked git-worktree](https://m24927605.github.io/ait/compare/git-worktree-naked-vs-ait/) |
 | **Aider's `--auto-commits`** | Outer-layer attempt history (Aider commits land *inside* an `ait` attempt), cross-session memory, multi-agent handoff |
-| **Claude Code's built-in worktrees** | Cross-agent (not Claude-only), structured attempt records, query DSL, explicit `discard`/`promote` |
+| **Claude Code's built-in worktrees** | Cross-agent (not Claude-only), structured attempt records, query DSL, explicit `apply`/`recover` |
 | **SaaS observability (Langfuse, Braintrust)** | Local-first, no telemetry, `git`-native (commit-linked, not token-linked); they operate at the LLM-call layer, `ait` at the git-call layer — both stack |
 
 ## How It Works
@@ -254,13 +257,13 @@ your prompt
 agent CLI wrapped by ait
     |
     v
-isolated attempt worktree
+internal isolated workspace
     |
     v
 attempt metadata + commits + memory
     |
     v
-review, promote, discard, or rebase
+review, apply, recover, or inspect
 ```
 
 The wrapped process receives:

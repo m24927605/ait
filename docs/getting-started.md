@@ -136,9 +136,9 @@ claude ...
 ```
 
 The repo-local wrapper executes Claude Code through `ait run`, so the
-agent edits an isolated attempt worktree. The root checkout stays
-unchanged until you promote the attempt. Successful runs with changes
-are committed automatically in the attempt worktree; if the agent already
+agent edits in an isolated AIT-managed environment. The root checkout
+stays unchanged until you apply the result. Successful runs with changes
+are committed automatically as attempt results; if the agent already
 creates a git commit, ait records that existing commit instead of making
 a duplicate.
 
@@ -151,12 +151,19 @@ AIT_COMMIT_MESSAGE="update README with Claude" \
 claude -p 'Append one line to README.md'
 ```
 
-Inspect and promote the result:
+Inspect and apply the result:
 
 ```bash
-ait attempt list
-ait attempt show <attempt-id>
-ait attempt promote <attempt-id> --to main
+ait status
+ait apply latest
+```
+
+If a run fails, is interrupted, or cannot be applied safely because your
+local edits overlap with the result, use:
+
+```bash
+ait recover latest
+ait recover latest --debug
 ```
 
 ## Roll Back
@@ -175,4 +182,4 @@ If `.envrc` was written by `ait init`, remove or edit the
 
 The `.ait/` directory contains local metadata for this repository. Do
 not delete it if you want to keep recorded intents, attempts, evidence,
-and worktrees.
+and recoverable results.

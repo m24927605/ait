@@ -2,8 +2,7 @@
 title: Getting started with ait
 description: >-
   Install ait, initialize it inside an existing Git repository, and run your
-  first AI coding agent inside an isolated worktree with full attempt
-  provenance.
+  first AI coding agent with isolated execution and full attempt provenance.
 ---
 
 # Getting started
@@ -70,21 +69,20 @@ Inspect what happened:
 
 ```bash
 ait status
-ait attempt list
-ait attempt show <attempt-id>
 ```
 
-Promote when ready:
+Apply when ready:
 
 ```bash
-ait attempt promote <attempt-id> --to main
+ait apply latest
 ```
 
-Until promotion, your root checkout stays unchanged.
+Until apply, your root checkout stays unchanged. If a run fails or cannot
+be applied safely, use `ait recover latest`.
 
 ## Next steps
 
-- [Run Claude Code in a worktree](integrations/claude-code.md)
+- [Run Claude Code safely](integrations/claude-code.md)
 - [Run Codex CLI safely](integrations/codex.md)
 - [Run Aider with provenance](integrations/aider.md)
 - [Command reference](reference/commands.md)
