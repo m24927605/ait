@@ -137,6 +137,143 @@ def _commit_oid_field() -> QueryField:
     )
 
 
+def _review_scalar_field(
+    *,
+    name: str,
+    value_type: ValueType,
+    expr: str,
+) -> QueryField:
+    def lower_attempt(operator: str, value: object) -> SqlFragment:
+        return _exists_fragment(
+            "SELECT 1 FROM attempt_reviews AS ar "
+            "WHERE ar.target_attempt_id = a.id AND {predicate}",
+            operator,
+            value,
+            value_type,
+            expr,
+        )
+
+    def lower_intent(operator: str, value: object) -> SqlFragment:
+        return _exists_fragment(
+            "SELECT 1 FROM attempts AS a "
+            "JOIN attempt_reviews AS ar ON ar.target_attempt_id = a.id "
+            "WHERE a.intent_id = i.id AND {predicate}",
+            operator,
+            value,
+            value_type,
+            expr,
+        )
+
+    return QueryField(
+        name=name,
+        value_type=value_type,
+        lower_attempt=lower_attempt,
+        lower_intent=lower_intent,
+    )
+
+
+def _review_override_field() -> QueryField:
+    expr = (
+        "EXISTS (SELECT 1 FROM attempt_review_overrides AS aro "
+        "WHERE aro.review_id = ar.id)"
+    )
+    return _review_scalar_field(name="review.override", value_type="boolean", expr=expr)
+
+
+def _review_profile_field() -> QueryField:
+    expr = (
+        "EXISTS (SELECT 1 FROM json_each(ar.profiles_json) AS profile "
+        "WHERE profile.value = ?)"
+    )
+
+    def lower_attempt(operator: str, value: object) -> SqlFragment:
+        if operator != "=":
+            raise QueryError("review.profile only supports =")
+        normalized = _normalize_literal(value, "text")
+        return SqlFragment(
+            sql=(
+                "EXISTS ("
+                "SELECT 1 FROM attempt_reviews AS ar "
+                f"WHERE ar.target_attempt_id = a.id AND {expr}"
+                ")"
+            ),
+            params=(normalized,),
+        )
+
+    def lower_intent(operator: str, value: object) -> SqlFragment:
+        if operator != "=":
+            raise QueryError("review.profile only supports =")
+        normalized = _normalize_literal(value, "text")
+        return SqlFragment(
+            sql=(
+                "EXISTS ("
+                "SELECT 1 FROM attempts AS a "
+                "JOIN attempt_reviews AS ar ON ar.target_attempt_id = a.id "
+                f"WHERE a.intent_id = i.id AND {expr}"
+                ")"
+            ),
+            params=(normalized,),
+        )
+
+    return QueryField(
+        name="review.profile",
+        value_type="text",
+        lower_attempt=lower_attempt,
+        lower_intent=lower_intent,
+    )
+
+
+def _review_fresh_field() -> QueryField:
+    expr = (
+        "(ar.target_head_oid IS NOT NULL "
+        "AND ar.target_head_oid = ("
+        "SELECT ac.commit_oid FROM attempt_commits AS ac "
+        "WHERE ac.attempt_id = ar.target_attempt_id "
+        "ORDER BY ac.rowid DESC LIMIT 1"
+        ") "
+        "AND ar.base_ref_oid IS NOT NULL "
+        "AND ar.base_ref_oid = a.base_ref_oid)"
+    )
+    return _review_scalar_field(name="review.fresh", value_type="boolean", expr=expr)
+
+
+def _finding_scalar_field(
+    *,
+    name: str,
+    value_type: ValueType,
+    expr: str,
+) -> QueryField:
+    def lower_attempt(operator: str, value: object) -> SqlFragment:
+        return _exists_fragment(
+            "SELECT 1 FROM attempt_reviews AS ar "
+            "JOIN attempt_review_findings AS arf ON arf.review_id = ar.id "
+            "WHERE ar.target_attempt_id = a.id AND {predicate}",
+            operator,
+            value,
+            value_type,
+            expr,
+        )
+
+    def lower_intent(operator: str, value: object) -> SqlFragment:
+        return _exists_fragment(
+            "SELECT 1 FROM attempts AS a "
+            "JOIN attempt_reviews AS ar ON ar.target_attempt_id = a.id "
+            "JOIN attempt_review_findings AS arf ON arf.review_id = ar.id "
+            "WHERE a.intent_id = i.id AND {predicate}",
+            operator,
+            value,
+            value_type,
+            expr,
+        )
+
+    return QueryField(
+        name=name,
+        value_type=value_type,
+        lower_attempt=lower_attempt,
+        lower_intent=lower_intent,
+    )
+
+
 def _tags_field() -> QueryField:
     def lower_attempt(operator: str, value: object) -> SqlFragment:
         return _lower_tags_predicate("i.tags_json", operator, value)
@@ -472,4 +609,57 @@ FIELD_REGISTRY: dict[str, QueryField] = {
     "files_touched": _evidence_file_field("touched"),
     "files_changed": _evidence_file_field("changed"),
     "commit_oid": _commit_oid_field(),
+    "review.status": _review_scalar_field(
+        name="review.status",
+        value_type="text",
+        expr="ar.status",
+    ),
+    "review.mode": _review_scalar_field(
+        name="review.mode",
+        value_type="text",
+        expr="ar.mode",
+    ),
+    "review.budget": _review_scalar_field(
+        name="review.budget",
+        value_type="text",
+        expr="ar.budget",
+    ),
+    "review.risk_level": _review_scalar_field(
+        name="review.risk_level",
+        value_type="text",
+        expr="ar.risk_level",
+    ),
+    "review.blocking": _review_scalar_field(
+        name="review.blocking",
+        value_type="boolean",
+        expr="ar.blocking",
+    ),
+    "review.override": _review_override_field(),
+    "review.fresh": _review_fresh_field(),
+    "review.profile": _review_profile_field(),
+    "review.baseline_ref": _review_scalar_field(
+        name="review.baseline_ref",
+        value_type="text",
+        expr="ar.baseline_ref",
+    ),
+    "finding.severity": _finding_scalar_field(
+        name="finding.severity",
+        value_type="text",
+        expr="arf.severity",
+    ),
+    "finding.blocking": _finding_scalar_field(
+        name="finding.blocking",
+        value_type="boolean",
+        expr="arf.blocking",
+    ),
+    "finding.lifecycle_status": _finding_scalar_field(
+        name="finding.lifecycle_status",
+        value_type="text",
+        expr="arf.lifecycle_status",
+    ),
+    "finding.path": _finding_scalar_field(
+        name="finding.path",
+        value_type="text",
+        expr="arf.path",
+    ),
 }

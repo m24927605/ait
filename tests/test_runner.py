@@ -16,6 +16,10 @@ from unittest.mock import patch
 from ait.daemon import start_daemon as _real_start_daemon
 from ait.db import connect_db, list_memory_retrieval_events
 from ait.memory import add_memory_note, list_memory_notes, search_repo_memory
+from ait.report import build_work_graph, render_work_graph_text
+from ait.review import create_deterministic_review
+from ait.review_queue import enqueue_review
+from ait.run_report import refresh_run_reports
 from ait.runner import (
     AIT_CONTEXT_BUDGET_CHARS,
     _finish_attempt_locally,
@@ -83,6 +87,60 @@ class RunnerTests(unittest.TestCase):
             self.assertIn("memory_eval", report)
             self.assertEqual("pass", report["health"]["status"])
             self.assertEqual([], report["health"]["reasons"])
+
+    def test_run_report_surfaces_latest_review_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="Reviewed report",
+                command=[
+                    sys.executable,
+                    "-c",
+                    "from pathlib import Path; Path('reviewed.txt').write_text('ok\\n')",
+                ],
+            )
+            review = create_deterministic_review(repo_root, result.attempt_id)
+
+            report = refresh_run_reports(repo_root, latest_attempt_id=result.attempt_id)
+            graph = build_work_graph(repo_root)
+            graph_text = render_work_graph_text(graph)
+            graph_html = (repo_root / ".ait" / "report" / "graph.html").read_text(encoding="utf-8")
+
+            self.assertEqual(review.review.id, report["latest_attempt"]["review"]["review_id"])
+            self.assertEqual("warning", report["latest_attempt"]["review"]["status"])
+            self.assertEqual("medium", report["latest_attempt"]["review"]["risk_level"])
+            self.assertEqual(review.review.baseline_ref, report["latest_attempt"]["review"]["baseline_ref"])
+            self.assertIn("Review: warning risk=medium", graph_text)
+            self.assertIn("Review baseline:", graph_text)
+            self.assertIn("Review", graph_html)
+            self.assertIn("medium", graph_html)
+
+    def test_run_report_surfaces_queued_review_next_step(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="Queued review report",
+                command=[
+                    sys.executable,
+                    "-c",
+                    "from pathlib import Path; Path('.github/workflows').mkdir(parents=True, exist_ok=True); Path('.github/workflows/release.yml').write_text('name: release\\n')",
+                ],
+            )
+            enqueue_review(repo_root, result.attempt_id, mode="adversarial", adapter="fake:pass")
+
+            report = refresh_run_reports(repo_root, latest_attempt_id=result.attempt_id)
+            graph_text = render_work_graph_text(build_work_graph(repo_root))
+
+            self.assertEqual("queued", report["latest_attempt"]["review"]["status"])
+            self.assertIn("latest review queued", report["health"]["reasons"])
+            self.assertIn("ait review status", report["recommended_next_steps"])
+            self.assertIn("Review next: ait review status", graph_text)
 
     def test_run_agent_command_records_command_as_raw_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

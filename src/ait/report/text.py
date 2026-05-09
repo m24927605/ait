@@ -93,6 +93,33 @@ def render_work_graph_text(graph: dict[str, object]) -> str:
                     + f"score={memory_eval.get('average_score')} "
                     + f"events={memory_eval.get('event_count')}"
                 )
+            review = attempt.get("review", {})
+            if isinstance(review, dict) and review:
+                review_line = (
+                    f"Review: {review.get('status', 'unknown')} "
+                    f"risk={review.get('risk_level', 'unknown')} "
+                    f"score={review.get('risk_score', 0)} "
+                    f"findings={review.get('finding_count', 0)}"
+                )
+                if review.get("overridden"):
+                    review_line += " overridden=true"
+                if review.get("freshness_status"):
+                    review_line += f" fresh={review.get('freshness_status')}"
+                lines.append(detail_prefix + review_line)
+                if review.get("fresh") is False and review.get("freshness_reason"):
+                    lines.append(detail_prefix + f"Review freshness: {review.get('freshness_reason')}")
+                if review.get("status") in {"queued", "running", "blocked", "failed"}:
+                    lines.append(detail_prefix + "Review next: ait review status")
+                profiles = review.get("profiles", [])
+                if profiles:
+                    lines.append(detail_prefix + "Review profiles: " + ", ".join(str(item) for item in profiles))
+                if review.get("summary"):
+                    lines.append(detail_prefix + f"Review summary: {review.get('summary')}")
+                if review.get("accepted_risk_finding_count"):
+                    lines.append(detail_prefix + f"Review accepted risk: {review.get('accepted_risk_finding_count')}")
+                baseline_ref = review.get("baseline_ref")
+                if baseline_ref:
+                    lines.append(detail_prefix + f"Review baseline: {baseline_ref}")
     return "\n".join(lines)
 
 

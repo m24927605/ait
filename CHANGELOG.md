@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Add AIT Risk-Based Pre-Apply Review Orchestration design and
+  implementation docs covering Phase 0 through Phase 6.
+- Add `ait review attempt`, review queue worker, deterministic risk
+  scoring, trusted baseline snapshots, structured reviewer findings,
+  finding lifecycle commands, and local review benchmark support.
+- Add `ait query` fields for review and finding state, including review
+  status, profile, override, freshness, and finding severity/lifecycle
+  filters.
+
+### Changed
+
+- Harden pre-apply review gates so required missing, queued, running,
+  failed, blocked, stale, or malformed reviews fail closed for auto
+  apply.
+- Keep review status separate from verifier `verified_status`; review
+  failures remain quality/safety gate evidence and do not mutate
+  Git/provenance integrity status.
+- Extend reports, status, and release checklist coverage for review
+  status, baseline refs, freshness, overrides, and benchmark checks.
+
+### Safety
+
+- Reviewer adapters run through configured local commands with bounded
+  cwd/env/timeout controls; AIT core does not add direct network access.
+- Human override remains auditable and is recorded as override state
+  rather than rewriting blocked/failed reviews as passed.
+- Trusted baseline retrieval excludes candidate, stale, and
+  policy-blocked memory from trusted reviewer context.
+
 ## 0.55.47 - 2026-05-08
 
 ### Added

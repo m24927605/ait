@@ -208,6 +208,108 @@ class MemoryRetrievalEventRecord:
     budget_chars: int
     created_at: str
 
+@dataclass(frozen=True)
+class NewAttemptReview:
+    id: str
+    target_attempt_id: str
+    mode: str
+    budget: str
+    profiles: tuple[str, ...]
+    risk_level: str
+    risk_score: int
+    risk_reasons: tuple[dict[str, object], ...]
+    status: str
+    blocking: bool
+    policy_hash: str
+    baseline_policy_hash: str
+    created_at: str
+    review_attempt_id: str | None = None
+    reviewer_adapter: str | None = None
+    reviewer_agent_id: str | None = None
+    artifact_ref: str | None = None
+    baseline_ref: str | None = None
+    target_head_oid: str | None = None
+    base_ref_oid: str | None = None
+    reviewer_model: str | None = None
+    completed_at: str | None = None
+    summary: str = ""
+
+@dataclass(frozen=True)
+class AttemptReviewRecord:
+    id: str
+    target_attempt_id: str
+    review_attempt_id: str | None
+    mode: str
+    budget: str
+    profiles: tuple[str, ...]
+    reviewer_adapter: str | None
+    reviewer_agent_id: str | None
+    risk_level: str
+    risk_score: int
+    risk_reasons: tuple[dict[str, object], ...]
+    status: str
+    blocking: bool
+    artifact_ref: str | None
+    baseline_ref: str | None
+    target_head_oid: str | None
+    base_ref_oid: str | None
+    policy_hash: str
+    baseline_policy_hash: str
+    reviewer_model: str | None
+    created_at: str
+    completed_at: str | None
+    summary: str
+
+@dataclass(frozen=True)
+class NewAttemptReviewFinding:
+    id: str
+    review_id: str
+    severity: str
+    blocking: bool
+    lifecycle_status: str
+    title: str
+    body: str
+    path: str = ""
+    line: int | None = None
+    hunk_ref: str | None = None
+    evidence_ref: str | None = None
+    suggested_test: str | None = None
+    confidence: str = "medium"
+
+@dataclass(frozen=True)
+class AttemptReviewFindingRecord:
+    id: str
+    review_id: str
+    severity: str
+    blocking: bool
+    lifecycle_status: str
+    path: str
+    line: int | None
+    hunk_ref: str | None
+    title: str
+    body: str
+    evidence_ref: str | None
+    suggested_test: str | None
+    confidence: str
+
+@dataclass(frozen=True)
+class NewAttemptReviewOverride:
+    id: str
+    review_id: str
+    reason: str
+    created_at: str
+    actor: str | None = None
+    audit_ref: str | None = None
+
+@dataclass(frozen=True)
+class AttemptReviewOverrideRecord:
+    id: str
+    review_id: str
+    reason: str
+    created_at: str
+    actor: str | None
+    audit_ref: str | None
+
 
 
 __all__ = [
@@ -239,5 +341,17 @@ __all__ = [
     "NewMemoryRetrievalEvent",
 
     "MemoryRetrievalEventRecord",
+
+    "NewAttemptReview",
+
+    "AttemptReviewRecord",
+
+    "NewAttemptReviewFinding",
+
+    "AttemptReviewFindingRecord",
+
+    "NewAttemptReviewOverride",
+
+    "AttemptReviewOverrideRecord",
 
 ]

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 @dataclass(frozen=True)
@@ -305,6 +305,86 @@ MIGRATIONS: tuple[Migration, ...] = (
 
         CREATE INDEX IF NOT EXISTS idx_memory_facts_review_status
             ON memory_facts(human_review_state, status, confidence);
+        """,
+    ),
+    Migration(
+        version=8,
+        name="attempt_reviews",
+        sql="""
+        CREATE TABLE IF NOT EXISTS attempt_reviews (
+            id TEXT PRIMARY KEY,
+            target_attempt_id TEXT NOT NULL REFERENCES attempts(id) ON DELETE CASCADE,
+            review_attempt_id TEXT REFERENCES attempts(id) ON DELETE SET NULL,
+            mode TEXT NOT NULL CHECK (mode IN ('light', 'adversarial', 'multi')),
+            budget TEXT NOT NULL CHECK (budget IN ('quick', 'standard', 'deep')),
+            profiles_json TEXT NOT NULL DEFAULT '[]',
+            reviewer_adapter TEXT,
+            reviewer_agent_id TEXT,
+            risk_level TEXT NOT NULL CHECK (risk_level IN ('low', 'medium', 'high', 'critical')),
+            risk_score INTEGER NOT NULL,
+            risk_reasons_json TEXT NOT NULL DEFAULT '[]',
+            status TEXT NOT NULL CHECK (
+                status IN ('queued', 'running', 'passed', 'blocked', 'warning', 'failed', 'overridden')
+            ),
+            blocking INTEGER NOT NULL DEFAULT 0 CHECK (blocking IN (0, 1)),
+            artifact_ref TEXT,
+            baseline_ref TEXT,
+            target_head_oid TEXT,
+            base_ref_oid TEXT,
+            policy_hash TEXT NOT NULL,
+            baseline_policy_hash TEXT NOT NULL,
+            reviewer_model TEXT,
+            created_at TEXT NOT NULL,
+            completed_at TEXT,
+            summary TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_attempt_reviews_target
+            ON attempt_reviews(target_attempt_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_attempt_reviews_status
+            ON attempt_reviews(status, created_at);
+
+        CREATE TABLE IF NOT EXISTS attempt_review_findings (
+            id TEXT PRIMARY KEY,
+            review_id TEXT NOT NULL REFERENCES attempt_reviews(id) ON DELETE CASCADE,
+            severity TEXT NOT NULL CHECK (severity IN ('critical', 'high', 'medium', 'low', 'info')),
+            blocking INTEGER NOT NULL DEFAULT 0 CHECK (blocking IN (0, 1)),
+            lifecycle_status TEXT NOT NULL CHECK (
+                lifecycle_status IN (
+                    'open',
+                    'acknowledged',
+                    'fixed',
+                    'false_positive',
+                    'accepted_risk',
+                    'superseded'
+                )
+            ),
+            path TEXT NOT NULL DEFAULT '',
+            line INTEGER,
+            hunk_ref TEXT,
+            title TEXT NOT NULL,
+            body TEXT NOT NULL,
+            evidence_ref TEXT,
+            suggested_test TEXT,
+            confidence TEXT NOT NULL DEFAULT 'medium' CHECK (confidence IN ('high', 'medium', 'low'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_attempt_review_findings_review
+            ON attempt_review_findings(review_id);
+        CREATE INDEX IF NOT EXISTS idx_attempt_review_findings_lifecycle
+            ON attempt_review_findings(lifecycle_status, severity);
+
+        CREATE TABLE IF NOT EXISTS attempt_review_overrides (
+            id TEXT PRIMARY KEY,
+            review_id TEXT NOT NULL REFERENCES attempt_reviews(id) ON DELETE CASCADE,
+            reason TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            actor TEXT,
+            audit_ref TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_attempt_review_overrides_review
+            ON attempt_review_overrides(review_id);
         """,
     ),
 )

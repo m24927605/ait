@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import tempfile
 import unittest
@@ -15,7 +16,9 @@ from ait.config import (
     load_local_config,
     save_local_config,
 )
+from ait.policy import effective_policy
 from ait.repo import derive_repo_id, get_root_commit_oid
+from ait.review_policy import review_policy_requires_escalation
 
 
 class ConfigTests(unittest.TestCase):
@@ -89,6 +92,77 @@ class ConfigTests(unittest.TestCase):
             repo_id = derive_repo_id(repo_root, "nonce-xyz")
 
             self.assertRegex(repo_id, r"^unborn:[0-9a-f]{24}:nonce-xyz$")
+
+    def test_review_policy_defaults_to_disabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            bootstrap_ait_dir(repo_root)
+
+            result = effective_policy(repo_root)
+
+            self.assertEqual("never", result.policy["review"]["default_mode"])
+            self.assertFalse(result.policy["review"]["auto_apply_requires_review"])
+            self.assertEqual([], result.policy["review"]["sensitive_paths"])
+
+    def test_invalid_review_policy_values_fall_back_with_warnings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            ait_dir = bootstrap_ait_dir(repo_root)
+            (ait_dir / "config.json").write_text(
+                json.dumps(
+                    {
+                        "review": {
+                            "default_mode": "always",
+                            "auto_apply_requires_review": "yes",
+                            "allow_override": "no",
+                            "sensitive_paths": "auth/**",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = effective_policy(repo_root)
+
+            self.assertEqual("never", result.policy["review"]["default_mode"])
+            self.assertFalse(result.policy["review"]["auto_apply_requires_review"])
+            self.assertTrue(result.policy["review"]["allow_override"])
+            self.assertEqual([], result.policy["review"]["sensitive_paths"])
+            self.assertIn("review.default_mode invalid; using never", result.warnings)
+            self.assertIn("review.auto_apply_requires_review invalid; using false", result.warnings)
+            self.assertIn("review.allow_override invalid; using true", result.warnings)
+            self.assertIn("review.sensitive_paths invalid; using []", result.warnings)
+
+    def test_configured_sensitive_path_requires_risk_based_escalation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            ait_dir = bootstrap_ait_dir(repo_root)
+            (ait_dir / "config.json").write_text(
+                json.dumps(
+                    {
+                        "review": {
+                            "default_mode": "risk-based",
+                            "sensitive_paths": ["infra/**"],
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertTrue(
+                review_policy_requires_escalation(
+                    repo_root,
+                    changed_files=("infra/main.tf",),
+                    risk_level="medium",
+                )
+            )
+            self.assertFalse(
+                review_policy_requires_escalation(
+                    repo_root,
+                    changed_files=("docs/readme.md",),
+                    risk_level="medium",
+                )
+            )
 
     def _init_git_repo(self, repo_root: Path) -> None:
         subprocess.run(["git", "init"], cwd=repo_root, check=True, capture_output=True)

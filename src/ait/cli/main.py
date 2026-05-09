@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ait.cli_parser import build_parser
 
-from . import adapter, apply, attempt, cleanup, config, daemon, dev, graph, init, intent, memory, query, reconcile, recover, run, shell, upgrade
+from . import adapter, apply, attempt, cleanup, config, daemon, dev, graph, init, intent, memory, query, reconcile, recover, review, run, shell, upgrade
 
 _HANDLERS = {
     "adapter": adapter.handle,
@@ -26,6 +26,7 @@ _HANDLERS = {
     "config": config.handle,
     "reconcile": reconcile.handle,
     "recover": recover.handle,
+    "review": review.handle,
     "repair": init.handle,
     "run": run.handle,
     "shell": shell.handle,

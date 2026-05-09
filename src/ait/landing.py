@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
 import json
 from pathlib import Path
@@ -18,6 +18,7 @@ from ait.decision_report import DecisionReport, daily_step, decision_report
 from ait.idresolver import resolve_attempt_id
 from ait.local_artifacts import scan_local_artifacts
 from ait.policy import apply_cleanup_after_apply, apply_dirty_strategy
+from ait.review_policy import ReviewGateDecision, evaluate_apply_review_gate
 from ait.verifier import verify_attempt_with_connection
 from ait.workspace import (
     WorkspaceError,
@@ -85,6 +86,7 @@ def apply_attempt(
     attempt_selector: str = "latest",
     target_ref: str | None = None,
     mode: str = "auto",
+    require_review_gate: bool = False,
 ) -> ApplyResult:
     if mode not in {"auto", "current", "branch", "none"}:
         raise ApplyError(f"unsupported apply mode: {mode}")
@@ -225,35 +227,62 @@ def apply_attempt(
             reason_code=ApplyCode.TARGET_CURRENT_BRANCH,
         )
 
-    if not target_is_current:
-        return _apply_to_non_current_branch(
-            root,
+    review_gate = _review_gate_for_apply(root, attempt_id, required=require_review_gate)
+    if review_gate.blocking:
+        update_workspace_lease(
+            workspace_ref,
+            state="succeeded",
+            cleanup_policy="hold",
+            preserve_reason=review_gate.reason,
+        )
+        return _hold_for_review_gate(
             attempt_id=attempt_id,
             target_ref=ref_name,
-            workspace_ref=workspace_ref,
-            base_ref_oid=attempt.base_ref_oid,
-            changed_files=changed_files,
+            target_is_current=target_is_current,
             root_dirty=snapshot.dirty,
+            changed_files=changed_files,
+            workspace_ref=workspace_ref,
+            gate=review_gate,
+        )
+
+    if not target_is_current:
+        return _with_review_gate(
+            _apply_to_non_current_branch(
+                root,
+                attempt_id=attempt_id,
+                target_ref=ref_name,
+                workspace_ref=workspace_ref,
+                base_ref_oid=attempt.base_ref_oid,
+                changed_files=changed_files,
+                root_dirty=snapshot.dirty,
+            ),
+            review_gate,
         )
 
     if not snapshot.dirty:
-        return _apply_to_clean_current_branch(
+        return _with_review_gate(
+            _apply_to_clean_current_branch(
+                root,
+                attempt_id=attempt_id,
+                target_ref=ref_name,
+                workspace_ref=workspace_ref,
+                base_ref_oid=attempt.base_ref_oid,
+                changed_files=changed_files,
+            ),
+            review_gate,
+        )
+
+    return _with_review_gate(
+        _apply_patch_to_dirty_current_branch(
             root,
             attempt_id=attempt_id,
             target_ref=ref_name,
             workspace_ref=workspace_ref,
             base_ref_oid=attempt.base_ref_oid,
+            snapshot=snapshot,
             changed_files=changed_files,
-        )
-
-    return _apply_patch_to_dirty_current_branch(
-        root,
-        attempt_id=attempt_id,
-        target_ref=ref_name,
-        workspace_ref=workspace_ref,
-        base_ref_oid=attempt.base_ref_oid,
-        snapshot=snapshot,
-        changed_files=changed_files,
+        ),
+        review_gate,
     )
 
 
@@ -284,6 +313,60 @@ def _load_attempt_for_apply(root: Path, selector: str):
         conn.close()
     changed_files = tuple(sorted({path for commit in commits for path in commit.touched_files}))
     return attempt_id, attempt, changed_files
+
+
+def _review_gate_for_apply(root: Path, attempt_id: str, *, required: bool = False) -> ReviewGateDecision:
+    conn = connect_db(root / ".ait" / "state.sqlite3")
+    try:
+        return evaluate_apply_review_gate(root, conn, target_attempt_id=attempt_id, required=required)
+    finally:
+        conn.close()
+
+
+def _hold_for_review_gate(
+    *,
+    attempt_id: str,
+    target_ref: str,
+    target_is_current: bool,
+    root_dirty: bool,
+    changed_files: tuple[str, ...],
+    workspace_ref: str,
+    gate: ReviewGateDecision,
+) -> ApplyResult:
+    plan = LandingPlan(
+        kind="hold_for_review",
+        target_ref=target_ref,
+        target_is_current_branch=target_is_current,
+        root_dirty=root_dirty,
+        reason="review gate requires a passing review",
+    )
+    return _held(
+        attempt_id,
+        plan,
+        changed_files,
+        workspace_ref,
+        "AIT held the result because this repo requires review before apply.",
+        f"review gate: {gate.reason}; run `ait review attempt {attempt_id}` and retry apply",
+        debug={"review_gate": gate.metadata()},
+        reason_code=ApplyCode.REVIEW_GATE,
+    )
+
+
+def _with_review_gate(result: ApplyResult, gate: ReviewGateDecision) -> ApplyResult:
+    if not gate.required:
+        return result
+    metadata = gate.metadata()
+    debug = {**result.debug, "review_gate": metadata}
+    report = result.decision_report
+    if report is not None:
+        report = replace(
+            report,
+            metadata={
+                **report.metadata,
+                "review_gate": metadata,
+            },
+        )
+    return replace(result, decision_report=report, debug=debug)
 
 
 def _resolve_attempt_selector(conn, selector: str) -> str:

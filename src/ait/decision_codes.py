@@ -16,6 +16,7 @@ class ApplyCode:
     MISSING_RECOVERY_STATE = "apply.missing_recovery_state"
     MODE_NONE = "apply.mode_none"
     PATCH_CHECK_FAILED = "apply.patch_check_failed"
+    REVIEW_GATE = "apply.review_gate"
     TARGET_BRANCH_UPDATE_FAILED = "apply.target_branch_update_failed"
     TARGET_CURRENT_BRANCH = "apply.target_current_branch"
     TARGET_MOVED = "apply.target_moved"

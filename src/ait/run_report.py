@@ -4,10 +4,12 @@ import json
 from pathlib import Path
 
 from ait.app import show_attempt
+from ait.db import connect_db
 from ait.db.core import utc_now
 from ait.memory.eval import evaluate_memory_retrievals
 from ait.report import build_work_graph, write_work_graph_html
 from ait.repo import resolve_repo_root
+from ait.review import latest_review_summary
 
 
 def refresh_run_reports(repo_root: str | Path, *, latest_attempt_id: str | None = None) -> dict[str, object]:
@@ -62,7 +64,19 @@ def _latest_attempt_payload(repo_root: Path, attempt_id: str | None) -> dict[str
         "verified_status": attempt.get("verified_status"),
         "outcome_class": outcome.get("outcome_class"),
         "workspace_ref": attempt.get("workspace_ref"),
+        "review": _latest_review_summary(repo_root, attempt_id),
     }
+
+
+def _latest_review_summary(repo_root: Path, attempt_id: str) -> dict[str, object]:
+    db_path = repo_root / ".ait" / "state.sqlite3"
+    if not db_path.exists():
+        return {}
+    conn = connect_db(db_path)
+    try:
+        return latest_review_summary(conn, attempt_id, repo_root=repo_root)
+    finally:
+        conn.close()
 
 
 def _memory_eval_next_steps(status: str) -> list[str]:
@@ -95,6 +109,20 @@ def _health_rollup(
             status = "warn"
         reasons.append("latest attempt failed")
         next_steps.append("ait graph --html")
+    if latest_attempt:
+        review = latest_attempt.get("review")
+        if isinstance(review, dict):
+            review_status = str(review.get("status") or "")
+            if review_status in {"queued", "running"}:
+                if status == "pass":
+                    status = "warn"
+                reasons.append(f"latest review {review_status}")
+                next_steps.append("ait review status")
+            elif review_status in {"blocked", "failed"}:
+                if status != "fail":
+                    status = "warn"
+                reasons.append(f"latest review {review_status}")
+                next_steps.append("ait review status")
     return {
         "status": status,
         "reasons": _dedupe(reasons),

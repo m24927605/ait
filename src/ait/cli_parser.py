@@ -128,6 +128,41 @@ def build_parser() -> argparse.ArgumentParser:
     recover_parser.add_argument("--format", choices=("text", "json"), default="text")
     recover_parser.add_argument("--debug", action="store_true", help="include internal workspace details")
 
+    review_parser = subparsers.add_parser("review", help="review an AIT attempt before apply")
+    review_subparsers = review_parser.add_subparsers(dest="review_command")
+    review_attempt = review_subparsers.add_parser("attempt")
+    review_attempt.add_argument("selector")
+    review_attempt.add_argument("--mode", choices=("light", "adversarial"), default="light")
+    review_attempt.add_argument("--review-adapter")
+    review_attempt.add_argument("--review-budget", choices=("quick", "standard", "deep"), default="standard")
+    review_attempt.add_argument("--format", choices=("text", "json"), default="text")
+    review_status = review_subparsers.add_parser("status")
+    review_status.add_argument("--status")
+    review_status.add_argument("--format", choices=("text", "json"), default="text")
+    review_worker = review_subparsers.add_parser("worker")
+    review_worker.add_argument("--once", action="store_true")
+    review_worker.add_argument("--max-jobs", type=int, default=1)
+    review_worker.add_argument("--format", choices=("text", "json"), default="text")
+    review_benchmark = review_subparsers.add_parser("benchmark")
+    review_benchmark.add_argument("fixture")
+    review_benchmark.add_argument("--fake-reviewer", default="fake:case")
+    review_benchmark.add_argument("--format", choices=("text", "json"), default="text")
+    review_finding = review_subparsers.add_parser("finding")
+    review_finding_subparsers = review_finding.add_subparsers(dest="review_finding_command")
+    review_finding_list = review_finding_subparsers.add_parser("list")
+    review_finding_list.add_argument("--status")
+    review_finding_list.add_argument("--severity")
+    review_finding_list.add_argument("--format", choices=("text", "json"), default="text")
+    review_finding_update = review_finding_subparsers.add_parser("update")
+    review_finding_update.add_argument("finding_id")
+    review_finding_update.add_argument(
+        "--status",
+        required=True,
+        choices=("open", "acknowledged", "fixed", "false_positive", "accepted_risk", "superseded"),
+    )
+    review_finding_update.add_argument("--reason")
+    review_finding_update.add_argument("--format", choices=("text", "json"), default="text")
+
     run_parser = subparsers.add_parser("run", help="run an agent command in an isolated AIT attempt")
     run_parser.add_argument("--adapter", choices=tuple(sorted(ADAPTERS)), default="shell")
     run_parser.add_argument("--agent")
@@ -136,6 +171,9 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--description")
     run_parser.add_argument("--commit-message")
     run_parser.add_argument("--no-auto-commit", action="store_true")
+    run_parser.add_argument("--review", choices=("never", "light", "adversarial", "risk-based"))
+    run_parser.add_argument("--review-adapter")
+    run_parser.add_argument("--review-budget", choices=("quick", "standard", "deep"), default="standard")
     run_parser.add_argument(
         "--apply",
         choices=("never", "auto", "current", "branch"),

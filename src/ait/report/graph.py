@@ -21,6 +21,7 @@ from ait.memory_policy import load_memory_policy
 from ait.repo import resolve_repo_root
 
 from ait.report.shared import _short_id
+from ait.review import latest_review_summary
 
 def build_work_graph(
     repo_root: str | Path,
@@ -65,6 +66,7 @@ def build_work_graph(
             for attempt in attempts:
                 attempt["files"] = _query_files(conn, str(attempt["id"]))
                 attempt["commits"] = _query_commits(conn, str(attempt["id"]))
+                attempt["review"] = latest_review_summary(conn, str(attempt["id"]), repo_root=root)
                 attempt["memory_notes"] = _query_attempt_memory_notes(conn, str(attempt["id"]))
                 attempt["memory_facts"] = _query_attempt_memory_facts(conn, str(attempt["id"]))
                 attempt["memory_retrievals"] = _query_attempt_memory_retrievals(conn, str(attempt["id"]))

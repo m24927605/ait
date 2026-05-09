@@ -15,6 +15,7 @@ from ait import cli
 from ait.app import create_attempt, create_commit_for_attempt, create_intent
 from ait.landing import apply_attempt
 from ait.recovery import recover_attempt
+from ait.review import create_deterministic_review
 from ait.workspace_lease import read_workspace_lease
 
 
@@ -193,6 +194,27 @@ class LandingTests(unittest.TestCase):
             self.assertEqual("status.ready_to_apply", decision["reasons"][0]["code"])
             self.assertEqual(["json-status.py"], decision["reasons"][0]["paths"])
             self.assertIn(".ait/workspaces", decision["reasons"][0]["debug"]["workspace_ref"])
+
+    def test_status_reports_latest_review_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            attempt_id, _workspace = _succeeded_attempt(repo_root, "Status review", "review-status.py", "value = 1\n")
+            review = create_deterministic_review(repo_root, attempt_id)
+            text = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "status"]):
+                    with redirect_stdout(text):
+                        text_code = cli.main()
+            payload = _status_json(repo_root)
+
+            self.assertEqual(0, text_code)
+            self.assertIn("Review: warning risk=medium findings=0", text.getvalue())
+            self.assertEqual(review.review.id, payload["recovery"]["review"]["review_id"])
+            self.assertEqual("warning", payload["recovery"]["review"]["status"])
+            self.assertEqual("medium", payload["recovery"]["review"]["risk_level"])
+            self.assertEqual(review.review.baseline_ref, payload["recovery"]["review"]["baseline_ref"])
 
     def test_status_reports_conflict_missing_and_applied_recovery_states(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

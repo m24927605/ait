@@ -43,6 +43,7 @@ from ait.memory.eval import evaluate_memory_retrievals, render_memory_eval_repor
 from ait.memory_policy import load_memory_policy
 from ait.query import QueryError, execute_query, list_shortcut_expression, parse_blame_target
 from ait.repo import resolve_repo_root
+from ait.review import latest_review_summary
 from ait.shell_integration import shell_snippet
 from ait.workspace_lease import lease_payload, workspace_lease_path
 
@@ -129,6 +130,7 @@ def _recovery_dashboard_payload(repo_root: str | Path) -> dict[str, object]:
             }
         attempt = attempts[-1]
         commits = list_attempt_commits(conn, attempt.id)
+        review = latest_review_summary(conn, attempt.id)
     finally:
         conn.close()
     changed_files = tuple(sorted({path for commit in commits for path in commit.touched_files}))
@@ -171,6 +173,7 @@ def _recovery_dashboard_payload(repo_root: str | Path) -> dict[str, object]:
             "workspace_exists": workspace.exists(),
             "changed_files_count": len(changed_files),
             "integration": integration or {},
+            "review": review,
         },
     )
     return {
@@ -187,6 +190,7 @@ def _recovery_dashboard_payload(repo_root: str | Path) -> dict[str, object]:
         "lease_path": str(workspace_lease_path(attempt.workspace_ref)),
         "dev_servers": dev_servers,
         "integration": integration or {},
+        "review": review,
         "next_step": next_command,
         "decision_report": decision_payload(report),
     }
@@ -307,6 +311,16 @@ def _format_status(payload: dict[str, object], *, debug: bool = False) -> str:
         changed_files = recovery.get("changed_files", [])
         if isinstance(changed_files, list) and changed_files:
             lines.append(f"Changed: {len(changed_files)} files")
+        review = recovery.get("review")
+        if isinstance(review, dict) and review:
+            lines.append(
+                "Review: "
+                f"{review.get('status', 'unknown')} "
+                f"risk={review.get('risk_level', 'unknown')} "
+                f"findings={review.get('finding_count', 0)}"
+            )
+            if review.get("overridden"):
+                lines.append("Review override: true")
         next_step = recovery.get("next_step")
         if next_step:
             lines.append(f"Next: {next_step}")
@@ -388,6 +402,16 @@ def _format_status_all(payload: list[dict[str, object]], *, debug: bool = False)
             changed_files = recovery.get("changed_files", [])
             if isinstance(changed_files, list) and changed_files:
                 lines.append(f"  changed: {len(changed_files)} files")
+            review = recovery.get("review")
+            if isinstance(review, dict) and review:
+                lines.append(
+                    "  review: "
+                    f"{review.get('status', 'unknown')} "
+                    f"risk={review.get('risk_level', 'unknown')} "
+                    f"findings={review.get('finding_count', 0)}"
+                )
+                if review.get("overridden"):
+                    lines.append("  review override: true")
             next_step = recovery.get("next_step")
             if next_step:
                 lines.append(f"  next: {next_step}")

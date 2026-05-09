@@ -278,12 +278,17 @@ def _visual_attempt_card(attempt: dict[str, object]) -> str:
     file_list = changed or touched
     memory_notes = [item for item in attempt.get("memory_notes", []) if isinstance(item, dict)]
     memory_facts = [item for item in attempt.get("memory_facts", []) if isinstance(item, dict)]
+    review = attempt.get("review", {})
+    review_status = str(review.get("status", "")) if isinstance(review, dict) else ""
+    review_risk = str(review.get("risk_level", "")) if isinstance(review, dict) else ""
     search_text = _search_blob(
         str(attempt.get("short_id", "")),
         agent,
         verified_status,
         reported_status,
         outcome,
+        review_status,
+        review_risk,
         *(str(path) for path in file_list),
         *(str(note.get("body", "")) for note in memory_notes),
         *(str(fact.get("body", "")) for fact in memory_facts),
@@ -297,7 +302,7 @@ def _visual_attempt_card(attempt: dict[str, object]) -> str:
         f"data-search=\"{escape(search_text, quote=True)}\">"
         f"<div class=\"graph-title\">Attempt {attempt.get('ordinal')} {escape(str(attempt.get('short_id', '')))}</div>"
         f"<div class=\"graph-subtitle\">{escape(agent)}</div>"
-        f"<div class=\"graph-facts\">{_badge(verified_status, kind='status')}{_badge(outcome, kind='outcome')}</div>"
+        f"<div class=\"graph-facts\">{_badge(verified_status, kind='status')}{_badge(outcome, kind='outcome')}{_badge(review_status, kind='review')}</div>"
         "</div>"
     )
 
@@ -310,6 +315,8 @@ def _visual_artifact_card(attempt: dict[str, object]) -> str:
     memory_notes = [item for item in attempt.get("memory_notes", []) if isinstance(item, dict)]
     memory_facts = [item for item in attempt.get("memory_facts", []) if isinstance(item, dict)]
     transcript_mode = str(attempt.get("transcript_mode") or "none")
+    review = attempt.get("review", {})
+    review_status = str(review.get("status", "none")) if isinstance(review, dict) and review else "none"
     file_text = escape(str(file_list[0])) if file_list else "none"
     commit_text = escape(str(commits[0].get("commit_oid", ""))[:12]) if commits else "none"
     memory_text = str(len(memory_notes) + len(memory_facts))
@@ -328,6 +335,9 @@ def _visual_artifact_card(attempt: dict[str, object]) -> str:
         "</div>"
         "<div class=\"artifact\">"
         f"<strong>Transcript</strong><code>{transcript_text}</code>"
+        "</div>"
+        "<div class=\"artifact\">"
+        f"<strong>Review</strong><code>{escape(review_status)}</code>"
         "</div>"
     )
 
@@ -373,6 +383,9 @@ def _attempt_html(attempt: dict[str, object], *, open_by_default: bool) -> str:
     memory_notes = [item for item in attempt.get("memory_notes", []) if isinstance(item, dict)]
     memory_facts = [item for item in attempt.get("memory_facts", []) if isinstance(item, dict)]
     memory_retrievals = [item for item in attempt.get("memory_retrievals", []) if isinstance(item, dict)]
+    review = attempt.get("review", {})
+    if isinstance(review, dict) and review:
+        children.append(_review_html(review))
     memory_eval = attempt.get("memory_eval", {})
     if isinstance(memory_eval, dict) and int(memory_eval.get("event_count", 0) or 0):
         children.append(_memory_eval_html(memory_eval))
@@ -391,12 +404,16 @@ def _attempt_html(attempt: dict[str, object], *, open_by_default: bool) -> str:
     reported_status = str(attempt.get("reported_status", ""))
     outcome = str(attempt.get("outcome_class") or "unclassified")
     agent = str(attempt.get("agent_id", ""))
+    review_status = str(review.get("status", "")) if isinstance(review, dict) else ""
+    review_risk = str(review.get("risk_level", "")) if isinstance(review, dict) else ""
     search_text = _search_blob(
         str(attempt.get("short_id", "")),
         agent,
         verified_status,
         reported_status,
         outcome,
+        review_status,
+        review_risk,
         str(attempt.get("transcript", "")),
         *(str(path) for path in file_list),
         *(str(note.get("body", "")) for note in memory_notes),
@@ -432,6 +449,7 @@ def _attempt_html(attempt: dict[str, object], *, open_by_default: bool) -> str:
         f"{_badge(verified_status, kind='status')}"
         f"{_badge(reported_status, kind='neutral')}"
         f"{_badge(outcome, kind='outcome')}"
+        f"{_badge(review_status, kind='review')}"
         "</span></summary>"
         f"{child_html}</details></li>"
     )
@@ -479,6 +497,38 @@ def _commits_html(commits: list[dict[str, object]]) -> str:
 def _reasons_html(reasons: tuple[str, ...]) -> str:
     items = "\n".join(f"<li>{escape(reason)}</li>" for reason in reasons)
     return f"<details><summary>Outcome Reasons</summary><ul class=\"mini-list\">{items}</ul></details>"
+
+def _review_html(review: dict[str, object]) -> str:
+    rows = [
+        ("Status", review.get("status", "unknown")),
+        ("Risk", f"{review.get('risk_level', 'unknown')} / {review.get('risk_score', 0)}"),
+        ("Profiles", ", ".join(str(item) for item in review.get("profiles", []) if str(item))),
+        ("Findings", review.get("finding_count", 0)),
+        ("Blocking", review.get("blocking_finding_count", 0)),
+        ("Accepted Risk", review.get("accepted_risk_finding_count", 0)),
+        ("Freshness", review.get("freshness_status") or "unknown"),
+        ("Freshness Reason", review.get("freshness_reason") or ""),
+        ("Summary", review.get("summary") or ""),
+        ("Baseline", review.get("baseline_ref") or ""),
+    ]
+    if review.get("overridden"):
+        rows.append(("Override", review.get("latest_override_id") or "true"))
+    if review.get("status") in {"queued", "running", "blocked", "failed"}:
+        rows.append(("Next", "ait review status"))
+    items = "\n".join(
+        "<li>"
+        f"<strong>{escape(label)}</strong> "
+        f"<code>{escape(str(value))}</code>"
+        "</li>"
+        for label, value in rows
+        if str(value)
+    )
+    return (
+        "<details open><summary>Review "
+        f"{_badge(str(review.get('status') or 'unknown'), kind='review')} "
+        f"{_badge(str(review.get('risk_level') or 'unknown'), kind='review-risk')}"
+        f"</summary><ul class=\"mini-list\">{items}</ul></details>"
+    )
 
 def _memory_notes_html(notes: list[dict[str, object]]) -> str:
     items = "\n".join(
@@ -606,6 +656,20 @@ def _badge(value: str, *, kind: str) -> str:
         elif lowered == "warn":
             css += " badge-warn"
         elif lowered == "fail":
+            css += " badge-bad"
+    elif kind == "review":
+        if lowered in {"passed", "overridden"}:
+            css += " badge-ok"
+        elif lowered in {"warning", "queued", "running"}:
+            css += " badge-warn"
+        elif lowered in {"blocked", "failed"}:
+            css += " badge-bad"
+    elif kind == "review-risk":
+        if lowered == "low":
+            css += " badge-ok"
+        elif lowered in {"medium", "high"}:
+            css += " badge-warn"
+        elif lowered == "critical":
             css += " badge-bad"
     elif kind == "health":
         if lowered == "pass":

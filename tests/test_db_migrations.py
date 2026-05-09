@@ -42,6 +42,9 @@ class MigrationTests(unittest.TestCase):
                     "memory_fact_entities",
                     "memory_fact_edges",
                     "memory_retrieval_events",
+                    "attempt_reviews",
+                    "attempt_review_findings",
+                    "attempt_review_overrides",
                 }.issubset(tables)
             )
             self.assertEqual(str(SCHEMA_VERSION), get_meta(conn, "schema_version"))

@@ -19,6 +19,84 @@ messaging architecture defined in [docs/seo-strategy.md](seo-strategy.md):
 
 If any line drifts, fix before tagging.
 
+## Review Orchestration Release Gate
+
+Any release that changes AIT Risk-Based Pre-Apply Review Orchestration
+must pass this gate before tagging or uploading to PyPI. This gate is
+required when the change touches any of:
+
+- `src/ait/review*.py`
+- `src/ait/cli/review.py`
+- `src/ait/landing.py`
+- `src/ait/query/*`
+- `src/ait/report/*`
+- `src/ait/db/schema.py`
+- `src/ait/db/*review*`
+- review policy, adapter, queue, benchmark, or finding lifecycle tests
+
+Required checks:
+
+1. Confirm review remains disabled by default unless CLI flags or repo
+   policy opt in.
+2. Confirm review failures never write `verified_status=failed`.
+3. Confirm stale, malformed, missing, queued, running, failed, or blocked
+   required reviews fail closed for auto apply.
+4. Confirm human override is recorded as `overridden`; do not rewrite the
+   original review or finding as `passed`.
+5. Confirm reviewer adapters run as local configured commands only; AIT
+   core must not gain direct network access or provider SDK calls.
+6. Confirm reviewer adapters do not write the target attempt workspace.
+7. Confirm trusted baseline snapshots exclude candidate, stale, and
+   policy-blocked memory.
+8. Confirm `ait query` review/finding fields are stable and do not crash
+   when an attempt has no review rows.
+9. Confirm benchmark fixtures run with fake reviewers and do not require a
+   real LLM or network.
+
+Recommended targeted commands:
+
+```bash
+PYTHONPATH=src uv run pytest tests/test_review_*.py -q
+PYTHONPATH=src uv run pytest tests/test_cli_run.py tests/test_landing.py tests/test_cli_run_review.py -q
+PYTHONPATH=src uv run pytest tests/test_query.py tests/test_review_query.py tests/test_review_query_dsl.py -q
+PYTHONPATH=src uv run pytest tests/test_config.py tests/test_db_migrations.py -q
+PYTHONPATH=src uv run python -m compileall -q src/ait
+```
+
+For Phase 6 review orchestration specifically, these tests must be green:
+
+```bash
+PYTHONPATH=src uv run pytest \
+  tests/test_review_freshness.py \
+  tests/test_review_queue_worker.py \
+  tests/test_review_adapter_config.py \
+  tests/test_review_gate_hardening.py \
+  tests/test_review_query_dsl.py \
+  tests/test_review_benchmark.py \
+  -q
+```
+
+Benchmark smoke:
+
+```bash
+PYTHONPATH=src uv run python -m ait.cli review benchmark \
+  tests/fixtures/review_benchmark/cases.json \
+  --fake-reviewer fake:case \
+  --format json
+```
+
+Do not tag or upload to PyPI if any of the following are true:
+
+- review-disabled `ait run`, `ait apply`, or `ait recover` behavior changed
+  without an explicit release note and migration plan
+- a required review can be bypassed because of stale, malformed, or missing
+  evidence
+- review status is mixed into verifier semantics
+- the DB migration is not backward compatible for existing `.ait` state
+- packaging smoke cannot install and import `ait`
+- test failures are explained only as local flakiness without a recorded
+  reproduction or mitigation
+
 ## Tagged Release
 
 Before tagging:
@@ -28,23 +106,25 @@ Before tagging:
 3. Run `git status --short`.
 4. Run `.venv/bin/pytest -q`.
 5. Run `git diff --check`.
-6. Confirm README install and quickstart are current.
-7. Build with `.venv/bin/python -m build`.
-8. Check artifacts with `.venv/bin/python -m twine check dist/*`.
-9. Run `npm --prefix npm/ait-vcs test`.
-10. Run `(cd npm/ait-vcs && npm pack --dry-run)`.
-11. Run a fresh venv smoke test from `dist/*.whl`, including the
+6. Run the Review Orchestration Release Gate if review-related files
+   changed.
+7. Confirm README install and quickstart are current.
+8. Build with `.venv/bin/python -m build`.
+9. Check artifacts with `.venv/bin/python -m twine check dist/*`.
+10. Run `npm --prefix npm/ait-vcs test`.
+11. Run `(cd npm/ait-vcs && npm pack --dry-run)`.
+12. Run a fresh venv smoke test from `dist/*.whl`, including the
    plain-directory init smoke and PATH-based agent wrapper smoke below.
-12. Tag with the intended `vX.Y.Z`.
-13. Push `main` and `vX.Y.Z` to GitHub.
-14. Create a GitHub release with the built wheel and sdist.
-15. Confirm GitHub Actions CI and Publish pass.
-16. Confirm PyPI lists the new version.
-17. Run a fresh venv smoke test from PyPI, including the plain-directory
+13. Tag with the intended `vX.Y.Z`.
+14. Push `main` and `vX.Y.Z` to GitHub.
+15. Create a GitHub release with the built wheel and sdist.
+16. Confirm GitHub Actions CI and Publish pass.
+17. Confirm PyPI lists the new version.
+18. Run a fresh venv smoke test from PyPI, including the plain-directory
     init smoke and PATH-based agent wrapper smoke below.
-18. Publish the npm package from `npm/ait-vcs` after PyPI lists the same
+19. Publish the npm package from `npm/ait-vcs` after PyPI lists the same
     version.
-19. Run a fresh global npm smoke test with `npm install -g ait-vcs`.
+20. Run a fresh global npm smoke test with `npm install -g ait-vcs`.
 
 ## Plain Directory Init Smoke
 
@@ -146,10 +226,13 @@ Before uploading:
 
 1. Confirm `pyproject.toml` version matches the PyPI release version.
 2. Run `.venv/bin/pytest -q`.
-3. Build with `.venv/bin/python -m build`.
-4. Check artifacts with `.venv/bin/python -m twine check dist/*`.
-5. Upload with `.venv/bin/python -m twine upload dist/*`.
-6. Smoke test with `pip install ait-vcs`.
+3. Run the Review Orchestration Release Gate if review-related files
+   changed.
+4. Build with `.venv/bin/python -m build`.
+5. Check artifacts with `.venv/bin/python -m twine check dist/*`.
+6. Upload with `.venv/bin/python -m twine upload dist/*`, or publish
+   through GitHub trusted publishing.
+7. Smoke test with `pip install ait-vcs`.
 
 GitHub trusted publishing is also configured through
 `.github/workflows/publish.yml`. On PyPI, create a pending trusted
