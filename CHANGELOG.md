@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.55.49 - 2026-05-10
+
+### Added
+
+- Add AI-agent-first state contract commands with `ait whereami`, `ait next`,
+  and agent-readable JSON context for status, reconcile, recover, apply,
+  review, and merge workflows.
+- Add `ait merge` with dry-run operation plans, safe fast-forward/application
+  paths, dirty-worktree blocking, and actionable JSON errors.
+- Add `ait review report` to aggregate attempt, test, review, finding, fix,
+  approval, and residual-risk evidence as JSON or Markdown.
+- Add Claude Code and Codex adapter doctor auth diagnostics for local CLI
+  mode without silent API-key or credits fallback.
+
+### Changed
+
+- Extend `ait reconcile` so manual commits made inside AIT workspaces can be
+  converted into synthetic AIT results instead of leaving agents stuck outside
+  AIT lineage.
+- Document the standard non-interactive agent loop, JSON schema reference,
+  safe merge workflow, manual commit recovery workflow, and no credits/API-key
+  policy.
+
 ## 0.55.48 - 2026-05-09
 
 ### Added

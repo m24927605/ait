@@ -32,16 +32,36 @@ Replace `claude-code` with `codex`, `aider`, `gemini`, `cursor`, or
 ## Daily run and apply flow
 
 ```bash
+ait whereami --json
+ait next --json
 ait run --adapter claude-code --intent "Refactor query parser" -- claude
 ait run --apply auto --adapter codex --intent "Implement parser edge cases" -- codex
 ait apply latest
 ait recover latest
 ait recover latest --debug
+ait reconcile --json
+ait merge --to main --dry-run --json
+ait merge --to main --push --json
 ```
 
 `ait apply` is the daily entry point for applying a successful result.
 `ait recover` is the daily entry point for held, failed, interrupted, or
 conflicted results.
+
+## Agent-first control plane
+
+```bash
+ait whereami --json
+ait status --json
+ait next --json
+ait review report --format json
+ait review report --format markdown --output docs/reviews/latest.md
+ait merge --to main --mode auto --dry-run --json
+```
+
+Use these commands from Codex, Claude Code, or another coding agent. They
+provide stable JSON state, legal next actions, dry-run merge operations, and
+review evidence without interactive prompts.
 
 ## Attempts and intents
 

@@ -21,10 +21,16 @@ def handle(args, repo_root: Path, parser=None) -> int:
             return 0
         if args.adapter_command == "doctor":
             result = doctor_adapter(args.name, repo_root)
+            from ait.adapter_doctor import agent_auth_diagnostics
+
+            auth = agent_auth_diagnostics(args.name, repo_root)
             if args.format == "json":
-                print(json.dumps(asdict(result), indent=2))
+                payload = asdict(result)
+                payload["agent_auth"] = auth
+                print(json.dumps(payload, indent=2))
             else:
                 print(_format_adapter_doctor(result))
+                print(_format_agent_auth(auth))
             return 0 if result.ok else 2
         if args.adapter_command == "setup":
             try:
@@ -47,3 +53,19 @@ def handle(args, repo_root: Path, parser=None) -> int:
     if parser is not None:
         parser.print_help()
     return 1
+
+
+def _format_agent_auth(auth: dict[str, object]) -> str:
+    lines = [
+        "Agent auth:",
+        f"- mode: {auth.get('auth_mode')}",
+        f"- command: {' '.join(str(item) for item in auth.get('actual_command', []) if str(item)) or 'none'}",
+        f"- will use API key: {auth.get('will_use_api_key')}",
+        f"- API key mode allowed: {auth.get('api_key_mode_allowed')}",
+        f"- fallback to credits: {auth.get('will_fallback_to_credits')}",
+    ]
+    if auth.get("failure_reason"):
+        lines.append(f"- failure: {auth.get('failure_reason')}")
+    if auth.get("recommended_fix"):
+        lines.append(f"- fix: {auth.get('recommended_fix')}")
+    return "\n".join(lines)

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 
 from ait.cli_parser import build_parser
 
-from . import adapter, apply, attempt, cleanup, config, daemon, dev, graph, init, intent, memory, query, reconcile, recover, review, run, shell, upgrade
+from . import adapter, apply, attempt, cleanup, config, daemon, dev, graph, init, intent, memory, merge, next, query, reconcile, recover, review, run, shell, upgrade, whereami
 
 _HANDLERS = {
     "adapter": adapter.handle,
@@ -20,6 +21,8 @@ _HANDLERS = {
     "init": init.handle,
     "intent": intent.handle,
     "memory": memory.handle,
+    "merge": merge.handle,
+    "next": next.handle,
     "query": query.handle,
     "blame": query.handle,
     "cleanup": cleanup.handle,
@@ -32,6 +35,7 @@ _HANDLERS = {
     "shell": shell.handle,
     "status": init.handle,
     "upgrade": upgrade.handle,
+    "whereami": whereami.handle,
 }
 
 
@@ -39,6 +43,8 @@ def main() -> int:
     try:
         parser = build_parser()
         args = parser.parse_args()
+        if getattr(args, "json", False) or "--json" in sys.argv[1:]:
+            args.format = "json"
         handler = _HANDLERS.get(args.command)
         if handler is None:
             parser.print_help()

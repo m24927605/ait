@@ -7,6 +7,24 @@ from ait.landing import ApplyError, apply_attempt, apply_result_payload
 
 def handle(args, repo_root: Path, parser=None) -> int:
     del parser
+    if getattr(args, "dry_run", False):
+        from ait.merge import merge_result
+
+        result = merge_result(
+            repo_root,
+            target_branch=args.to,
+            mode="apply",
+            dry_run=True,
+            push=False,
+            set_default_branch=False,
+        )
+        if args.format == "json":
+            print(json.dumps(result.to_dict(), indent=2))
+        else:
+            from ait.merge import format_merge_text
+
+            print(format_merge_text(result))
+        return 0 if result.status == "planned" else 1
     try:
         result = apply_attempt(
             repo_root,
@@ -15,7 +33,20 @@ def handle(args, repo_root: Path, parser=None) -> int:
             mode=args.mode,
         )
     except (ApplyError, ValueError, WorkspaceError) as exc:
-        print(f"error: {_human_apply_error(str(exc))}", file=sys.stderr)
+        if args.format == "json":
+            from ait.agent_errors import emit_agent_error
+            from ait.agent_state import inspect_agent_state
+
+            emit_agent_error(
+                "json",
+                error_code="APPLY_FAILED",
+                message=_human_apply_error(str(exc)),
+                detected_state=inspect_agent_state(repo_root, target_branch=args.to).to_dict().get("detected_context", {}),
+                recommended_commands=["ait next --json", "ait recover --json"],
+                docs_reference="docs/agent-command-contract.md",
+            )
+        else:
+            print(f"error: {_human_apply_error(str(exc))}", file=sys.stderr)
         return 2
     if args.format == "json":
         print(json.dumps(apply_result_payload(result, debug=args.debug), indent=2))

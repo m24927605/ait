@@ -26,6 +26,36 @@ from ait.review_queue import list_review_jobs, process_review_queue
 
 
 def handle(args, repo_root: Path, parser=None) -> int:
+    if args.review_command is None:
+        jobs = list_review_jobs(repo_root)
+        if args.format == "json":
+            print(json.dumps(_review_status_payload(jobs), indent=2))
+        else:
+            print(_format_review_status_text(jobs))
+        return 0
+    if args.review_command == "report":
+        from ait.review_report import build_review_report, render_review_report_markdown
+
+        try:
+            report = build_review_report(repo_root, attempt_selector=args.attempt)
+        except ValueError as exc:
+            return _review_error(args.format, str(exc), exit_code=2, next_step="ait status --json")
+        rendered = (
+            json.dumps(report, indent=2)
+            if args.format == "json"
+            else render_review_report_markdown(report)
+        )
+        if args.output:
+            output = Path(args.output)
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(rendered if rendered.endswith("\n") else rendered + "\n", encoding="utf-8")
+            if args.format == "json":
+                print(json.dumps({"schema_version": 1, "status": "written", "output": str(output), "report": report}, indent=2))
+            else:
+                print(f"Wrote {output}")
+        else:
+            print(rendered)
+        return 0
     if args.review_command == "status":
         jobs = list_review_jobs(repo_root)
         if getattr(args, "status", None):

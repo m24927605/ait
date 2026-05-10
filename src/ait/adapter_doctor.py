@@ -150,3 +150,100 @@ def doctor_automation(name: str, repo_root: str | Path) -> AutomationDoctorResul
         ]
     )
     return AutomationDoctorResult(adapter=adapter, checks=tuple(checks))
+
+
+def agent_auth_diagnostics(name: str, repo_root: str | Path) -> dict[str, object]:
+    adapter = get_adapter(name)
+    command_name = adapter.command_name
+    try:
+        root = resolve_repo_root(Path(repo_root).resolve())
+    except ValueError:
+        root = Path(repo_root).resolve()
+    wrapper_path = root / ".ait" / "bin" / command_name if command_name else None
+    active_binary = shutil.which(command_name) if command_name else None
+    real_binary = None
+    if command_name and wrapper_path is not None:
+        try:
+            real_binary = _find_real_binary_for_payload(command_name, wrapper_path)
+        except Exception:
+            real_binary = None
+
+    api_key_env = _api_key_env_for_adapter(adapter.name)
+    api_key_present = bool(api_key_env and os.environ.get(api_key_env))
+    api_key_mode_allowed = _api_key_mode_allowed()
+    actual_command = _actual_command(adapter.name, command_name, wrapper_path, active_binary, real_binary)
+    local_cli_available = bool(real_binary or active_binary)
+    if adapter.name in {"claude-code", "codex"}:
+        auth_mode = "local_cli" if local_cli_available else "unavailable"
+        will_use_api_key = False
+        failure_reason = None if local_cli_available else f"{command_name} CLI is not available on PATH"
+        recommended_fix = (
+            f"Install {command_name}, run its local login flow, then run `ait adapter doctor {adapter.name} --json`."
+            if failure_reason
+            else None
+        )
+    else:
+        auth_mode = "local_cli" if local_cli_available else "unavailable"
+        will_use_api_key = False
+        failure_reason = None if local_cli_available or adapter.name == "shell" else f"{command_name} is not available on PATH"
+        recommended_fix = None if failure_reason is None else f"Install {command_name} and retry."
+
+    return {
+        "schema_version": 1,
+        "adapter": adapter.name,
+        "command_name": command_name,
+        "actual_command": actual_command,
+        "auth_mode": auth_mode,
+        "local_cli_available": local_cli_available,
+        "active_binary": active_binary,
+        "real_binary": real_binary,
+        "wrapper_path": str(wrapper_path) if wrapper_path is not None else None,
+        "api_key_env": api_key_env,
+        "api_key_env_present": api_key_present,
+        "api_key_mode_allowed": api_key_mode_allowed,
+        "api_key_mode_policy_env": {
+            "AIT_NO_API_KEY_MODE": os.environ.get("AIT_NO_API_KEY_MODE"),
+            "AIT_DISABLE_API_KEY_MODE": os.environ.get("AIT_DISABLE_API_KEY_MODE"),
+        },
+        "will_use_api_key": will_use_api_key,
+        "will_fallback_to_credits": False,
+        "failure_reason": failure_reason,
+        "recommended_fix": recommended_fix,
+    }
+
+
+def _find_real_binary_for_payload(command_name: str, wrapper_path: Path) -> str | None:
+    from ait.adapter_wrapper import _find_real_binary
+
+    return _find_real_binary(command_name, wrapper_path)
+
+
+def _api_key_env_for_adapter(adapter_name: str) -> str | None:
+    if adapter_name == "claude-code":
+        return "ANTHROPIC_API_KEY"
+    if adapter_name == "codex":
+        return "OPENAI_API_KEY"
+    if adapter_name == "gemini":
+        return "GEMINI_API_KEY"
+    return None
+
+
+def _api_key_mode_allowed() -> bool:
+    disabled_values = {"1", "true", "yes", "on"}
+    return not (
+        os.environ.get("AIT_NO_API_KEY_MODE", "").strip().lower() in disabled_values
+        or os.environ.get("AIT_DISABLE_API_KEY_MODE", "").strip().lower() in disabled_values
+    )
+
+
+def _actual_command(
+    adapter_name: str,
+    command_name: str,
+    wrapper_path: Path | None,
+    active_binary: str | None,
+    real_binary: str | None,
+) -> list[str]:
+    if adapter_name == "shell":
+        return []
+    executable = str(wrapper_path) if wrapper_path and wrapper_path.exists() else active_binary or real_binary or command_name
+    return [executable]

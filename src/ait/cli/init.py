@@ -113,12 +113,17 @@ def handle(args, repo_root: Path, parser=None) -> int:
         payload = asdict(result)
         payload["installation"] = _installation_payload()
         payload["daemon"] = _daemon_status_payload(repo_root)
+        from ait.adapter_doctor import agent_auth_diagnostics
+
+        payload["agent_auth"] = agent_auth_diagnostics(args.name or "claude-code", repo_root)
         if args.format == "json":
             print(json.dumps(payload, indent=2))
         else:
             print(_format_adapter_doctor(result, installation=payload["installation"], daemon=payload["daemon"]))
         return 0 if result.ok else 2
     if args.command == "status":
+        from ait.agent_state import inspect_agent_state
+
         if args.all_adapters:
             results = tuple(
                 doctor_automation(name, repo_root)
@@ -140,6 +145,9 @@ def handle(args, repo_root: Path, parser=None) -> int:
                 )
                 for result in results
             ]
+            agent_state = inspect_agent_state(repo_root).to_dict()
+            for item in payload:
+                item["agent_state"] = agent_state
             if args.format == "json":
                 print(json.dumps(payload, indent=2))
             else:
@@ -154,6 +162,7 @@ def handle(args, repo_root: Path, parser=None) -> int:
             daemon=_daemon_status_payload(repo_root),
         )
         payload = _status_payload_with_recovery(payload, repo_root)
+        payload["agent_state"] = inspect_agent_state(repo_root).to_dict()
         if args.format == "json":
             print(json.dumps(payload, indent=2))
         else:
