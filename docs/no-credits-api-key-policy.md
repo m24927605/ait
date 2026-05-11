@@ -33,3 +33,8 @@ The doctor payload reports:
 
 For local CLI adapters, `will_use_api_key` and `will_fallback_to_credits` should
 remain `false`.
+
+For adversarial reviews, the built-in `claude-code` review adapter resolves to
+the local `claude -p` CLI and strips `ANTHROPIC_API_KEY` from the reviewer child
+process environment. Use repo policy `review.adapters` only when you explicitly
+want to define another local reviewer command and environment allowlist.

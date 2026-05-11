@@ -123,6 +123,7 @@ def handle(args, repo_root: Path, parser=None) -> int:
         return 0 if result.ok else 2
     if args.command == "status":
         from ait.agent_state import inspect_agent_state
+        from ait.next_action import next_action_for_state
 
         if args.all_adapters:
             results = tuple(
@@ -145,9 +146,12 @@ def handle(args, repo_root: Path, parser=None) -> int:
                 )
                 for result in results
             ]
-            agent_state = inspect_agent_state(repo_root).to_dict()
+            state = inspect_agent_state(repo_root)
+            agent_state = state.to_dict()
+            next_action = next_action_for_state(state).to_dict()
             for item in payload:
                 item["agent_state"] = agent_state
+                item["next_action"] = next_action
             if args.format == "json":
                 print(json.dumps(payload, indent=2))
             else:
@@ -162,7 +166,9 @@ def handle(args, repo_root: Path, parser=None) -> int:
             daemon=_daemon_status_payload(repo_root),
         )
         payload = _status_payload_with_recovery(payload, repo_root)
-        payload["agent_state"] = inspect_agent_state(repo_root).to_dict()
+        state = inspect_agent_state(repo_root)
+        payload["agent_state"] = state.to_dict()
+        payload["next_action"] = next_action_for_state(state).to_dict()
         if args.format == "json":
             print(json.dumps(payload, indent=2))
         else:

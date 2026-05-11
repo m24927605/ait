@@ -48,7 +48,7 @@ def next_action_for_state(state: AgentState) -> NextAction:
     safe: list[str] = ["ait whereami --json", "ait status --json", "ait next --json"]
     unsafe: list[str] = []
     alternatives: list[str] = []
-    recommended: str | None = None
+    recommended: str | None = "ait status --json"
     explanation = "AIT is idle; no result or branch action is currently required."
 
     if state.current_state == "not_git_repository":

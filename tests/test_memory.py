@@ -388,6 +388,30 @@ class MemoryTests(unittest.TestCase):
         self.assertEqual(15.0, by_id["literal"].metadata["ranker_raw_score"])
         self.assertEqual(0.75, by_id["vector-high"].metadata["ranker_raw_score"])
 
+    def test_recall_ranker_normalization_treats_tiny_float_drift_as_tie(self) -> None:
+        results = _normalize_recall_ranker_scores(
+            [
+                MemorySearchResult(
+                    kind="fact",
+                    id="left",
+                    score=0.7957873682853489,
+                    title="left",
+                    text="left",
+                    metadata={"ranker": "vector"},
+                ),
+                MemorySearchResult(
+                    kind="fact",
+                    id="right",
+                    score=0.7957873682853488,
+                    title="right",
+                    text="right",
+                    metadata={"ranker": "vector"},
+                ),
+            ]
+        )
+
+        self.assertEqual((1.0, 1.0), tuple(result.score for result in results))
+
     def test_manual_notes_are_allowed_and_ranked_as_manual_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

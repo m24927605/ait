@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.55.50 - 2026-05-11
+
+### Added
+
+- Add the multi-agent control plane guide with capability matrix, same-task
+  agent workflow, safe promote/merge workflow, stale recovery workflow,
+  manual commit recovery workflow, and safety guarantees.
+- Add acceptance coverage for same-intent parallel attempts, concurrent
+  same-target promote races, local-only Unix socket coordination, bad-prompt
+  worktree isolation, decision contracts, dirty worktree blocking, and manual
+  workspace commit reconciliation.
+
+### Changed
+
+- Embed the `ait next --json` decision contract in `ait whereami --json` and
+  `ait status --json` so agents can make state-aware decisions from any
+  primary context command.
+- Add a repo-local branch ref lock and stale-base check for promote/apply
+  landing so concurrent agents cannot silently overwrite a target branch.
+- Ensure idle `ait next --json` still returns an explicit recommended command.
+- Resolve the built-in `claude-code` adversarial reviewer to the local
+  `claude -p` CLI and strip `ANTHROPIC_API_KEY` from that child process
+  environment.
+
+### Safety
+
+- Same-target landing now leaves the losing attempt reviewable when the target
+  branch changed after its base, requiring a rebase or a different target
+  branch instead of overwriting the winner.
+- Claude Code adversarial reviews no longer inherit `ANTHROPIC_API_KEY` on the
+  built-in local CLI path, preventing silent provider-credit fallback.
+
 ## 0.55.49 - 2026-05-10
 
 ### Added

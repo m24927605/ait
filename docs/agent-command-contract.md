@@ -12,6 +12,9 @@ Core agent-facing commands support stable non-interactive operation:
 - `ait review report --format json`
 - `ait merge --json`
 
+For multi-session and multi-agent workflows, see
+[`docs/multi-agent-control-plane.md`](multi-agent-control-plane.md).
+
 ## Common Flags
 
 - `--json`: alias for `--format json`
@@ -52,3 +55,19 @@ Agent-readable errors use this shape:
 ```
 
 Commands must not rely on prose-only failures for agent workflows.
+
+## Decision JSON
+
+`ait next --json` is the canonical decision contract. `ait whereami --json` and
+`ait status --json` also embed the same shape as `next_action` beside their
+broader context/status payloads.
+
+Required decision fields:
+
+- `current_state`
+- `detected_context`
+- `safe_actions`
+- `unsafe_actions`
+- `recommended_command`
+- `blocking_reasons`
+- `recovery_commands`

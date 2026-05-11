@@ -4,6 +4,9 @@ AIT is designed to be driven by coding agents without interactive prompts. Agent
 should treat AIT as a development control plane: inspect state, select a legal
 next action, execute it, then record review and merge evidence.
 
+For multi-agent coordination, leases, stale-session recovery, and safety
+guarantees, see [`docs/multi-agent-control-plane.md`](multi-agent-control-plane.md).
+
 ## Standard Agent Loop
 
 1. `ait whereami --json`
@@ -33,6 +36,8 @@ Use `ait whereami --json` to answer:
 
 Use `ait next --json` to avoid guessing. The response contains safe actions,
 unsafe actions, blocking reasons, recovery commands, and one recommended command.
+`ait whereami --json` and `ait status --json` embed the same decision payload as
+`next_action` for agents that need context or dashboard calls.
 
 ## Manual Commit Recovery
 

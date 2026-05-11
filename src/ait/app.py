@@ -372,7 +372,12 @@ def promote_attempt(
         _refresh_attempt_git_state(conn, init_result.repo_root, attempt_id)
         ref_name = normalize_target_branch_ref(target_ref)
         materializes_current_branch = is_current_branch_ref(init_result.repo_root, ref_name)
-        update_ref_to_workspace_head(init_result.repo_root, ref_name, attempt.workspace_ref)
+        update_ref_to_workspace_head(
+            init_result.repo_root,
+            ref_name,
+            attempt.workspace_ref,
+            base_ref_oid=attempt.base_ref_oid,
+        )
         update_attempt(conn, attempt_id, result_promotion_ref=ref_name)
         verify_attempt_with_connection(conn, init_result.repo_root, attempt_id)
         update_workspace_lease(

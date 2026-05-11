@@ -27,6 +27,9 @@ and error handling. It includes `is_primary_worktree`, `is_ait_workspace`,
 `remote_tracking_branch`, `result_metadata_exists`, and
 `manual_commits_can_be_synthetic`.
 
+`next_action` is also present and uses the same decision payload shape as
+`ait next --json`.
+
 ## `ait next --json`
 
 Required fields:
@@ -40,6 +43,14 @@ Required fields:
 - `blocking_reasons`
 - `recovery_commands`
 - `explanation`
+
+## `ait status --json`
+
+`ait status --json` includes adapter, memory, daemon, and recovery dashboard
+fields. For agent decision-making it also includes:
+
+- `agent_state`: the same state payload shape returned by `ait whereami --json`
+- `next_action`: the same decision payload shape returned by `ait next --json`
 
 ## `ait reconcile --json`
 

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from ait.app import init_repo
 from ait.db import (
@@ -61,6 +63,45 @@ class ReviewAdapterConfigTests(unittest.TestCase):
         self.assertEqual("passed", result.review.status)
         self.assertIn("adapter ok yes", artifact["adapter_invocation"]["stdout"])
         self.assertTrue(artifact["adapter_invocation"]["cwd"].endswith(".ait/custom-reviewer-cwd"))
+
+    def test_claude_code_reviewer_uses_local_cli_without_anthropic_api_key(self) -> None:
+        repo_root = _repo_with_reviewable_attempt()
+        bin_dir = repo_root / "bin"
+        bin_dir.mkdir()
+        claude = bin_dir / "claude"
+        claude.write_text(
+            f"#!{sys.executable}\n"
+            "import json, os, sys\n"
+            "brief = sys.stdin.read()\n"
+            "print(json.dumps({"
+            "'summary': "
+            "'claude local api_key=' + str('ANTHROPIC_API_KEY' in os.environ).lower()"
+            " + ' args=' + ' '.join(sys.argv[1:])"
+            " + ' brief=' + str(bool(brief)).lower(),"
+            "'findings': []"
+            "}))\n",
+            encoding="utf-8",
+        )
+        claude.chmod(0o755)
+        env = {
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}",
+            "ANTHROPIC_API_KEY": "should-not-reach-claude",
+        }
+
+        with patch.dict(os.environ, env, clear=False):
+            result = create_command_reviewer_review(
+                repo_root,
+                "latest-reviewable",
+                reviewer_adapter="claude-code",
+            )
+
+        artifact = json.loads((repo_root / result.review.artifact_ref).read_text(encoding="utf-8"))
+        stdout = artifact["adapter_invocation"]["stdout"]
+        self.assertEqual("passed", result.review.status)
+        self.assertEqual(["claude", "-p"], artifact["adapter_invocation"]["command"])
+        self.assertIn("claude local api_key=false", stdout)
+        self.assertIn("args=-p", stdout)
+        self.assertIn("brief=true", stdout)
 
     def test_policy_adapter_timeout_fails_closed(self) -> None:
         repo_root = _repo_with_reviewable_attempt()

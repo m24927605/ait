@@ -20,6 +20,7 @@ Safety rules:
 - dirty primary worktrees block merge from AIT workspaces
 - untracked files are never deleted
 - user edits are never stashed or overwritten
+- branch ref updates use a local lock and reject stale attempt bases
 - `--dry-run --json` lists every Git or AIT operation before execution
 
 If an AIT workspace has commits but no recorded result metadata, run:
@@ -31,3 +32,6 @@ ait merge --to main --dry-run --json
 
 With `--push`, AIT pushes the target branch after a successful local merge.
 With `--set-default-branch`, AIT records `ait.defaultBranch` in local Git config.
+
+For concurrent agent attempts, leases, and residual landing-lock limitations, see
+[`docs/multi-agent-control-plane.md`](multi-agent-control-plane.md).

@@ -32,7 +32,7 @@ def _normalize_recall_ranker_scores(results: list[MemorySearchResult]) -> list[M
         minimum = min(scores)
         maximum = max(scores)
         for result in ranker_results:
-            if maximum == minimum:
+            if _scores_tied(minimum, maximum):
                 score = 1.0
             else:
                 score = (result.score - minimum) / (maximum - minimum)
@@ -50,6 +50,10 @@ def _normalize_recall_ranker_scores(results: list[MemorySearchResult]) -> list[M
                 )
             )
     return normalized
+
+
+def _scores_tied(minimum: float, maximum: float) -> bool:
+    return abs(maximum - minimum) <= max(1e-9, abs(maximum) * 1e-12)
 
 
 def _temporal_ranked_result(result: MemorySearchResult, *, now: datetime) -> MemorySearchResult:

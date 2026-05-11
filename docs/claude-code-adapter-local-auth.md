@@ -3,6 +3,17 @@
 The `claude-code` adapter uses the local `claude` CLI. It does not require
 `ANTHROPIC_API_KEY` for normal agent operation.
 
+The adversarial reviewer path follows the same local-auth rule:
+
+```sh
+ait review attempt latest-reviewable --mode adversarial --review-adapter claude-code
+```
+
+This invokes the local `claude -p` command and removes `ANTHROPIC_API_KEY`
+from that child process environment so AIT does not silently fall back to
+provider API credits. If you intentionally want a different reviewer command,
+configure it explicitly under `review.adapters`.
+
 Diagnostic command:
 
 ```sh

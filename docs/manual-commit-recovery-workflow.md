@@ -37,3 +37,6 @@ ait merge --to main --push --json
 
 If dirty files are present, AIT returns an actionable JSON error and does not
 modify user data.
+
+For the broader multi-session recovery model, see
+[`docs/multi-agent-control-plane.md`](multi-agent-control-plane.md).

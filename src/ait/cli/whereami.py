@@ -3,12 +3,14 @@ from __future__ import annotations
 from ._shared import *
 
 from ait.agent_state import inspect_agent_state
+from ait.next_action import next_action_for_state
 
 
 def handle(args, repo_root: Path, parser=None) -> int:
     del parser
     state = inspect_agent_state(repo_root, target_branch=getattr(args, "to", None))
     payload = state.to_dict()
+    payload["next_action"] = next_action_for_state(state).to_dict()
     if args.format == "json":
         print(json.dumps(payload, indent=2))
     else:

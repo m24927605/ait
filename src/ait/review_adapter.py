@@ -13,6 +13,15 @@ class ReviewAdapterError(RuntimeError):
     """Raised when a configured reviewer adapter cannot be invoked."""
 
 
+_LOCAL_CLI_REVIEW_ADAPTERS: dict[str, tuple[str, ...]] = {
+    "claude-code": ("claude", "-p"),
+}
+
+_REVIEW_ADAPTER_ENV_BLOCKLIST: dict[str, tuple[str, ...]] = {
+    "claude-code": ("ANTHROPIC_API_KEY",),
+}
+
+
 @dataclass(frozen=True, slots=True)
 class ReviewAdapterResult:
     command: tuple[str, ...]
@@ -29,23 +38,26 @@ def run_review_adapter(
     adapter: str,
     brief: str,
 ) -> ReviewAdapterResult:
+    adapter_name = adapter.strip()
     config = resolve_review_adapter_policy(repo_root, adapter)
     if config is None:
-        command = _adapter_command(adapter)
+        command = _LOCAL_CLI_REVIEW_ADAPTERS.get(adapter_name) or _adapter_command(adapter)
         timeout = None
         env_allowlist: tuple[str, ...] = ()
+        env_blocklist = _REVIEW_ADAPTER_ENV_BLOCKLIST.get(adapter_name, ())
         configured_cwd: str | None = None
     else:
         command = _adapter_command(" ".join([config.command, *config.args]))
         timeout = config.timeout_seconds
         env_allowlist = config.env_allowlist
+        env_blocklist = ()
         configured_cwd = config.cwd
     root = Path(repo_root).resolve()
     cwd = _adapter_cwd(root, review_id=review_id, configured_cwd=configured_cwd)
     if _is_target_workspace(cwd):
         raise ReviewAdapterError("review adapter cwd must not be a target attempt workspace")
     cwd.mkdir(parents=True, exist_ok=True)
-    env = _adapter_env(env_allowlist)
+    env = _adapter_env(env_allowlist, blocklist=env_blocklist)
     try:
         completed = subprocess.run(
             list(command),
@@ -98,10 +110,22 @@ def _adapter_cwd(root: Path, *, review_id: str, configured_cwd: str | None) -> P
     return (root / ".ait" / "reviewer-runs" / review_id.replace(":", "_")).resolve()
 
 
-def _adapter_env(allowlist: tuple[str, ...]) -> dict[str, str] | None:
+def _adapter_env(
+    allowlist: tuple[str, ...],
+    *,
+    blocklist: tuple[str, ...] = (),
+) -> dict[str, str] | None:
     if not allowlist:
-        return None
-    return {name: os.environ[name] for name in allowlist if name in os.environ}
+        if not blocklist:
+            return None
+        env = dict(os.environ)
+        for name in blocklist:
+            env.pop(name, None)
+        return env
+    env = {name: os.environ[name] for name in allowlist if name in os.environ}
+    for name in blocklist:
+        env.pop(name, None)
+    return env
 
 
 def _is_target_workspace(path: Path) -> bool:

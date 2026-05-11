@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
+import fcntl
+import hashlib
 from pathlib import Path
 import shutil
 import subprocess
@@ -364,44 +367,60 @@ def _diff_patch_id(repo_root: Path, base_oid: str, target_ref: str) -> str | Non
     return patch_id.stdout.split()[0]
 
 
-def update_ref_to_workspace_head(repo_root: str | Path, ref_name: str, workspace_ref: str | Path) -> str:
+def update_ref_to_workspace_head(
+    repo_root: str | Path,
+    ref_name: str,
+    workspace_ref: str | Path,
+    *,
+    base_ref_oid: str | None = None,
+) -> str:
     root = Path(repo_root).resolve()
     worktree_path = Path(workspace_ref).resolve()
     head_oid = _git_stdout(worktree_path, "rev-parse", "--verify", "HEAD")
 
-    # When the target ref is the currently-checked-out branch of the main
-    # repository, a bare `git update-ref` would move the branch pointer
-    # forward without touching the working tree or index, leaving the user
-    # with an inverted "changes to be committed" view. Detect that case and
-    # use `git merge --ff-only` so index + working tree follow the ref.
-    head_branch = _git_stdout(root, "symbolic-ref", "--quiet", "HEAD", allow_failure=True)
-    if head_branch and head_branch == ref_name:
-        if _has_uncommitted_changes(root):
-            raise WorkspaceError(
-                f"refusing to promote to currently-checked-out branch {ref_name}: "
-                "main working tree has uncommitted tracked changes. "
-                "Commit or stash those changes first, or promote to a branch "
-                "that is not currently checked out."
+    with _branch_ref_lock(root, ref_name):
+        # When the target ref is the currently-checked-out branch of the main
+        # repository, a bare `git update-ref` would move the branch pointer
+        # forward without touching the working tree or index, leaving the user
+        # with an inverted "changes to be committed" view. Detect that case and
+        # use `git merge --ff-only` so index + working tree follow the ref.
+        head_branch = _git_stdout(root, "symbolic-ref", "--quiet", "HEAD", allow_failure=True)
+        if head_branch and head_branch == ref_name:
+            if _has_uncommitted_changes(root):
+                raise WorkspaceError(
+                    f"refusing to promote to currently-checked-out branch {ref_name}: "
+                    "main working tree has uncommitted tracked changes. "
+                    "Commit or stash those changes first, or promote to a branch "
+                    "that is not currently checked out."
+                )
+            completed = _git_run(
+                root,
+                "merge",
+                "--ff-only",
+                head_oid,
+                allow_failure=True,
             )
-        completed = _git_run(
-            root,
-            "merge",
-            "--ff-only",
-            head_oid,
-            allow_failure=True,
-        )
-        if completed.returncode != 0:
-            stderr = completed.stderr.strip() or "fast-forward not possible"
-            raise WorkspaceError(
-                f"refusing to promote to currently-checked-out branch {ref_name}: "
-                f"{stderr}. Rebase the attempt worktree onto the current branch "
-                "head first, or promote to a branch that is not currently "
-                "checked out."
-            )
-        return head_oid
+            if completed.returncode != 0:
+                stderr = completed.stderr.strip() or "fast-forward not possible"
+                raise WorkspaceError(
+                    f"refusing to promote to currently-checked-out branch {ref_name}: "
+                    f"{stderr}. Rebase the attempt worktree onto the current branch "
+                    "head first, or promote to a branch that is not currently "
+                    "checked out."
+                )
+            return head_oid
 
-    _git_run(root, "update-ref", ref_name, head_oid)
-    return head_oid
+        current_oid = ref_head_oid(root, ref_name)
+        if current_oid and current_oid != head_oid and base_ref_oid and current_oid != base_ref_oid:
+            raise WorkspaceError(
+                f"refusing to promote to {ref_name}: target ref changed since "
+                "the attempt base. Rebase the attempt worktree onto the target "
+                "branch head first, or promote to a new branch."
+            )
+        if current_oid == head_oid:
+            return head_oid
+        _git_run(root, "update-ref", ref_name, head_oid, current_oid or "")
+        return head_oid
 
 
 def land_workspace_head(
@@ -552,6 +571,20 @@ def _has_uncommitted_changes(repo_root: Path) -> bool:
         allow_failure=True,
     )
     return bool(completed.stdout.strip())
+
+
+@contextmanager
+def _branch_ref_lock(repo_root: Path, ref_name: str):
+    locks_dir = repo_root / ".ait" / "locks"
+    locks_dir.mkdir(parents=True, exist_ok=True)
+    lock_name = hashlib.sha256(ref_name.encode("utf-8")).hexdigest()[:16]
+    lock_path = locks_dir / f"ref-{lock_name}.lock"
+    with lock_path.open("a+", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def create_attempt_commit(
