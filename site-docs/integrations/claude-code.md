@@ -81,8 +81,39 @@ Discard when it is not:
 ait attempt discard <attempt-id>
 ```
 
+## Use Claude Code as an adversarial reviewer
+
+`light` review mode is a local deterministic risk scan. It does not call
+Claude Code. Use `adversarial` mode when you want Claude Code to review a
+finished attempt:
+
+```bash
+ait review attempt latest-reviewable --mode adversarial --review-adapter claude-code
+```
+
+The built-in `claude-code` review adapter resolves to the local `claude -p`
+CLI. AIT sends the structured reviewer brief on stdin, runs the reviewer
+outside the target attempt worktree, captures stdout/stderr, and expects a
+structured JSON findings object.
+
+AIT removes `ANTHROPIC_API_KEY` from this child process environment. This keeps
+the reviewer path aligned with local Claude Code authentication and prevents a
+silent fallback to provider API credits. If the local `claude` binary is not
+available or not logged in, the review fails closed instead of switching to an
+API-key path.
+
+Check local auth status:
+
+```bash
+ait adapter doctor claude-code --json
+```
+
+Expected local CLI mode reports `will_use_api_key: false` and
+`will_fallback_to_credits: false`.
+
 ## See also
 
 - [Getting started](../getting-started.md)
+- [Review modes](../reference/review-modes.md)
 - [Codex CLI integration](codex.md)
 - [Aider integration](aider.md)

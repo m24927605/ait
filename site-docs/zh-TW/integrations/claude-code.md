@@ -78,8 +78,37 @@ ait attempt promote <attempt-id> --to main
 ait attempt discard <attempt-id>
 ```
 
+## 用 Claude Code 做 adversarial reviewer
+
+`light` review mode 是本機 deterministic risk scan，不會呼叫 Claude Code。
+需要 Claude Code 審查已完成 attempt 時，使用 `adversarial` mode：
+
+```bash
+ait review attempt latest-reviewable --mode adversarial --review-adapter claude-code
+```
+
+內建 `claude-code` review adapter 會解析成本機 `claude -p` CLI。AIT 會把
+結構化 reviewer brief 從 stdin 傳入、讓 reviewer 跑在 target attempt
+worktree 之外、捕捉 stdout/stderr，並期待 reviewer 回傳結構化 JSON
+findings object。
+
+AIT 會從這個子行程環境移除 `ANTHROPIC_API_KEY`。這讓 reviewer path 維持
+本機 Claude Code authentication，不會 silent fallback 到 provider API
+credits。若本機沒有 `claude` binary 或尚未登入，review 會 fail closed，
+不會切到 API-key path。
+
+檢查本機 auth 狀態：
+
+```bash
+ait adapter doctor claude-code --json
+```
+
+預期 local CLI mode 會回報 `will_use_api_key: false` 與
+`will_fallback_to_credits: false`。
+
 ## 相關
 
 - [開始使用](../getting-started.md)
+- [審查模式](../reference/review-modes.md)
 - [Codex CLI 整合](codex.md)
 - [Aider 整合](aider.md)

@@ -9,8 +9,8 @@ description: >-
 
 ait is a Git-native version control layer for AI coding agents
 (Claude Code, Codex CLI, Aider, Gemini CLI, Cursor) — adding worktree
-isolation, attempt provenance, cross-agent memory, and reviewable
-promotion on top of Git. Open source (MIT), Python 3.14+,
+isolation, attempt provenance, review modes, cross-agent memory, and
+reviewable promotion on top of Git. Open source (MIT), Python 3.14+,
 dependency-free, no SaaS, no telemetry. Metadata is stored locally
 under `.ait/` next to `.git/`. The package is named `ait-vcs` on PyPI
 and npm; the installed command is `ait`.
@@ -59,6 +59,26 @@ in an isolated worktree, and the [attempt is recorded](why-ait.md)
 in `.ait/`. Inspect with `ait attempt show <id>` and
 promote with `ait attempt promote <id> --to main`. See the
 [Claude Code integration page](integrations/claude-code.md).
+
+### Q: Can ait use Claude Code as an adversarial reviewer without an ANTHROPIC API key?
+
+**A:** Yes. `ait review attempt latest-reviewable --mode adversarial
+--review-adapter claude-code` invokes the local Claude Code CLI as
+`claude -p`. ait passes the reviewer brief on stdin and removes
+`ANTHROPIC_API_KEY` from the reviewer child process environment, so
+this path does not silently fall back to provider API credits. If the
+local `claude` CLI is unavailable or not logged in, the review fails
+closed instead of switching to an API-key path.
+
+### Q: What does `ait review attempt --mode light` check?
+
+**A:** `light` mode is a deterministic risk scan and does not call
+Claude Code, Codex, or any LLM. It checks changed-file count,
+sensitive paths, dependency and lockfile changes, likely generated or
+binary files, and missing test evidence. The review record becomes
+`passed` for low risk and `warning` for medium/high/critical risk; it
+does not create line-by-line findings and does not block by itself.
+See [Review modes](reference/review-modes.md).
 
 ### Q: How do I run multiple AI agents in parallel without conflicts?
 
@@ -123,8 +143,11 @@ stray files. See [Why ait](why-ait.md).
 **A:** Each wrapped run receives `AIT_CONTEXT_FILE` — a compact
 repo-local handoff file. ait builds it from prior attempts, prior
 commits, curated notes, and imported agent memory files (`CLAUDE.md`,
-`AGENTS.md`). When Claude Code finishes one attempt and Codex starts
-the next, Codex sees what Claude already explored.
+`AGENTS.md`) under local memory policy. Approved or accepted facts can
+be trusted baseline context; candidate, stale, superseded, or
+policy-blocked memory remains advisory or excluded. When Claude Code
+finishes one attempt and Codex starts the next, Codex sees the context
+that policy allows.
 
 ### Q: What does `ait init` actually do to my repo?
 
@@ -160,6 +183,8 @@ documented in the [MVP spec](https://github.com/m24927605/ait/blob/main/docs/ai-
     {"@type":"Question","name":"How does ait differ from git worktree?","acceptedAnswer":{"@type":"Answer","text":"git worktree is the Git primitive ait builds on. With raw git worktree, you manually create, name, clean up, and find the prompt that produced each worktree's diff. ait automates all of that: one command creates an attempt worktree with a provenance record (intent, prompt, exit code, files, commits), queryable later via ait attempt list and ait attempt show."}},
     {"@type":"Question","name":"Does ait replace Git?","acceptedAnswer":{"@type":"Answer","text":"No. ait sits on top of Git. It uses standard Git commits, Git worktrees, and Git refs internally; everything ait records is also visible to Git tools. Removing ait is pip uninstall ait-vcs plus rm -rf .ait/; your Git repository is unaffected."}},
     {"@type":"Question","name":"How do I use ait with Claude Code?","acceptedAnswer":{"@type":"Answer","text":"Run ait init in your repo. ait detects Claude Code on PATH and merges hooks into .claude/settings.json automatically. Then keep using claude as you already do; each session is wrapped in an isolated worktree, and the attempt is recorded in .ait/."}},
+    {"@type":"Question","name":"Can ait use Claude Code as an adversarial reviewer without an ANTHROPIC API key?","acceptedAnswer":{"@type":"Answer","text":"Yes. ait review attempt latest-reviewable --mode adversarial --review-adapter claude-code invokes local Claude Code as claude -p. ait passes the reviewer brief on stdin and removes ANTHROPIC_API_KEY from the reviewer child process, so this path does not silently fall back to provider API credits."}},
+    {"@type":"Question","name":"What does ait review attempt --mode light check?","acceptedAnswer":{"@type":"Answer","text":"light mode is a deterministic risk scan and does not call Claude Code, Codex, or any LLM. It checks changed-file count, sensitive paths, dependency and lockfile changes, likely generated or binary files, and missing test evidence. It does not create line-by-line findings and does not block by itself."}},
     {"@type":"Question","name":"How do I run multiple AI agents in parallel without conflicts?","acceptedAnswer":{"@type":"Answer","text":"Each ait attempt provisions its own Git worktree. You can run Claude Code, Codex CLI, Aider, Gemini CLI, and Cursor at the same time on the same repo and they will not stomp each other. Compare attempts with ait attempt list, then promote the one you trust."}},
     {"@type":"Question","name":"How can I see exactly which prompt produced a Git commit?","acceptedAnswer":{"@type":"Answer","text":"ait attempt show returns the full record: intent, prompt text, context files used, agent name, exit status, edited files, and commit SHAs. You can also query in reverse — ait attempt list --files <path> shows every attempt that touched a given file."}},
     {"@type":"Question","name":"Does ait send my code or prompts to a SaaS?","acceptedAnswer":{"@type":"Answer","text":"No. ait is local-only. The harness daemon listens on a Unix socket (no network port), no telemetry, no cross-machine sync, no analytics. All metadata stays under .ait/ next to .git/."}},
@@ -167,7 +192,7 @@ documented in the [MVP spec](https://github.com/m24927605/ait/blob/main/docs/ai-
     {"@type":"Question","name":"How do I install ait?","acceptedAnswer":{"@type":"Answer","text":"Either pipx install ait-vcs (recommended) or npm install -g ait-vcs. The package is ait-vcs on both registries; the installed command is ait. Requires Python 3.14+ and Git."}},
     {"@type":"Question","name":"What is an attempt in ait terminology?","acceptedAnswer":{"@type":"Answer","text":"An attempt is one wrapped agent run. It has an ID, a parent intent, a Git worktree, a recorded prompt, a status (succeeded, promoted, failed), a set of edited files, and zero or more resulting Git commits."}},
     {"@type":"Question","name":"How do I undo a failed AI agent run with ait?","acceptedAnswer":{"@type":"Answer","text":"Run ait attempt discard <id>. The attempt's worktree and metadata are removed; your root checkout is unaffected because the bad changes never touched it."}},
-    {"@type":"Question","name":"How does ait pass context between different AI agents?","acceptedAnswer":{"@type":"Answer","text":"Each wrapped run receives AIT_CONTEXT_FILE — a compact repo-local handoff file built from prior attempts, prior commits, curated notes, and imported agent memory files like CLAUDE.md and AGENTS.md."}},
+    {"@type":"Question","name":"How does ait pass context between different AI agents?","acceptedAnswer":{"@type":"Answer","text":"Each wrapped run receives AIT_CONTEXT_FILE, a compact repo-local handoff file built from prior attempts, prior commits, curated notes, and imported agent memory files like CLAUDE.md and AGENTS.md under local memory policy. Approved or accepted facts can be trusted baseline context; candidate, stale, superseded, or policy-blocked memory remains advisory or excluded."}},
     {"@type":"Question","name":"What does ait init do to my repo?","acceptedAnswer":{"@type":"Answer","text":"It creates .ait/ (config, database, worktrees root, agent wrappers), installs an envrc for direnv if present, and merges hooks into agent config files it detects (.claude/settings.json, .codex/hooks.json, .gemini/settings.json). It does not modify Git history."}},
     {"@type":"Question","name":"Is ait stable or production-ready?","acceptedAnswer":{"@type":"Answer","text":"ait is alpha. The current release is 0.55.x and is intended for local dogfooding and early users comfortable with Git workflows. Public API and CLI surface are stabilizing but not frozen."}},
     {"@type":"Question","name":"How do I find a prompt I wrote last month?","acceptedAnswer":{"@type":"Answer","text":"ait attempt list --query searches attempts by intent text, status, agent, time range, files touched, and commits, using a structured DSL. ait memory search also surfaces matching prior attempts and notes."}}

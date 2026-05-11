@@ -33,10 +33,10 @@ The package is named `ait-vcs` on PyPI and npm. The installed command is `ait`.
 | A bad prompt rewrites half your repo before you notice | Each run lands in an isolated Git worktree — your root checkout never moves |
 | The diff has no useful provenance — which prompt produced it? | Attempts link intent, command output, files, and commits in one record |
 | Failed or partial runs leave your working copy half-broken | Bad attempts stay isolated; `ait attempt discard` removes them in one command |
-| The next agent repeats investigation you already paid tokens for | Repo-local memory feeds prior attempts and commits to the next run |
+| The next agent repeats investigation you already paid tokens for | Policy-gated repo-local memory feeds prior attempts and commits to the next run |
 | Two agents on the same task stomp each other | Each attempt has its own worktree — run N agents in parallel |
 | Did the agent really fix it, or just claim it did? | Explicit `ait attempt promote` keeps speculative changes out of main until you decide |
-| Cross-agent hand-offs lose every previous decision | Memory layer auto-imports `CLAUDE.md`, `AGENTS.md`, and prior attempts |
+| Cross-agent hand-offs lose every previous decision | Memory layer auto-imports `CLAUDE.md`, `AGENTS.md`, and prior attempts, then recalls only allowed context |
 | Provenance tooling wants to ship your code to a SaaS | Metadata stays in `.ait/` next to `.git/` — harness daemon is local-only (Unix socket, no network), no telemetry |
 | "Where's that prompt I wrote last month?" → grep shell history | Query attempts, intents, and commits with a structured DSL |
 
@@ -53,6 +53,28 @@ already trust.
 - [Gemini CLI](integrations/gemini.md)
 - [Cursor](integrations/cursor.md)
 - [Any other shell agent](integrations/shell.md)
+
+## Review and memory boundaries
+
+`ait review attempt --mode light` is a deterministic risk scan. It checks
+changed-file count, sensitive paths, dependency or lockfile changes, generated
+or binary files, and missing test evidence. It does not call an LLM and does
+not produce line-by-line findings.
+
+Use `adversarial` mode when you want a real reviewer adapter:
+
+```bash
+ait review attempt latest-reviewable --mode adversarial --review-adapter claude-code
+```
+
+The built-in `claude-code` reviewer invokes the local `claude -p` CLI and
+removes `ANTHROPIC_API_KEY` from that child process environment. AIT does not
+silently fall back to provider API credits; Claude Code must be installed and
+locally authenticated on your machine.
+
+Repo-local memory is shared through `.ait/` inside one repository. AIT records
+attempts, commits, notes, imported agent memory files, and accepted memory
+facts, then recalls only policy-allowed context for future runs.
 
 ## Status
 

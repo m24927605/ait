@@ -33,10 +33,10 @@ PyPI 與 npm 上的套件名是 `ait-vcs`，安裝後的指令是 `ait`。
 | 一個爛 prompt 在你發現前就改了半個 repo | 每次執行都落在隔離的 Git worktree — root checkout 永遠不動 |
 | diff 沒有 provenance — 不知道是哪個 prompt 產的 | Attempt 把 intent、command output、files、commits 串成一筆紀錄 |
 | 失敗或半成品的執行污染了 working copy | 爛 attempt 留在 worktree 裡，`ait attempt discard` 一鍵清掉 |
-| 下一個 agent 又重做你已經花 token 買過的調查 | Repo-local memory 把過去 attempts、commits 餵給下一次執行 |
+| 下一個 agent 又重做你已經花 token 買過的調查 | 受 policy gate 控制的 repo-local memory，把過去 attempts、commits 餵給下一次執行 |
 | 兩個 agent 跑同一件事會互相覆蓋 | 每個 attempt 自帶 worktree — 可平行跑 N 個 agent |
 | Agent 說「修好了」，但真的修好了嗎？ | 顯式 `ait attempt promote` — 不主動採納，主分支永遠由你決定 |
-| 跨 agent hand-off 會弄丟之前所有的決策 | Memory layer 自動匯入 `CLAUDE.md`、`AGENTS.md`、過往 attempts |
+| 跨 agent hand-off 會弄丟之前所有的決策 | Memory layer 自動匯入 `CLAUDE.md`、`AGENTS.md`、過往 attempts，再只召回 policy 允許的脈絡 |
 | Provenance 工具強迫你把 code 上傳到 SaaS | Metadata 就在 `.git/` 旁的 `.ait/` — daemon 純本機 Unix socket、不對外連網、無 telemetry |
 | 「上個月寫過的那個 prompt 在哪？」→ grep shell history | 用結構化 DSL 直接查 attempts、intents、commits |
 
@@ -53,6 +53,26 @@ PyPI 與 npm 上的套件名是 `ait-vcs`，安裝後的指令是 `ait`。
 - [Gemini CLI](integrations/gemini.md)
 - [Cursor](integrations/cursor.md)
 - [其他 shell agent](integrations/shell.md)
+
+## Review 與 memory 邊界
+
+`ait review attempt --mode light` 是 deterministic risk scan。它會檢查
+變更檔案數、敏感路徑、dependency 或 lockfile、generated/binary 檔案、
+以及是否缺少 test evidence。它不會呼叫 LLM，也不會產生逐行 finding。
+
+需要真正的 reviewer adapter 時，用 `adversarial` mode：
+
+```bash
+ait review attempt latest-reviewable --mode adversarial --review-adapter claude-code
+```
+
+內建 `claude-code` reviewer 會呼叫本機 `claude -p` CLI，並從該子行程
+環境移除 `ANTHROPIC_API_KEY`。AIT 不會 silent fallback 到 provider API
+credits；你的機器上必須已安裝 Claude Code 並完成本機登入。
+
+Repo-local memory 只在同一個 repository 的 `.ait/` 內共享。AIT 會記錄
+attempts、commits、notes、匯入的 agent memory files，以及 accepted memory
+facts，之後只把 policy 允許的 context 召回給未來執行。
 
 ## 狀態
 

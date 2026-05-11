@@ -76,6 +76,7 @@ plugins:
             Facts: 事實
             Reference: 參考
             Commands: 指令
+            Review modes: 審查模式
 
 markdown_extensions:
   - admonition
@@ -114,4 +115,5 @@ nav:
       - "ait vs naked git-worktree": compare/git-worktree-naked-vs-ait.md
   - Reference:
       - Commands: reference/commands.md
+      - Review modes: reference/review-modes.md
   - Facts: facts.md

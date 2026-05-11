@@ -63,6 +63,25 @@ Use these commands from Codex, Claude Code, or another coding agent. They
 provide stable JSON state, legal next actions, dry-run merge operations, and
 review evidence without interactive prompts.
 
+## Review
+
+```bash
+ait review attempt latest-reviewable --mode light
+ait review attempt latest-reviewable --mode adversarial --review-adapter claude-code
+ait run --review risk-based --review-adapter claude-code --adapter claude-code -- claude
+```
+
+`light` mode is a deterministic risk scan: changed-file count, sensitive paths,
+dependency or lockfile changes, generated or binary files, and missing test
+evidence. It does not call an LLM and does not block by itself.
+
+`adversarial` mode calls the requested reviewer adapter. With
+`--review-adapter claude-code`, AIT invokes the local `claude -p` CLI and strips
+`ANTHROPIC_API_KEY` from the child environment so it does not silently use
+provider API credits.
+
+See [Review modes](review-modes.md) for the exact mode boundaries.
+
 ## Attempts and intents
 
 ```bash
@@ -91,6 +110,10 @@ ait memory recall "billing retry"
 ait memory lint
 ait memory lint --fix
 ```
+
+Memory is repo-local under `.ait/`. It combines prior attempts, commits,
+curated notes, imported agent memory files, and accepted memory facts, then
+recalls only policy-allowed context for future runs.
 
 ## Graph
 
