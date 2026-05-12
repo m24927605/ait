@@ -444,6 +444,10 @@ def _write_command_transcript_best_effort(
 
 
 def _stage_all_changes(workspace: Path) -> None:
+    if not workspace.exists():
+        raise WorkspaceError(f"missing workspace: {workspace}")
+    if not workspace.is_dir():
+        raise WorkspaceError(f"workspace is not a directory: {workspace}")
     completed = subprocess.run(
         ["git", "add", "-A"],
         cwd=workspace,

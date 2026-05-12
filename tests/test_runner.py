@@ -25,9 +25,11 @@ from ait.runner import (
     _finish_attempt_locally,
     _fit_transcript_field_budget,
     _run_command_with_pty_transcript,
+    _stage_all_changes,
     _strip_terminal_control,
     run_agent_command,
 )
+from ait.workspace import WorkspaceError
 
 
 class RunnerTests(unittest.TestCase):
@@ -860,6 +862,13 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(1, len(result.attempt.commits))
             self.assertFalse((Path(result.workspace_ref) / ".ait-context.md").exists())
             self.assertFalse(_git_stdout(Path(result.workspace_ref), "status", "--short"))
+
+    def test_stage_all_changes_reports_missing_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            missing_workspace = Path(tmp) / "missing-workspace"
+
+            with self.assertRaisesRegex(WorkspaceError, "missing workspace"):
+                _stage_all_changes(missing_workspace)
 
     def test_run_agent_command_suppresses_keyboard_interrupt_during_auto_commit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

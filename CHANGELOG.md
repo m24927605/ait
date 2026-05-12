@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.55.51 - 2026-05-12
+
+### Fixed
+
+- Report a clear `WorkspaceError` when an attempt workspace is missing during
+  auto-commit staging instead of surfacing a raw Python `FileNotFoundError`
+  traceback.
+
 ## 0.55.50 - 2026-05-11
 
 ### Added
