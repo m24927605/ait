@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 
 from ait.review_policy import resolve_review_adapter_policy
@@ -29,6 +30,9 @@ class ReviewAdapterResult:
     returncode: int
     stdout: str
     stderr: str
+    timeout_seconds: int | None
+    resolved_binary_path: str | None
+    blocked_env: dict[str, bool]
 
 
 def run_review_adapter(
@@ -39,9 +43,16 @@ def run_review_adapter(
     brief: str,
 ) -> ReviewAdapterResult:
     adapter_name = adapter.strip()
-    config = resolve_review_adapter_policy(repo_root, adapter)
-    if config is None:
-        command = _LOCAL_CLI_REVIEW_ADAPTERS.get(adapter_name) or _adapter_command(adapter)
+    local_cli_command = _LOCAL_CLI_REVIEW_ADAPTERS.get(adapter_name)
+    config = None if local_cli_command is not None else resolve_review_adapter_policy(repo_root, adapter)
+    if local_cli_command is not None:
+        command = local_cli_command
+        timeout = None
+        env_allowlist: tuple[str, ...] = ()
+        env_blocklist = _REVIEW_ADAPTER_ENV_BLOCKLIST.get(adapter_name, ())
+        configured_cwd: str | None = None
+    elif config is None:
+        command = _adapter_command(adapter)
         timeout = None
         env_allowlist: tuple[str, ...] = ()
         env_blocklist = _REVIEW_ADAPTER_ENV_BLOCKLIST.get(adapter_name, ())
@@ -58,6 +69,11 @@ def run_review_adapter(
         raise ReviewAdapterError("review adapter cwd must not be a target attempt workspace")
     cwd.mkdir(parents=True, exist_ok=True)
     env = _adapter_env(env_allowlist, blocklist=env_blocklist)
+    resolved_binary_path = shutil.which(command[0], path=None if env is None else env.get("PATH"))
+    blocked_env = {
+        name: bool(env is not None and name in env)
+        for name in env_blocklist
+    }
     try:
         completed = subprocess.run(
             list(command),
@@ -79,6 +95,9 @@ def run_review_adapter(
         returncode=completed.returncode,
         stdout=completed.stdout,
         stderr=completed.stderr,
+        timeout_seconds=timeout,
+        resolved_binary_path=resolved_binary_path,
+        blocked_env=blocked_env,
     )
 
 
@@ -130,4 +149,4 @@ def _adapter_env(
 
 def _is_target_workspace(path: Path) -> bool:
     parts = path.parts
-    return ".ait" in parts and "worktrees" in parts
+    return ".ait" in parts and ("worktrees" in parts or "workspaces" in parts)

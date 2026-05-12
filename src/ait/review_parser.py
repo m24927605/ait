@@ -29,6 +29,8 @@ class ParsedReviewFinding:
     body: str
     evidence_ref: str | None
     suggested_test: str | None
+    mitigation: str | None
+    cross_file: bool
     confidence: str
 
 
@@ -38,13 +40,21 @@ class ParsedReviewOutput:
     findings: tuple[ParsedReviewFinding, ...]
 
 
-def parse_review_output(raw: str) -> ParsedReviewOutput:
+def parse_review_output(
+    raw: str,
+    *,
+    changed_files: tuple[str, ...] | None = None,
+) -> ParsedReviewOutput:
     payload = _load_payload(raw)
     summary = _optional_text(payload.get("summary")) or ""
     findings_raw = payload.get("findings")
     if not isinstance(findings_raw, list):
         raise ReviewOutputParseError("review output must contain findings list")
-    findings = tuple(_parse_finding(item, index=index) for index, item in enumerate(findings_raw))
+    findings = tuple(
+        _parse_finding(item, index=index, changed_files=changed_files)
+        for index, item in enumerate(findings_raw)
+    )
+    _reject_duplicate_findings(findings)
     return ParsedReviewOutput(summary=summary, findings=findings)
 
 
@@ -74,18 +84,35 @@ def _load_fenced_payload(text: str) -> object:
     raise ReviewOutputParseError("fenced review output is not valid JSON") from last_error
 
 
-def _parse_finding(item: object, *, index: int) -> ParsedReviewFinding:
+def _parse_finding(
+    item: object,
+    *,
+    index: int,
+    changed_files: tuple[str, ...] | None,
+) -> ParsedReviewFinding:
     if not isinstance(item, dict):
         raise ReviewOutputParseError(f"finding {index} must be an object")
     severity = _normalize_severity(item.get("severity"), index=index)
     path = _optional_text(item.get("path")) or ""
+    cross_file = _bool_value(item.get("cross_file"), default=False)
     title = _optional_text(item.get("title")) or ""
     body = _optional_text(item.get("body")) or ""
+    evidence_ref = _optional_text(item.get("evidence_ref"))
+    suggested_test = _optional_text(item.get("suggested_test"))
+    mitigation = _optional_text(item.get("mitigation"))
+    hunk_ref = _optional_text(item.get("hunk_ref"))
+    line = _optional_int(item.get("line"), field_name="line", index=index)
+    _validate_changed_file_reference(
+        path,
+        cross_file=cross_file,
+        changed_files=changed_files,
+        index=index,
+    )
     if severity in {"critical", "high"}:
         missing = [
             name
             for name, value in (("path", path), ("title", title), ("body", body))
-            if not value
+            if not value and not (name == "path" and cross_file)
         ]
         if missing:
             raise ReviewOutputParseError(
@@ -95,18 +122,86 @@ def _parse_finding(item: object, *, index: int) -> ParsedReviewFinding:
         raise ReviewOutputParseError(f"finding {index} missing title")
     if not body:
         raise ReviewOutputParseError(f"finding {index} missing body")
+    blocking = _bool_value(item.get("blocking"), default=severity in {"critical", "high"})
+    if blocking or severity in {"critical", "high"}:
+        if _vague_finding(title=title, body=body):
+            raise ReviewOutputParseError(f"{severity} finding {index} is too vague")
+        if not (evidence_ref or hunk_ref or line is not None):
+            raise ReviewOutputParseError(
+                f"{severity} finding {index} missing actionable evidence"
+            )
+        if not (suggested_test or mitigation):
+            raise ReviewOutputParseError(
+                f"{severity} finding {index} missing suggested_test or mitigation"
+            )
     return ParsedReviewFinding(
         severity=severity,
-        blocking=_bool_value(item.get("blocking"), default=severity in {"critical", "high"}),
+        blocking=blocking,
         path=path,
-        line=_optional_int(item.get("line"), field_name="line", index=index),
-        hunk_ref=_optional_text(item.get("hunk_ref")),
+        line=line,
+        hunk_ref=hunk_ref,
         title=title,
         body=body,
-        evidence_ref=_optional_text(item.get("evidence_ref")),
-        suggested_test=_optional_text(item.get("suggested_test")),
+        evidence_ref=evidence_ref,
+        suggested_test=suggested_test or mitigation,
+        mitigation=mitigation,
+        cross_file=cross_file,
         confidence=_normalize_confidence(item.get("confidence")),
     )
+
+
+def _validate_changed_file_reference(
+    path: str,
+    *,
+    cross_file: bool,
+    changed_files: tuple[str, ...] | None,
+    index: int,
+) -> None:
+    if changed_files is None:
+        return
+    if cross_file:
+        return
+    if not path:
+        raise ReviewOutputParseError(
+            f"finding {index} must reference a changed file or set cross_file true"
+        )
+    normalized = path.removeprefix("./")
+    changed = {item.removeprefix("./") for item in changed_files}
+    if normalized not in changed:
+        raise ReviewOutputParseError(
+            f"finding {index} path is not in changed files: {path}"
+        )
+
+
+def _reject_duplicate_findings(findings: tuple[ParsedReviewFinding, ...]) -> None:
+    seen: set[tuple[str, str, int | None, str]] = set()
+    for index, finding in enumerate(findings):
+        key = (
+            finding.severity,
+            finding.path,
+            finding.line,
+            finding.title.casefold(),
+        )
+        if key in seen:
+            raise ReviewOutputParseError(f"duplicate finding {index}")
+        seen.add(key)
+
+
+def _vague_finding(*, title: str, body: str) -> bool:
+    normalized_title = " ".join(title.casefold().split())
+    normalized_body = " ".join(body.casefold().split())
+    vague_titles = {"issue", "bug", "problem", "risk", "general caution"}
+    vague_bodies = {
+        "details.",
+        "details",
+        "review manually.",
+        "review manually",
+        "this may be wrong.",
+        "this may be wrong",
+        "looks risky.",
+        "looks risky",
+    }
+    return normalized_title in vague_titles or normalized_body in vague_bodies
 
 
 def _normalize_severity(value: object, *, index: int) -> str:

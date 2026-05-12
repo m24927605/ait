@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.55.52 - 2026-05-12
+
+### Added
+
+- Add diff excerpts, prior failed attempts, prior review findings, and
+  structured test evidence to adversarial reviewer briefs.
+- Record Claude Code reviewer CLI provenance, including the resolved binary,
+  timeout, and blocked environment proof.
+
+### Changed
+
+- Harden adversarial review parsing with changed-file validation,
+  explicit cross-file findings, duplicate rejection, actionable high-severity
+  evidence requirements, and mitigation or suggested-test requirements.
+- Keep the built-in `claude-code` reviewer pinned to the local `claude -p`
+  CLI even when repository policy defines a conflicting command override.
+
+### Safety
+
+- Reject vague blocking findings, malformed review JSON, and findings outside
+  the changed-file set unless they are explicitly marked as cross-file.
+- Block reviewer workspace writes under both `.ait/workspaces` and
+  `.ait/worktrees`.
+
 ## 0.55.51 - 2026-05-12
 
 ### Fixed

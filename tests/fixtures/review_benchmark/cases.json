@@ -12,6 +12,7 @@
         "title": "Authorization bypass",
         "body": "The owner check was removed.",
         "evidence_ref": "diff:auth-bypass",
+        "suggested_test": "Add a cross-user resource access regression test.",
         "confidence": "high"
       }
     ],

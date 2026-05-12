@@ -46,7 +46,8 @@ class ReviewParserTests(unittest.TestCase):
                   "path": "src/auth.py",
                   "title": "Bypass",
                   "body": "The owner check is skipped.",
-                  "line": "42"
+                  "line": "42",
+                  "suggested_test": "Add an ownership regression test."
                 }
               ]
             }
@@ -101,7 +102,7 @@ class ReviewParserTests(unittest.TestCase):
                     {
                       "severity": "severe",
                       "path": "src/app.py",
-                      "title": "Issue",
+                      "title": "Validation bypass",
                       "body": "Details."
                     }
                   ]
@@ -139,12 +140,141 @@ class ReviewParserTests(unittest.TestCase):
                       "severity": "low",
                       "blocking": "false",
                       "path": "src/app.py",
-                      "title": "Issue",
+                      "title": "Validation bypass",
                       "body": "Details."
                     }
                   ]
                 }
                 """
+            )
+
+    def test_rejects_finding_path_outside_changed_files(self) -> None:
+        with self.assertRaisesRegex(ReviewOutputParseError, "not in changed files"):
+            parse_review_output(
+                """
+                {
+                  "summary": "bad",
+                  "findings": [
+                    {
+                      "severity": "low",
+                      "path": "src/other.py",
+                      "title": "Validation bypass",
+                      "body": "The changed branch can skip validation for invalid input."
+                    }
+                  ]
+                }
+                """,
+                changed_files=("src/app.py",),
+            )
+
+    def test_allows_explicit_cross_file_finding(self) -> None:
+        parsed = parse_review_output(
+            """
+            {
+              "summary": "cross-file",
+              "findings": [
+                {
+                  "severity": "medium",
+                  "cross_file": true,
+                  "title": "Contract mismatch",
+                  "body": "The changed API can affect callers outside the diff.",
+                  "confidence": "medium"
+                }
+              ]
+            }
+            """,
+            changed_files=("src/app.py",),
+        )
+
+        self.assertTrue(parsed.findings[0].cross_file)
+        self.assertEqual("", parsed.findings[0].path)
+
+    def test_rejects_duplicate_findings(self) -> None:
+        with self.assertRaisesRegex(ReviewOutputParseError, "duplicate"):
+            parse_review_output(
+                """
+                {
+                  "summary": "dupe",
+                  "findings": [
+                    {
+                      "severity": "low",
+                      "path": "src/app.py",
+                      "title": "Validation bypass",
+                      "body": "Details."
+                    },
+                    {
+                      "severity": "low",
+                      "path": "src/app.py",
+                      "title": "Validation bypass",
+                      "body": "More details."
+                    }
+                  ]
+                }
+                """,
+                changed_files=("src/app.py",),
+            )
+
+    def test_rejects_blocking_finding_without_evidence_or_mitigation(self) -> None:
+        with self.assertRaisesRegex(ReviewOutputParseError, "actionable evidence"):
+            parse_review_output(
+                """
+                {
+                  "summary": "bad",
+                  "findings": [
+                    {
+                      "severity": "high",
+                      "blocking": true,
+                      "path": "src/app.py",
+                      "title": "Validation bypass",
+                      "body": "The changed branch can skip validation for invalid input.",
+                      "suggested_test": "Add a regression test."
+                    }
+                  ]
+                }
+                """,
+                changed_files=("src/app.py",),
+            )
+
+        with self.assertRaisesRegex(ReviewOutputParseError, "suggested_test or mitigation"):
+            parse_review_output(
+                """
+                {
+                  "summary": "bad",
+                  "findings": [
+                    {
+                      "severity": "high",
+                      "blocking": true,
+                      "path": "src/app.py",
+                      "line": 10,
+                      "title": "Validation bypass",
+                      "body": "The changed branch can skip validation for invalid input."
+                    }
+                  ]
+                }
+                """,
+                changed_files=("src/app.py",),
+            )
+
+    def test_rejects_vague_blocking_finding(self) -> None:
+        with self.assertRaisesRegex(ReviewOutputParseError, "too vague"):
+            parse_review_output(
+                """
+                {
+                  "summary": "bad",
+                  "findings": [
+                    {
+                      "severity": "high",
+                      "blocking": true,
+                      "path": "src/app.py",
+                      "line": 10,
+                      "title": "Issue",
+                      "body": "Review manually.",
+                      "suggested_test": "Add a regression test."
+                    }
+                  ]
+                }
+                """,
+                changed_files=("src/app.py",),
             )
 
 

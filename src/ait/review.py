@@ -62,7 +62,11 @@ class ReviewTarget:
     base_ref_name: str | None
     target_head_oid: str | None
     changed_files: tuple[str, ...]
+    observed_commands_run: int
     observed_tests_run: int
+    observed_tests_passed: int
+    observed_tests_failed: int
+    result_exit_code: int | None
     raw_trace_ref: str | None
 
 
@@ -180,11 +184,11 @@ def create_fake_reviewer_review(
             profiles=profiles,
         )
         _write_text_artifact(init_result.repo_root / brief_ref, brief)
-        raw_output = _fake_reviewer_output(fake_adapter)
+        raw_output = _fake_reviewer_output(fake_adapter, target=target)
         findings: tuple[ParsedReviewFinding, ...] = ()
         parse_error: str | None = None
         try:
-            parsed = parse_review_output(raw_output)
+            parsed = parse_review_output(raw_output, changed_files=target.changed_files)
             findings = parsed.findings
             summary = parsed.summary
         except ReviewOutputParseError as exc:
@@ -322,7 +326,7 @@ def create_command_reviewer_review(
                 parse_error = f"reviewer adapter exited with code {adapter_result.returncode}"
                 summary = parse_error
             else:
-                parsed = parse_review_output(adapter_result.stdout)
+                parsed = parse_review_output(adapter_result.stdout, changed_files=target.changed_files)
                 findings = parsed.findings
                 summary = parsed.summary
         except (ReviewAdapterError, ReviewOutputParseError) as exc:
@@ -468,7 +472,7 @@ def execute_queued_review(repo_root: str | Path, review_id: str) -> Deterministi
         summary = ""
         try:
             if adapter.startswith("fake"):
-                raw_output = _fake_reviewer_output(adapter)
+                raw_output = _fake_reviewer_output(adapter, target=target)
             else:
                 adapter_result = run_review_adapter(
                     init_result.repo_root,
@@ -481,7 +485,7 @@ def execute_queued_review(repo_root: str | Path, review_id: str) -> Deterministi
                     parse_error = f"reviewer adapter exited with code {adapter_result.returncode}"
                     summary = parse_error
             if parse_error is None:
-                parsed = parse_review_output(raw_output)
+                parsed = parse_review_output(raw_output, changed_files=target.changed_files)
                 findings = parsed.findings
                 summary = parsed.summary
         except (ReviewAdapterError, ReviewOutputParseError) as exc:
@@ -590,12 +594,12 @@ def create_fake_multi_reviewer_review(
             parse_error = None
             for profile in required_profiles:
                 adapter = adapters[profile]
-                raw_output = _fake_reviewer_output(adapter)
+                raw_output = _fake_reviewer_output(adapter, target=target)
                 if adapter == "fake:disagree":
                     disagreement = True
                     raw_output = json.dumps({"summary": "Profile disagreement.", "findings": []})
                 try:
-                    parsed = parse_review_output(raw_output)
+                    parsed = parse_review_output(raw_output, changed_files=target.changed_files)
                     findings = parsed.findings
                     parsed_findings.extend(findings)
                     profile_status, profile_blocking = _status_for_parsed_findings(
@@ -823,7 +827,11 @@ def _target_if_reviewable(
         base_ref_name=attempt.base_ref_name,
         target_head_oid=latest_attempt_head_oid(conn, attempt.id),
         changed_files=changed_files,
+        observed_commands_run=0 if evidence is None else evidence.observed_commands_run,
         observed_tests_run=0 if evidence is None else evidence.observed_tests_run,
+        observed_tests_passed=0 if evidence is None else evidence.observed_tests_passed,
+        observed_tests_failed=0 if evidence is None else evidence.observed_tests_failed,
+        result_exit_code=attempt.result_exit_code,
         raw_trace_ref=attempt.raw_trace_ref or (None if evidence is None else evidence.raw_trace_ref),
     )
 
@@ -880,8 +888,9 @@ def _write_text_artifact(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def _fake_reviewer_output(fake_adapter: str) -> str:
+def _fake_reviewer_output(fake_adapter: str, *, target: ReviewTarget | None = None) -> str:
     scenario = fake_adapter.removeprefix("fake").removeprefix(":") or "pass"
+    finding_path = (target.changed_files[0] if target and target.changed_files else "src/example.py")
     if scenario == "pass":
         return json.dumps({"summary": "No findings.", "findings": []})
     if scenario == "low":
@@ -892,7 +901,7 @@ def _fake_reviewer_output(fake_adapter: str) -> str:
                     {
                         "severity": "low",
                         "blocking": False,
-                        "path": "src/example.py",
+                        "path": finding_path,
                         "title": "Missing edge-case test",
                         "body": "The change has no direct edge-case regression test.",
                         "confidence": "medium",
@@ -908,7 +917,7 @@ def _fake_reviewer_output(fake_adapter: str) -> str:
                     {
                         "severity": "high",
                         "blocking": True,
-                        "path": "src/example.py",
+                        "path": finding_path,
                         "line": 1,
                         "hunk_ref": "diff-hunk-1",
                         "title": "Potential regression",
@@ -1003,6 +1012,8 @@ def _reviewer_artifact_payload(
                 "body": finding.body,
                 "evidence_ref": finding.evidence_ref,
                 "suggested_test": finding.suggested_test,
+                "mitigation": finding.mitigation,
+                "cross_file": finding.cross_file,
                 "confidence": finding.confidence,
             }
             for finding in findings
@@ -1015,5 +1026,8 @@ def _reviewer_artifact_payload(
             "returncode": adapter_result.returncode,
             "stdout": adapter_result.stdout,
             "stderr": adapter_result.stderr,
+            "timeout_seconds": adapter_result.timeout_seconds,
+            "resolved_binary_path": adapter_result.resolved_binary_path,
+            "blocked_env": adapter_result.blocked_env,
         }
     return payload

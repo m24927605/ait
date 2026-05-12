@@ -5,9 +5,16 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
+import subprocess
 from typing import TYPE_CHECKING
 
-from ait.db import list_attempt_commits, list_attempts, list_memory_facts
+from ait.db import (
+    list_attempt_commits,
+    list_attempt_review_findings,
+    list_attempt_reviews,
+    list_attempts,
+    list_memory_facts,
+)
 from ait.memory_policy import load_memory_policy, path_excluded, transcript_excluded
 from ait.review_policy import RiskAssessment, risk_reason_payload
 
@@ -48,9 +55,10 @@ def create_review_baseline_snapshot(
         "advisory_sources": _advisory_sources(target),
         "excluded_sources_summary": [],
         "selected_facts": [],
+        "changed_diff_excerpts": _changed_diff_excerpts(repo_root, conn, target),
         "prior_failed_attempts": _prior_failed_attempts(conn, target),
-        "prior_review_findings": [],
-        "test_expectations": [],
+        "prior_review_findings": _prior_review_findings(conn, target),
+        "test_evidence": _test_evidence(repo_root, target),
     }
     selected_facts: list[dict[str, object]] = []
     excluded: list[dict[str, object]] = []
@@ -141,6 +149,15 @@ def render_reviewer_brief(
     lines.extend(
         [
             "",
+            "## Changed Diff Excerpts",
+            *_changed_diff_lines(baseline_payload, budget=budget),
+            "",
+            "## Prior Failed Attempts",
+            *_prior_failed_attempt_lines(baseline_payload),
+            "",
+            "## Prior Review Findings",
+            *_prior_review_finding_lines(baseline_payload),
+            "",
             "## Advisory Evidence",
             *_advisory_source_lines(baseline_payload),
             "",
@@ -148,11 +165,13 @@ def render_reviewer_brief(
             *_excluded_source_lines(baseline_payload),
             "",
             "## Test Evidence",
-            f"- observed_tests_run: {target.observed_tests_run}",
+            *_test_evidence_lines(baseline_payload),
             "- Missing command/output/exit-code evidence must be reported as missing evidence.",
             "",
             "## Required JSON Output Schema",
             "Return exactly one JSON object. Do not return prose outside JSON.",
+            "Every finding must reference a changed file path unless cross_file is true.",
+            "Blocking or high/critical findings must include actionable evidence and suggested_test or mitigation.",
             "```json",
             json.dumps(_output_schema_example(), indent=2, sort_keys=True),
             "```",
@@ -171,6 +190,49 @@ def _fact_excluded_reason(fact, policy) -> str | None:
     if transcript_excluded(" ".join([fact.body, fact.summary]), policy):
         return "excluded_content"
     return None
+
+
+def _changed_diff_excerpts(
+    repo_root: Path,
+    conn: sqlite3.Connection,
+    target: ReviewTarget,
+) -> list[dict[str, object]]:
+    excerpts: list[dict[str, object]] = []
+    for commit in list_attempt_commits(conn, target.attempt_id):
+        completed = subprocess.run(
+            [
+                "git",
+                "show",
+                "--format=",
+                "--no-ext-diff",
+                "--unified=3",
+                commit.commit_oid,
+                "--",
+                *target.changed_files,
+            ],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            excerpts.append(
+                {
+                    "commit_oid": commit.commit_oid,
+                    "available": False,
+                    "error": (completed.stderr or completed.stdout).strip(),
+                }
+            )
+            continue
+        text = completed.stdout.strip()
+        excerpts.append(
+            {
+                "commit_oid": commit.commit_oid,
+                "available": True,
+                "diff": _truncate_text(text, 12000),
+            }
+        )
+    return excerpts
 
 
 def _advisory_sources(target: ReviewTarget) -> list[dict[str, object]]:
@@ -215,6 +277,71 @@ def _prior_failed_attempts(conn: sqlite3.Connection, target: ReviewTarget) -> li
     return failed
 
 
+def _prior_review_findings(conn: sqlite3.Connection, target: ReviewTarget) -> list[dict[str, object]]:
+    target_files = set(target.changed_files)
+    if not target_files:
+        return []
+    findings: list[dict[str, object]] = []
+    for review in list_attempt_reviews(conn):
+        if review.target_attempt_id == target.attempt_id:
+            continue
+        for finding in list_attempt_review_findings(conn, review.id):
+            if finding.path not in target_files:
+                continue
+            findings.append(
+                {
+                    "review_id": review.id,
+                    "target_attempt_id": review.target_attempt_id,
+                    "status": review.status,
+                    "severity": finding.severity,
+                    "blocking": finding.blocking,
+                    "lifecycle_status": finding.lifecycle_status,
+                    "path": finding.path,
+                    "line": finding.line,
+                    "title": finding.title,
+                    "body": finding.body,
+                }
+            )
+    return findings
+
+
+def _test_evidence(repo_root: Path, target: ReviewTarget) -> dict[str, object]:
+    trace = _read_trace_metadata(repo_root, target.raw_trace_ref)
+    return {
+        "observed_commands_run": target.observed_commands_run,
+        "observed_tests_run": target.observed_tests_run,
+        "observed_tests_passed": target.observed_tests_passed,
+        "observed_tests_failed": target.observed_tests_failed,
+        "result_exit_code": target.result_exit_code,
+        "raw_trace_ref": target.raw_trace_ref,
+        "command": trace.get("command"),
+        "trace_exit_code": trace.get("exit_code"),
+        "missing_test_evidence": target.observed_tests_run <= 0,
+        "missing_command_output": not trace.get("command"),
+    }
+
+
+def _read_trace_metadata(repo_root: Path, raw_trace_ref: str | None) -> dict[str, object]:
+    if not raw_trace_ref:
+        return {}
+    path = repo_root / raw_trace_ref
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return {}
+    metadata: dict[str, object] = {}
+    for line in lines[:20]:
+        if line.startswith("Command: "):
+            metadata["command"] = line[len("Command: ") :].strip()
+        elif line.startswith("Exit-Code: "):
+            text = line[len("Exit-Code: ") :].strip()
+            try:
+                metadata["exit_code"] = int(text)
+            except ValueError:
+                metadata["exit_code"] = text
+    return metadata
+
+
 def _baseline_ref(review_id: str) -> str:
     return f".ait/review-baselines/{review_id.replace(':', '_')}.json"
 
@@ -250,6 +377,52 @@ def _trusted_fact_lines(payload: dict[str, object]) -> list[str]:
     ]
 
 
+def _changed_diff_lines(payload: dict[str, object], *, budget: str) -> list[str]:
+    excerpts = [item for item in payload.get("changed_diff_excerpts", []) if isinstance(item, dict)]
+    if not excerpts:
+        return ["- none"]
+    cap = {"quick": 1400, "standard": 3000, "deep": 7000}.get(budget, 3000)
+    lines: list[str] = []
+    for excerpt in excerpts:
+        commit_oid = excerpt.get("commit_oid")
+        if not excerpt.get("available"):
+            lines.append(f"- commit {commit_oid}: diff unavailable ({excerpt.get('error') or 'unknown error'})")
+            continue
+        diff = _truncate_text(str(excerpt.get("diff") or ""), cap)
+        lines.extend(
+            [
+                f"- commit {commit_oid}:",
+                "```diff",
+                diff or "(empty diff)",
+                "```",
+            ]
+        )
+    return lines
+
+
+def _prior_failed_attempt_lines(payload: dict[str, object]) -> list[str]:
+    attempts = [item for item in payload.get("prior_failed_attempts", []) if isinstance(item, dict)]
+    if not attempts:
+        return ["- none"]
+    return [
+        "- "
+        f"{item.get('attempt_id')}: overlap={item.get('overlap')} changed_files={item.get('changed_files')}"
+        for item in attempts
+    ]
+
+
+def _prior_review_finding_lines(payload: dict[str, object]) -> list[str]:
+    findings = [item for item in payload.get("prior_review_findings", []) if isinstance(item, dict)]
+    if not findings:
+        return ["- none"]
+    return [
+        "- "
+        f"{item.get('review_id')} {item.get('severity')} {item.get('path')}: "
+        f"{item.get('title')} (status={item.get('status')}, lifecycle={item.get('lifecycle_status')})"
+        for item in findings
+    ]
+
+
 def _advisory_source_lines(payload: dict[str, object]) -> list[str]:
     sources = [item for item in payload.get("advisory_sources", []) if isinstance(item, dict)]
     if not sources:
@@ -272,6 +445,27 @@ def _excluded_source_lines(payload: dict[str, object]) -> list[str]:
     ]
 
 
+def _test_evidence_lines(payload: dict[str, object]) -> list[str]:
+    evidence = payload.get("test_evidence")
+    if not isinstance(evidence, dict):
+        return ["- none"]
+    lines = [
+        f"- observed_commands_run: {evidence.get('observed_commands_run', 0)}",
+        f"- observed_tests_run: {evidence.get('observed_tests_run', 0)}",
+        f"- observed_tests_passed: {evidence.get('observed_tests_passed', 0)}",
+        f"- observed_tests_failed: {evidence.get('observed_tests_failed', 0)}",
+        f"- result_exit_code: {evidence.get('result_exit_code')}",
+        f"- raw_trace_ref: {evidence.get('raw_trace_ref') or ''}",
+        f"- command: {evidence.get('command') or 'unavailable'}",
+        f"- trace_exit_code: {evidence.get('trace_exit_code')}",
+    ]
+    if evidence.get("missing_test_evidence"):
+        lines.append("- warning: missing test evidence")
+    if evidence.get("missing_command_output"):
+        lines.append("- warning: command/output evidence unavailable")
+    return lines
+
+
 def _output_schema_example() -> dict[str, object]:
     return {
         "summary": "No blocking issues found.",
@@ -286,6 +480,8 @@ def _output_schema_example() -> dict[str, object]:
                 "body": "The new branch returns success before checking ownership.",
                 "evidence_ref": ".ait/reviews/review-id.json#diff-hunk-3",
                 "suggested_test": "Add a cross-tenant access regression test.",
+                "mitigation": "Move the ownership check before the success return.",
+                "cross_file": False,
                 "confidence": "medium",
             }
         ],
@@ -296,4 +492,11 @@ def _truncate_brief(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     suffix = "\n[reviewer brief truncated by budget]\n"
+    return text[: max(0, limit - len(suffix))].rstrip() + suffix
+
+
+def _truncate_text(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    suffix = "\n[truncated]\n"
     return text[: max(0, limit - len(suffix))].rstrip() + suffix

@@ -102,6 +102,42 @@ class ReviewAdapterConfigTests(unittest.TestCase):
         self.assertIn("claude local api_key=false", stdout)
         self.assertIn("args=-p", stdout)
         self.assertIn("brief=true", stdout)
+        self.assertEqual({"ANTHROPIC_API_KEY": False}, artifact["adapter_invocation"]["blocked_env"])
+        self.assertEqual(str(claude), artifact["adapter_invocation"]["resolved_binary_path"])
+        self.assertIsNone(artifact["adapter_invocation"]["timeout_seconds"])
+
+    def test_claude_code_reviewer_ignores_policy_command_override(self) -> None:
+        repo_root = _repo_with_reviewable_attempt()
+        bin_dir = repo_root / "bin"
+        bin_dir.mkdir()
+        claude = bin_dir / "claude"
+        claude.write_text(
+            f"#!{sys.executable}\n"
+            "import json, sys\n"
+            "sys.stdin.read()\n"
+            "print(json.dumps({'summary': 'local cli', 'findings': []}))\n",
+            encoding="utf-8",
+        )
+        claude.chmod(0o755)
+        override = repo_root / "override.py"
+        override.write_text("raise SystemExit(99)\n", encoding="utf-8")
+        _write_named_review_adapter_config(
+            repo_root,
+            name="claude-code",
+            command=f"{shlex.quote(sys.executable)} {shlex.quote(str(override))}",
+        )
+
+        with patch.dict(os.environ, {"PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"}, clear=False):
+            result = create_command_reviewer_review(
+                repo_root,
+                "latest-reviewable",
+                reviewer_adapter="claude-code",
+            )
+
+        artifact = json.loads((repo_root / result.review.artifact_ref).read_text(encoding="utf-8"))
+        self.assertEqual("passed", result.review.status)
+        self.assertEqual(["claude", "-p"], artifact["adapter_invocation"]["command"])
+        self.assertIn("local cli", artifact["adapter_invocation"]["stdout"])
 
     def test_policy_adapter_timeout_fails_closed(self) -> None:
         repo_root = _repo_with_reviewable_attempt()
@@ -140,6 +176,27 @@ def _write_review_adapter_config(
                 "timeout_seconds": timeout_seconds,
                 "cwd": cwd,
                 "env_allowlist": env_allowlist or [],
+            }
+        }
+    }
+    config_path.write_text(json.dumps(config, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def _write_named_review_adapter_config(
+    repo_root: Path,
+    *,
+    name: str,
+    command: str,
+) -> None:
+    config_path = repo_root / ".ait" / "config.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config["review"] = {
+        "adapters": {
+            name: {
+                "command": command,
+                "timeout_seconds": 300,
+                "cwd": ".ait/custom-reviewer-cwd",
+                "env_allowlist": [],
             }
         }
     }
