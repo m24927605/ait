@@ -17,6 +17,10 @@ These examples use the direct CLIs (`claude` and `codex`) after `ait init`
 installs repo-local wrappers. In every terminal session used for the demo, run
 the shell hook first so `claude` and `codex` resolve through `.ait/bin/`.
 
+The repository also contains the same demos split into one folder per pain
+point under
+[`examples/pain-point-demos`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos).
+
 ## Setup once
 
 Create a throwaway Node.js repo:
