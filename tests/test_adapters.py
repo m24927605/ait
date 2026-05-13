@@ -328,9 +328,12 @@ class AdapterTests(unittest.TestCase):
             real_codex.unlink()
 
             wrapper_path = repo_root / ".ait" / "bin" / "codex"
+            run_env = os.environ.copy()
+            run_env["PATH"] = str(wrapper_path.parent) + os.pathsep + "/usr/bin" + os.pathsep + "/bin"
             completed = subprocess.run(
                 [str(wrapper_path), "--version"],
                 cwd=repo_root,
+                env=run_env,
                 capture_output=True,
                 text=True,
                 check=False,
@@ -342,6 +345,63 @@ class AdapterTests(unittest.TestCase):
             self.assertIn(f"wrapper: {wrapper_path}", completed.stderr)
             self.assertIn(str(real_codex), completed.stderr)
             self.assertIn("next: run ait status codex", completed.stderr)
+
+    def test_wrapper_falls_back_to_current_path_when_embedded_binary_is_stale(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = _init_git_repo(Path(tmp) / "repo")
+            stale_bin_dir = Path(tmp) / "stale-bin"
+            fresh_bin_dir = Path(tmp) / "fresh-bin"
+            fake_ait_dir = Path(tmp) / "fake-ait"
+            stale_bin_dir.mkdir()
+            fresh_bin_dir.mkdir()
+            fake_ait_dir.mkdir()
+            stale_claude = stale_bin_dir / "claude"
+            fresh_claude = fresh_bin_dir / "claude"
+            fake_ait = fake_ait_dir / "ait"
+            stale_claude.write_text("#!/bin/sh\nprintf 'stale claude\\n'\n", encoding="utf-8")
+            stale_claude.chmod(0o755)
+            fresh_claude.write_text("#!/bin/sh\nprintf 'fresh claude\\n'\n", encoding="utf-8")
+            fresh_claude.chmod(0o755)
+            fake_ait.write_text(
+                "#!/bin/sh\n"
+                'printf "real=%s\\n" "$AIT_WRAPPER_REAL_BINARY"\n'
+                'printf "args=%s\\n" "$*"\n',
+                encoding="utf-8",
+            )
+            fake_ait.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = str(stale_bin_dir) + os.pathsep + old_path
+            try:
+                setup_adapter("claude-code", repo_root, install_wrapper=True)
+            finally:
+                os.environ["PATH"] = old_path
+            stale_claude.unlink()
+
+            wrapper_path = repo_root / ".ait" / "bin" / "claude"
+            wrapper = wrapper_path.read_text(encoding="utf-8")
+            updated_lines = []
+            for line in wrapper.splitlines():
+                if line.startswith("AIT_WRAPPER_AIT_COMMAND="):
+                    updated_lines.append(f"AIT_WRAPPER_AIT_COMMAND={fake_ait}")
+                else:
+                    updated_lines.append(line)
+            wrapper_path.write_text("\n".join(updated_lines) + "\n", encoding="utf-8")
+            run_env = os.environ.copy()
+            run_env["PATH"] = (
+                str(wrapper_path.parent) + os.pathsep + str(fresh_bin_dir) + os.pathsep + old_path
+            )
+            completed = subprocess.run(
+                [str(wrapper_path), "--version"],
+                cwd=repo_root,
+                env=run_env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(0, completed.returncode)
+            self.assertIn(f"real={fresh_claude.resolve()}", completed.stdout)
+            self.assertIn(f"-- {fresh_claude.resolve()} --version", completed.stdout)
 
     def test_wrapper_reports_recursion_with_init_next_step(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

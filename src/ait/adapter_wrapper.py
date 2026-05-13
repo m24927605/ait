@@ -97,7 +97,46 @@ def _adapter_wrapper_script(adapter: AgentAdapter, real_binary: str) -> str:
         'AIT_WRAPPER_PATH="${0}"\n'
         'AIT_WRAPPER_REPO="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"\n'
         "export AIT_WRAPPER_ADAPTER AIT_WRAPPER_COMMAND AIT_WRAPPER_REAL_BINARY AIT_WRAPPER_PATH AIT_WRAPPER_REPO\n"
+        'ait_wrapper_resolve_path() {\n'
+        '  ait_wrapper_dir="$(dirname "$1")"\n'
+        '  ait_wrapper_base="$(basename "$1")"\n'
+        '  if ait_wrapper_physical_dir="$(cd -P "$ait_wrapper_dir" 2>/dev/null && pwd)"; then\n'
+        '    printf "%s/%s\\n" "$ait_wrapper_physical_dir" "$ait_wrapper_base"\n'
+        "  else\n"
+        '    printf "%s\\n" "$1"\n'
+        "  fi\n"
+        "}\n"
+        'ait_wrapper_find_real_binary() {\n'
+        '  ait_wrapper_path_resolved="$(ait_wrapper_resolve_path "$AIT_WRAPPER_PATH")"\n'
+        '  ait_wrapper_old_ifs="$IFS"\n'
+        "  IFS=:\n"
+        '  for ait_wrapper_dir in $PATH; do\n'
+        '    IFS="$ait_wrapper_old_ifs"\n'
+        '    if [ -z "$ait_wrapper_dir" ]; then\n'
+        "      ait_wrapper_dir=.\n"
+        "    fi\n"
+        '    ait_wrapper_candidate="${ait_wrapper_dir}/${AIT_WRAPPER_COMMAND}"\n'
+        '    if [ ! -f "$ait_wrapper_candidate" ] || [ ! -x "$ait_wrapper_candidate" ]; then\n'
+        "      IFS=:\n"
+        "      continue\n"
+        "    fi\n"
+        '    ait_wrapper_candidate_resolved="$(ait_wrapper_resolve_path "$ait_wrapper_candidate")"\n'
+        '    if [ "$ait_wrapper_candidate_resolved" != "$ait_wrapper_path_resolved" ]; then\n'
+        '      printf "%s\\n" "$ait_wrapper_candidate_resolved"\n'
+        '      IFS="$ait_wrapper_old_ifs"\n'
+        "      return 0\n"
+        "    fi\n"
+        "    IFS=:\n"
+        "  done\n"
+        '  IFS="$ait_wrapper_old_ifs"\n'
+        "  return 1\n"
+        "}\n"
         'if [ ! -x "$AIT_WRAPPER_REAL_BINARY" ]; then\n'
+        '  AIT_WRAPPER_STALE_REAL_BINARY="$AIT_WRAPPER_REAL_BINARY"\n'
+        '  if AIT_WRAPPER_REAL_BINARY="$(ait_wrapper_find_real_binary)"; then\n'
+        "    export AIT_WRAPPER_REAL_BINARY\n"
+        "  else\n"
+        '    AIT_WRAPPER_REAL_BINARY="$AIT_WRAPPER_STALE_REAL_BINARY"\n'
         '  printf "%s\\n" "ait wrapper failed: real ${AIT_WRAPPER_COMMAND} binary not found or not executable" >&2\n'
         '  printf "%s\\n" "adapter: ${AIT_WRAPPER_ADAPTER}" >&2\n'
         '  printf "%s\\n" "repo: ${AIT_WRAPPER_REPO}" >&2\n'
@@ -105,6 +144,7 @@ def _adapter_wrapper_script(adapter: AgentAdapter, real_binary: str) -> str:
         '  printf "%s\\n" "real_binary: ${AIT_WRAPPER_REAL_BINARY}" >&2\n'
         '  printf "%s\\n" "next: run ait status ${AIT_WRAPPER_ADAPTER}" >&2\n'
         "  exit 127\n"
+        "  fi\n"
         "fi\n"
         'if [ "$AIT_WRAPPER_REAL_BINARY" = "$AIT_WRAPPER_PATH" ]; then\n'
         '  printf "%s\\n" "ait wrapper failed: wrapper recursion detected" >&2\n'

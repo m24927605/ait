@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.55.53 - 2026-05-13
+
+### Fixed
+
+- Let repo-local adapter wrappers recover when the embedded real CLI path is
+  stale by resolving the current real command from `PATH` while avoiding
+  wrapper recursion.
+- Keep missing-real-binary errors fail-closed when no replacement CLI can be
+  found.
+
 ## 0.55.52 - 2026-05-12
 
 ### Added
