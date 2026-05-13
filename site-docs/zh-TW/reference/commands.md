@@ -38,6 +38,7 @@ ait run --apply auto --adapter codex --intent "實作 parser edge cases" -- code
 ait apply latest
 ait recover latest
 ait recover latest --debug
+ait resume latest
 ait reconcile --json
 ait merge --to main --dry-run --json
 ait merge --to main --push --json
@@ -45,6 +46,8 @@ ait merge --to main --push --json
 
 `ait apply` 是日常套用成功結果的入口。`ait recover` 是 held、failed、
 interrupted、conflicted 結果的日常復原入口。
+`ait resume latest` 會直接開一個 shell 到可復原 attempt workspace，讓你不用
+手動複製 workspace path 就能續修。
 
 ## Agent-first control plane
 

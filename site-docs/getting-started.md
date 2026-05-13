@@ -41,7 +41,7 @@ ait --version
 Pinned GitHub tag:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.55.56"
+pipx install "git+https://github.com/m24927605/ait.git@v0.55.57"
 ```
 
 ## Initialize a repository
@@ -78,7 +78,8 @@ ait apply latest
 ```
 
 Until apply, your root checkout stays unchanged. If a run fails or cannot
-be applied safely, use `ait recover latest`.
+be applied safely, use `ait recover latest`. If your agent session was closed
+and you want to continue editing the kept worktree, run `ait resume latest`.
 
 ## Next steps
 

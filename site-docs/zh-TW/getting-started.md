@@ -41,7 +41,7 @@ ait --version
 固定 GitHub tag：
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.55.56"
+pipx install "git+https://github.com/m24927605/ait.git@v0.55.57"
 ```
 
 ## 初始化 repository
@@ -78,7 +78,8 @@ ait apply latest
 ```
 
 Apply 之前 root checkout 完全不變。若 run 失敗或無法安全套用，使用
-`ait recover latest`。
+`ait recover latest`。如果 agent session 被關掉、你想回到保留的 worktree
+續修，使用 `ait resume latest`。
 
 ## 接下來
 

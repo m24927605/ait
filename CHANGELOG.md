@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.55.57 - 2026-05-13
+
+### Added
+
+- Add `ait resume [latest|attempt-id]` to open or print a recoverable attempt workspace for continuing interrupted sessions without manually extracting `workspace_ref`.
+
 ## 0.55.56 - 2026-05-13
 
 ### Fixed

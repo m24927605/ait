@@ -134,6 +134,13 @@ def build_parser() -> argparse.ArgumentParser:
     recover_parser.add_argument("--dry-run", action="store_true")
     recover_parser.add_argument("--debug", action="store_true", help="include internal workspace details")
 
+    resume_parser = subparsers.add_parser("resume", help="open a shell in a recoverable attempt workspace")
+    resume_parser.add_argument("attempt_id", nargs="?", default="latest")
+    resume_parser.add_argument("--print", action="store_true", help="print only the workspace path")
+    resume_parser.add_argument("--format", choices=("text", "json"), default="text")
+    resume_parser.add_argument("--json", action="store_true", help="alias for --format json")
+    resume_parser.add_argument("--no-interactive", action="store_true")
+
     review_parser = subparsers.add_parser("review", help="review an AIT attempt before apply")
     review_parser.add_argument("--format", choices=("text", "json", "markdown"), default="text")
     review_parser.add_argument("--json", action="store_true", help="alias for --format json")

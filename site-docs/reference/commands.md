@@ -39,6 +39,7 @@ ait run --apply auto --adapter codex --intent "Implement parser edge cases" -- c
 ait apply latest
 ait recover latest
 ait recover latest --debug
+ait resume latest
 ait reconcile --json
 ait merge --to main --dry-run --json
 ait merge --to main --push --json
@@ -47,6 +48,8 @@ ait merge --to main --push --json
 `ait apply` is the daily entry point for applying a successful result.
 `ait recover` is the daily entry point for held, failed, interrupted, or
 conflicted results.
+`ait resume latest` opens a shell inside the recoverable attempt workspace so
+you can continue interrupted work without manually copying workspace paths.
 
 ## Agent-first control plane
 
