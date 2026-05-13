@@ -8,7 +8,7 @@ ait is not an agent and not a Git replacement. It is the safety, provenance, rev
 
 - [Home](https://m24927605.github.io/ait/): overview, install, problems solved
 - [Why ait](https://m24927605.github.io/ait/why-ait/): the ten problems ait solves (blast radius, provenance, parallel agents, promotion, cross-agent handoff, local-first, verification, prompt search)
-- [Pain-point demos](https://m24927605.github.io/ait/demos/pain-point-demos/): Claude Code and Codex proof commands for every problem on the Why ait page, including isolation, provenance, context handoff, explicit promotion, local-only metadata, review evidence, and prompt search. The repository also provides one folder per pain point under `examples/pain-point-demos`.
+- [Pain-point demos](https://m24927605.github.io/ait/demos/pain-point-demos/): Claude Code and Codex proof commands for every problem on the Why ait page, including isolation, provenance, context handoff, explicit promotion, local-only metadata, review evidence, and prompt search. The repository also provides an executable suite under `examples/pain-point-demos` with `setup.sh` plus one `run.sh` and `verify.sh` per pain point.
 - [Getting started](https://m24927605.github.io/ait/getting-started/): install ait-vcs, run `ait init`, run first wrapped agent, promote the attempt
 - [Command reference](https://m24927605.github.io/ait/reference/commands/): all `ait` subcommands — init, status, doctor, adapter, attempt, intent, context, memory, review, graph, repair, upgrade, shell
 - [Review modes](https://m24927605.github.io/ait/reference/review-modes/): exact boundaries for `light`, `adversarial`, `risk-based`, local `claude -p` reviewer execution, and policy-gated memory baselines

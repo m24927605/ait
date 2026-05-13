@@ -17,9 +17,9 @@ These examples use the direct CLIs (`claude` and `codex`) after `ait init`
 installs repo-local wrappers. In every terminal session used for the demo, run
 the shell hook first so `claude` and `codex` resolve through `.ait/bin/`.
 
-The repository also contains the same demos split into one folder per pain
-point under
-[`examples/pain-point-demos`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos).
+The repository also contains an executable suite for these demos under
+[`examples/pain-point-demos`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos):
+run `./setup.sh`, then run each folder's `./run.sh` and `./verify.sh`.
 
 ## Setup once
 

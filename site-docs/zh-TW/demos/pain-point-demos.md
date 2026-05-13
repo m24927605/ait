@@ -16,8 +16,9 @@ Code 與 Codex 示範每一點。如果你的 talk 只需要 8 點，就用第 1
 `codex`。每個 demo terminal 都要先載入 shell hook，讓 `claude` / `codex`
 走 `.ait/bin/` wrapper。
 
-Repo 內也有同一套 demo，已拆成每個痛點一個資料夾：
+Repo 內也有同一套可執行 demo suite，已拆成每個痛點一個資料夾：
 [`examples/pain-point-demos`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos)。
+先跑 `./setup.sh`，再進每個資料夾跑 `./run.sh` 與 `./verify.sh`。
 
 ## 一次性 setup
 

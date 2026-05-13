@@ -2,34 +2,16 @@
 
 ## Pain
 
-An agent says it is done, but accepting the result should be a separate human
-decision.
+An agent saying "done" should not automatically mean its result is accepted
+into `main`.
 
 ## Demo
 
-Use the two attempts from `05-parallel-agents`, then promote only Claude's
-approach:
-
 ```bash
-cd ~/lab/ait-pain-demo
-eval "$(ait init --shell)"
-
-chosen=$(
-  ait query --on attempt 'title~"parallel approach A"' --format jsonl --limit 1 |
-    python3 -c 'import json,sys; print(json.loads(sys.stdin.readline())["id"])'
-)
-
-ait attempt promote "$chosen" --to main
+./run.sh
+./verify.sh
 ```
 
-## Proof
-
-```bash
-cat approach.txt
-git log --oneline -1
-ait attempt list --limit 6
-```
-
-Expected result: before promotion, the result was a proposal. After promotion,
-`approach.txt` appears in `main`.
-
+`run.sh` promotes only Claude Code's approach from `05-parallel-agents` to
+`main`, running that prerequisite first if needed. `verify.sh` proves
+`approach.txt` appears in `main` only after explicit promotion.
