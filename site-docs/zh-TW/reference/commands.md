@@ -77,7 +77,8 @@ dependency 或 lockfile、generated/binary 檔案、缺少 test evidence。它
 `--review-adapter claude-code` 時，AIT 會呼叫本機 `claude -p` CLI，並從
 子行程環境移除 `ANTHROPIC_API_KEY`，避免 silent 使用 provider API credits。
 
-精確邊界請看 [審查模式](review-modes.md)。
+精確邊界請看 [審查模式](review-modes.md)，完整 reviewer workflow 請看
+[對抗式 code review](adversarial-code-review.md)。
 
 ## Attempts 與 intents
 

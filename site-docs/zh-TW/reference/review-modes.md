@@ -57,6 +57,8 @@ target attempt worktree 外執行 reviewer，並捕捉 stdout/stderr。
 當 reviewer 依 schema 回傳 high 或 critical finding 時，這些 finding 可以成為
 blocking findings。
 
+完整操作流程請看 [對抗式 code review](adversarial-code-review.md)。
+
 ## Claude Code reviewer
 
 內建 `claude-code` review adapter 會解析成本機 Claude Code：

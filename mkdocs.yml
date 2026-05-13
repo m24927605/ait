@@ -77,6 +77,7 @@ plugins:
             Reference: 參考
             Commands: 指令
             Review modes: 審查模式
+            Adversarial code review: 對抗式 code review
 
 markdown_extensions:
   - admonition
@@ -116,4 +117,5 @@ nav:
   - Reference:
       - Commands: reference/commands.md
       - Review modes: reference/review-modes.md
+      - Adversarial code review: reference/adversarial-code-review.md
   - Facts: facts.md

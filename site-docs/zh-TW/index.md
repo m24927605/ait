@@ -74,6 +74,9 @@ Repo-local memory 只在同一個 repository 的 `.ait/` 內共享。AIT 會記�
 attempts、commits、notes、匯入的 agent memory files，以及 accepted memory
 facts，之後只把 policy 允許的 context 召回給未來執行。
 
+完整流程請看 [對抗式 code review](reference/adversarial-code-review.md)：risk
+scan、reviewer adapter、findings、report，以及 promote 前的判斷。
+
 ## 狀態
 
 `ait` 仍屬 alpha quality，適合本機 dogfooding 與熟悉 Git 工作流的早期

@@ -11,6 +11,7 @@ ait is not an agent and not a Git replacement. It is the safety, provenance, rev
 - [Getting started](https://m24927605.github.io/ait/getting-started/): install ait-vcs, run `ait init`, run first wrapped agent, promote the attempt
 - [Command reference](https://m24927605.github.io/ait/reference/commands/): all `ait` subcommands — init, status, doctor, adapter, attempt, intent, context, memory, review, graph, repair, upgrade, shell
 - [Review modes](https://m24927605.github.io/ait/reference/review-modes/): exact boundaries for `light`, `adversarial`, `risk-based`, local `claude -p` reviewer execution, and policy-gated memory baselines
+- [Adversarial code review](https://m24927605.github.io/ait/reference/adversarial-code-review/): end-to-end reviewer workflow — risk scan, Claude Code reviewer adapter, custom command adapters, findings, reports, and promotion decisions
 - [AI search facts](https://m24927605.github.io/ait/facts/): self-contained Q&A — what is ait, how it differs from git-worktree, install, supported agents, privacy, safety guarantees
 
 ## Integrations

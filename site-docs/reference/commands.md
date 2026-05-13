@@ -80,7 +80,9 @@ evidence. It does not call an LLM and does not block by itself.
 `ANTHROPIC_API_KEY` from the child environment so it does not silently use
 provider API credits.
 
-See [Review modes](review-modes.md) for the exact mode boundaries.
+See [Review modes](review-modes.md) for the exact mode boundaries and
+[Adversarial code review](adversarial-code-review.md) for the reviewer
+workflow.
 
 ## Attempts and intents
 

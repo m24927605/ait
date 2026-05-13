@@ -76,6 +76,10 @@ Repo-local memory is shared through `.ait/` inside one repository. AIT records
 attempts, commits, notes, imported agent memory files, and accepted memory
 facts, then recalls only policy-allowed context for future runs.
 
+See [Adversarial code review](reference/adversarial-code-review.md) for the
+full workflow: risk scan, reviewer adapter, findings, reports, and promotion
+decision.
+
 ## Status
 
 `ait` is alpha quality. It is intended for local dogfooding and early users

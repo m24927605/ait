@@ -57,6 +57,9 @@ the reviewer outside the target attempt worktree and captures stdout/stderr.
 High or critical findings can become blocking findings when the reviewer
 returns them in the expected schema.
 
+For the end-to-end workflow, see
+[Adversarial code review](adversarial-code-review.md).
+
 ## Claude Code reviewer
 
 The built-in `claude-code` review adapter resolves to local Claude Code:
