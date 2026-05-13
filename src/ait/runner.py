@@ -251,6 +251,9 @@ def run_agent_command(
                 exit_code=effective_exit_code,
                 raw_trace_ref=raw_trace_ref,
             )
+            mark_finished_locally = getattr(harness, "mark_finished_locally", None)
+            if callable(mark_finished_locally):
+                mark_finished_locally()
 
     resolved_commit_message = _resolve_commit_message(
         explicit=commit_message,

@@ -15,6 +15,7 @@ from unittest.mock import patch
 
 from ait.daemon import start_daemon as _real_start_daemon
 from ait.db import connect_db, list_memory_retrieval_events
+from ait.harness import HarnessError
 from ait.memory import add_memory_note, list_memory_notes, search_repo_memory
 from ait.report import build_work_graph, render_work_graph_text
 from ait.review import create_deterministic_review
@@ -323,6 +324,28 @@ class RunnerTests(unittest.TestCase):
                     repo_root,
                     intent_title="Interrupted finish",
                     command=[sys.executable, "-c", "print('finished before interrupt')"],
+                    capture_command_output=True,
+                )
+
+            self.assertEqual(0, result.exit_code)
+            self.assertEqual("finished", result.attempt.attempt["reported_status"])
+            self.assertEqual("succeeded", result.attempt.attempt["verified_status"])
+            self.assertEqual(0, result.attempt.attempt["result_exit_code"])
+            self.assertIsNotNone(result.attempt.attempt["raw_trace_ref"])
+
+    def test_run_agent_command_finalizes_locally_if_record_tool_loses_harness(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            with (
+                patch("ait.runner.AitHarness.record_tool", side_effect=HarnessError("socket gone")),
+                patch("ait.runner.AitHarness.finish", side_effect=AssertionError("finish retried")),
+            ):
+                result = run_agent_command(
+                    repo_root,
+                    intent_title="Record tool harness lost",
+                    command=[sys.executable, "-c", "print('finished before harness loss')"],
                     capture_command_output=True,
                 )
 

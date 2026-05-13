@@ -183,6 +183,12 @@ class AitHarness:
         self._finish_attempted = True
         self._finished = True
 
+    def mark_finished_locally(self) -> None:
+        """Suppress context-manager auto-finish after a local fallback finalizes."""
+        self._finish_failed = False
+        self._finish_attempted = True
+        self._finished = True
+
     def close(self) -> None:
         if self._file is not None:
             try:
@@ -218,7 +224,10 @@ class AitHarness:
             return self._send_envelope(envelope, event_type=event_type)
         except (BrokenPipeError, ConnectionResetError, OSError, _HarnessConnectionError):
             self.close()
-            self._connect()
+            try:
+                self._connect()
+            except OSError as exc:
+                raise HarnessError(f"could not reconnect to harness socket {self.socket_path}: {exc}") from exc
             try:
                 return self._send_envelope(envelope, event_type=event_type)
             except (BrokenPipeError, ConnectionResetError, OSError, _HarnessConnectionError) as exc:

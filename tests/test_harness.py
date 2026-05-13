@@ -7,6 +7,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -119,6 +120,29 @@ class HarnessClientTests(unittest.TestCase):
                 harness.start()
         finally:
             harness.close()
+
+    def test_reconnect_failure_is_reported_as_harness_error(self) -> None:
+        harness = AitHarness(
+            attempt_id="repo:nonce:01TESTATTEMPT",
+            ownership_token="test-token",
+            socket_path=self._socket_path,
+            agent={"agent_id": "myhar:worker", "harness": "myhar", "harness_version": "0"},
+        )
+
+        with (
+            patch.object(harness, "_send_envelope", side_effect=BrokenPipeError("socket closed")),
+            patch.object(harness, "_connect", side_effect=FileNotFoundError("missing daemon.sock")),
+        ):
+            with self.assertRaises(HarnessError) as raised:
+                harness.record_tool(
+                    tool_name="Bash",
+                    category="command",
+                    duration_ms=1,
+                    success=False,
+                )
+
+        self.assertIn("could not reconnect to harness socket", str(raised.exception))
+        self.assertIn("missing daemon.sock", str(raised.exception))
 
     def test_context_manager_finishes_on_exception(self) -> None:
         self._start_serve()

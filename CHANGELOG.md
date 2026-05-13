@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.55.55 - 2026-05-13
+
+### Fixed
+
+- Suppress raw harness traceback output when an agent CLI exits after the AIT
+  daemon socket has already closed or disappeared.
+- Finalize wrapped runs locally after harness write failures without retrying
+  the daemon finish during context cleanup.
+
 ## 0.55.54 - 2026-05-13
 
 ### Changed
