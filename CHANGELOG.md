@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.55.54 - 2026-05-13
+
+### Changed
+
+- Make `ait attempt list` default to a compact human-readable table with
+  short attempt IDs, status, agent, exit code, changed-file count, timestamp,
+  and intent title.
+- Keep full attempt metadata available through `ait attempt list --format
+  jsonl` for scripts and debugging.
+
 ## 0.55.53 - 2026-05-13
 
 ### Fixed
