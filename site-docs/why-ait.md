@@ -14,6 +14,8 @@ AI coding agents are fast. Git history, review discipline, and handoff
 context across runs are not. `ait` closes that gap with a thin Git-native
 layer. Here is the long form of every problem it solves and how.
 
+For runnable proof, see [Pain-point demos](demos/pain-point-demos.md).
+
 ## 1. Blast radius is unbounded
 
 **Pain.** A single prompt to Claude Code or Codex can rewrite 30 files,

@@ -41,6 +41,8 @@ The package is named `ait-vcs` on PyPI and npm. The installed command is `ait`.
 | "Where's that prompt I wrote last month?" → grep shell history | Query attempts, intents, and commits with a structured DSL |
 
 See the full deep-dive on each problem in [Why ait](why-ait.md).
+For runnable proof of each point, use the
+[Pain-point demos](demos/pain-point-demos.md).
 
 `ait` is **not** another agent. It is the Git layer around the agents you
 already trust.

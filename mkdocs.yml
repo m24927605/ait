@@ -64,6 +64,8 @@ plugins:
             Home: 首頁
             Why ait: 為什麼用 ait
             Getting started: 開始使用
+            Demos: Demo
+            Pain-point demos: 痛點 demo
             Integrations: 整合
             Claude Code: Claude Code
             Codex CLI: Codex CLI
@@ -105,6 +107,8 @@ nav:
   - Home: index.md
   - Why ait: why-ait.md
   - Getting started: getting-started.md
+  - Demos:
+      - Pain-point demos: demos/pain-point-demos.md
   - Integrations:
       - Claude Code: integrations/claude-code.md
       - Codex CLI: integrations/codex.md

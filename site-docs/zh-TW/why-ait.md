@@ -12,6 +12,8 @@ AI coding agent 跑得快。Git history、審核紀律、跨 session 的 hand-of
 脈絡跟不上。`ait` 用一層薄的 Git-native 設計把這個落差補起來。下面是
 ait 解決的每個問題的長版本，以及對應的解法。
 
+想看可重跑 proof，請看 [痛點 demo](demos/pain-point-demos.md)。
+
 ## 1. Blast radius 失控
 
 **痛點：** 一句送給 Claude Code 或 Codex 的 prompt 可以改 30 個檔案、

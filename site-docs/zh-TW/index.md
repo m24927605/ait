@@ -41,6 +41,7 @@ PyPI 與 npm 上的套件名是 `ait-vcs`，安裝後的指令是 `ait`。
 | 「上個月寫過的那個 prompt 在哪？」→ grep shell history | 用結構化 DSL 直接查 attempts、intents、commits |
 
 完整深入的解析請看 [為什麼用 ait](why-ait.md)。
+每個痛點的可重跑 proof 請看 [痛點 demo](demos/pain-point-demos.md)。
 
 `ait` **不是**另一個 agent。它是包在你信任的 agents 外面的 Git
 工作層。
