@@ -12,7 +12,7 @@ use_demo_workspace
 info "running Claude Code provenance proof"
 AIT_INTENT="Claude: provenance proof" \
 AIT_COMMIT_MESSAGE="claude provenance proof" \
-claude -p --permission-mode bypassPermissions \
+run_claude_code -p --permission-mode bypassPermissions \
   "Create notes/provenance-proof.md with this exact line: AIT_PROVENANCE_PROOF=claude_prompt_recorded. Do not run git commands."
 
 attempt="$(latest_attempt_id)"

@@ -12,7 +12,7 @@ use_demo_workspace
 info "running Claude Code risky broad edit in an isolated attempt"
 AIT_INTENT="Claude: broad risky edit" \
 AIT_COMMIT_MESSAGE="claude broad risky edit" \
-claude -p --permission-mode bypassPermissions \
+run_claude_code -p --permission-mode bypassPermissions \
   "Create docs/claude-risk.md and tmp/claude-generated.txt, then delete src/calculator.js. Do not run git commands."
 
 attempt="$(latest_attempt_id)"

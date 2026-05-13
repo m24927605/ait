@@ -15,7 +15,7 @@ decision="Decision: keep calculator modules as ESM exports. $proof."
 info "running Claude Code decision attempt"
 AIT_INTENT="Claude: record calculator module decision $run_id" \
 AIT_COMMIT_MESSAGE="claude calculator module decision" \
-claude -p --permission-mode bypassPermissions \
+run_claude_code -p --permission-mode bypassPermissions \
   "Create AGENTS.md with this exact line: $decision Do not run git commands."
 
 decision_attempt="$(latest_attempt_id)"

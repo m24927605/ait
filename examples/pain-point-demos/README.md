@@ -81,6 +81,8 @@ To verify previous runs without rerunning agents:
 ## Notes
 
 - The demos intentionally use throwaway paths under `~/lab`.
+- Claude Code demo scripts unset `ANTHROPIC_API_KEY` for the child command so a
+  stale external API key does not override the local Claude Code login.
 - `05-parallel-agents` starts Claude Code and Codex concurrently.
 - `06-explicit-promotion` depends on the attempts from `05-parallel-agents`
   and runs that prerequisite automatically if needed.

@@ -49,6 +49,47 @@ PATH="$(python3 -c 'import os,sys; print(os.pathsep.join(p for p in sys.argv[1].
 export PATH
 
 "$AIT_BIN" init --adapter claude-code --adapter codex --no-shell-install
+python3 <<'PY'
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+
+def patch_settings(path: Path, *, project_var: str, hook_ref: str) -> None:
+    if not path.exists():
+        return
+    data = json.loads(path.read_text(encoding="utf-8"))
+
+    def walk(value):
+        if isinstance(value, dict):
+            command = value.get("command")
+            if isinstance(command, str) and hook_ref in command:
+                prefix = command.split('"', 1)[0].rstrip()
+                value["command"] = (
+                    f'{prefix} "${{AIT_WRAPPER_REPO:-${project_var}}}/{hook_ref}"'
+                )
+            for child in value.values():
+                walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                walk(child)
+
+    walk(data)
+    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+patch_settings(
+    Path(".claude/settings.json"),
+    project_var="CLAUDE_PROJECT_DIR",
+    hook_ref=".ait/adapters/claude-code/claude_code_hook.py",
+)
+patch_settings(
+    Path(".codex/hooks.json"),
+    project_var="CODEX_PROJECT_DIR",
+    hook_ref=".ait/adapters/codex/codex_hook.py",
+)
+PY
 export PATH="$DEMO_WORKSPACE/.ait/bin:$PATH"
 "$AIT_BIN" adapter doctor claude-code
 "$AIT_BIN" adapter doctor codex

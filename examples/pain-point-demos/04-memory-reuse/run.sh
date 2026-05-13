@@ -15,7 +15,7 @@ proof="AIT_PROOF_AUTH_RETRY=$run_id-missing_jitter"
 info "running Claude Code investigation"
 AIT_INTENT="Claude: investigate auth retry $run_id" \
 AIT_COMMIT_MESSAGE="claude auth retry investigation" \
-claude -p --permission-mode bypassPermissions \
+run_claude_code -p --permission-mode bypassPermissions \
   "Create notes/auth-retry.md with this exact line: Decision: auth retry backoff uses missing jitter. $proof. Do not run git commands."
 
 claude_attempt="$(latest_attempt_id)"

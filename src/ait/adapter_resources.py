@@ -38,7 +38,7 @@ def _resolve_target(repo_root: Path, target: str | Path) -> Path:
 def _claude_code_settings() -> dict[str, object]:
     command = (
         f"{shlex.quote(sys.executable)} "
-        '"$CLAUDE_PROJECT_DIR/.ait/adapters/claude-code/claude_code_hook.py"'
+        '"${AIT_WRAPPER_REPO:-$CLAUDE_PROJECT_DIR}/.ait/adapters/claude-code/claude_code_hook.py"'
     )
     tool_events = {
         "matcher": "Read|Grep|Glob|LS|Write|Edit|MultiEdit|NotebookEdit|Bash",
@@ -59,7 +59,7 @@ def _claude_code_settings() -> dict[str, object]:
 def _codex_hooks_settings() -> dict[str, object]:
     command = (
         f"{shlex.quote(sys.executable)} "
-        '"$CODEX_PROJECT_DIR/.ait/adapters/codex/codex_hook.py"'
+        '"${AIT_WRAPPER_REPO:-$CODEX_PROJECT_DIR}/.ait/adapters/codex/codex_hook.py"'
     )
     tool_events = {
         "matcher": "Read|Grep|Glob|LS|Write|Edit|MultiEdit|NotebookEdit|Bash|shell|apply_patch",
@@ -80,7 +80,7 @@ def _codex_hooks_settings() -> dict[str, object]:
 def _gemini_settings() -> dict[str, object]:
     command = (
         f"{shlex.quote(sys.executable)} "
-        '"$GEMINI_PROJECT_DIR/.ait/adapters/gemini/gemini_hook.py"'
+        '"${AIT_WRAPPER_REPO:-$GEMINI_PROJECT_DIR}/.ait/adapters/gemini/gemini_hook.py"'
     )
     session_events = {"hooks": [{"type": "command", "command": command}]}
     return {

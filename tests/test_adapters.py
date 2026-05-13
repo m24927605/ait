@@ -246,6 +246,7 @@ class AdapterTests(unittest.TestCase):
             self.assertIn(str(settings_path.resolve()), result.wrote_files)
             self.assertIn("SessionStart", settings["hooks"])
             self.assertIn(sys.executable, json.dumps(settings))
+            self.assertIn("${AIT_WRAPPER_REPO:-$CLAUDE_PROJECT_DIR}", json.dumps(settings))
             self.assertIn(".ait/adapters/claude-code/claude_code_hook.py", json.dumps(settings))
 
     def test_setup_claude_code_merges_existing_settings(self) -> None:

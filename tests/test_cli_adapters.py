@@ -83,6 +83,7 @@ class CliAdapterTests(unittest.TestCase):
         payload = json.loads(stdout.getvalue())
         self.assertEqual(0, exit_code)
         self.assertIn("SessionStart", payload["hooks"])
+        self.assertIn("${AIT_WRAPPER_REPO:-$CLAUDE_PROJECT_DIR}", stdout.getvalue())
         self.assertIn(".ait/adapters/claude-code/claude_code_hook.py", stdout.getvalue())
 
     def test_adapter_setup_unsupported_adapter_returns_error(self) -> None:

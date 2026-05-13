@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.55.56 - 2026-05-13
+
+### Fixed
+
+- Resolve Claude Code, Codex, and Gemini hook scripts through
+  `AIT_WRAPPER_REPO` when wrapped agent commands run inside isolated attempt
+  worktrees.
+- Keep the executable pain-point demos from inheriting a stale
+  `ANTHROPIC_API_KEY` into Claude Code child processes.
+
 ## 0.55.55 - 2026-05-13
 
 ### Fixed

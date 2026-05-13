@@ -15,7 +15,7 @@ info "starting Claude Code and Codex in parallel attempts"
   use_demo_workspace
   AIT_INTENT="Claude: parallel approach A $run_id" \
   AIT_COMMIT_MESSAGE="claude approach A" \
-  claude -p --permission-mode bypassPermissions \
+  run_claude_code -p --permission-mode bypassPermissions \
     "Create approach.txt containing only A. Do not run git commands."
 ) &
 claude_pid=$!

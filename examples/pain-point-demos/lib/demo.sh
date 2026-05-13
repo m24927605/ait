@@ -22,6 +22,13 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "missing required command: $1"
 }
 
+run_claude_code() {
+  (
+    unset ANTHROPIC_API_KEY
+    claude "$@"
+  )
+}
+
 require_workspace() {
   [ -d "$DEMO_WORKSPACE/.ait" ] || fail "demo workspace not initialized: run examples/pain-point-demos/setup.sh first"
   [ -f "$DEMO_WORKSPACE/package.json" ] || fail "demo workspace is missing package.json: $DEMO_WORKSPACE"
