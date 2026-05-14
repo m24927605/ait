@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from pathlib import Path
-import shlex
 import subprocess
 import sys
 import time
@@ -18,6 +17,7 @@ from ait.harness import AitHarness, HarnessError
 from ait.ids import new_ulid
 from ait.memory import add_attempt_memory_note, ensure_agent_memory_imported
 from ait.memory_policy import init_memory_policy
+from ait.prompt_capture import record_command_prompt
 from ait.run_report import refresh_run_reports
 from ait.runner_context import AIT_CONTEXT_BUDGET_CHARS, _write_context_file
 from ait.runner_pty import _run_command_with_pty_transcript, _stdio_is_tty
@@ -115,7 +115,7 @@ def run_agent_command(
         clear_preserve_reason=True,
     )
     workspace = Path(attempt.workspace_ref)
-    _record_command_as_prompt(
+    record_command_prompt(
         root,
         attempt_id=attempt.attempt_id,
         command=tuple(command),
@@ -146,8 +146,8 @@ def run_agent_command(
         env["AIT_CONTEXT_FILE"] = str(context_file)
     completed: subprocess.CompletedProcess[str] | None = None
     effective_exit_code = 1
-    should_capture_output = capture_command_output or adapter.name == "cursor"
-    should_capture_tty = not should_capture_output and _stdio_is_tty()
+    should_capture_tty = not capture_command_output and adapter.name != "cursor" and _stdio_is_tty()
+    should_capture_output = capture_command_output or adapter.name == "cursor" or not should_capture_tty
     raw_trace_ref: str | None = None
     raw_trace_text: str = ""
     postprocess_interrupted = False
@@ -181,6 +181,8 @@ def run_agent_command(
                 )
                 if should_capture_output:
                     raw_trace_text = "\n".join([completed.stdout or "", completed.stderr or ""])
+                    if not capture_command_output and adapter.name != "cursor":
+                        _replay_completed_output(completed)
         except OSError as exc:
             completed = subprocess.CompletedProcess(
                 command,
@@ -310,6 +312,13 @@ def run_agent_command(
     )
 
 
+def _replay_completed_output(completed: subprocess.CompletedProcess[str]) -> None:
+    if completed.stdout:
+        print(completed.stdout, end="", file=sys.stdout)
+    if completed.stderr:
+        print(completed.stderr, end="", file=sys.stderr)
+
+
 def _add_attempt_memory_note_with_warning(repo_root: Path, shown: AttemptShowResult) -> None:
     try:
         add_attempt_memory_note(repo_root, shown)
@@ -323,55 +332,6 @@ def _lease_state_for_run_result(verified_status: object, exit_code: int) -> str:
     if verified_status == "succeeded" and exit_code == 0:
         return "succeeded"
     return "failed"
-
-
-def _record_command_as_prompt(
-    repo_root: Path,
-    *,
-    attempt_id: str,
-    command: tuple[str, ...],
-    adapter_name: str,
-) -> str | None:
-    """Persist the launched command line as the attempt's raw prompt.
-
-    Native-hook adapters (Claude Code, Codex, Gemini) capture the actual
-    user/assistant turns through their own hook bridges; for everyone else
-    the closest analog of "prompt" is the command-line ait was asked to
-    run, which is what this helper stores.
-    """
-    if not command:
-        return None
-    prompts_dir = repo_root / ".ait" / "prompts"
-    try:
-        prompts_dir.mkdir(parents=True, exist_ok=True)
-        dest = prompts_dir / f"{attempt_id}.txt"
-        body = (
-            f"# adapter: {adapter_name}\n"
-            f"# captured-by: ait runner _record_command_as_prompt\n"
-            "\n"
-            + " ".join(shlex.quote(arg) for arg in command)
-            + "\n"
-        )
-        dest.write_text(body, encoding="utf-8")
-    except OSError:
-        return None
-    relative_ref = dest.relative_to(repo_root).as_posix()
-    db_path = repo_root / ".ait" / "state.sqlite3"
-    if not db_path.exists():
-        return relative_ref
-    try:
-        conn = connect_db(db_path)
-        try:
-            conn.execute(
-                "UPDATE evidence_summaries SET raw_prompt_ref = ? WHERE attempt_id = ?",
-                (relative_ref, attempt_id),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-    except Exception:
-        pass
-    return relative_ref
 
 
 def _resolve_commit_message(*, explicit: str | None, intent_title: str, adapter_name: str) -> str:

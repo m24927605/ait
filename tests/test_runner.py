@@ -169,6 +169,8 @@ class RunnerTests(unittest.TestCase):
             )
             stored = (repo_root / ref).read_text(encoding="utf-8")
             self.assertIn("# adapter: shell", stored)
+            self.assertIn("# prompt-status: not-observable", stored)
+            self.assertIn("## Command", stored)
             self.assertIn("done.txt", stored)
             self.assertIn(sys.executable, stored)
 
@@ -212,6 +214,34 @@ class RunnerTests(unittest.TestCase):
             report = json.loads((repo_root / ".ait" / "report" / "status.json").read_text(encoding="utf-8"))
             self.assertEqual("warn", report["health"]["status"])
             self.assertIn("latest attempt failed", report["health"]["reasons"])
+
+    def test_run_agent_command_records_failed_output_context_without_json_capture(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="Fail with context",
+                agent_id="shell:test",
+                command=[
+                    sys.executable,
+                    "-c",
+                    "import sys; print('failure stdout'); print('failure stderr', file=sys.stderr); raise SystemExit(9)",
+                ],
+            )
+
+            raw_trace_ref = result.attempt.attempt["raw_trace_ref"]
+            self.assertEqual(9, result.exit_code)
+            self.assertIsNone(result.command_stdout)
+            self.assertIsNone(result.command_stderr)
+            self.assertIsNotNone(raw_trace_ref)
+            assert raw_trace_ref is not None
+            trace = (repo_root / raw_trace_ref).read_text(encoding="utf-8")
+            self.assertIn("Exit-Code: 9", trace)
+            self.assertIn("failure stdout", trace)
+            self.assertIn("failure stderr", trace)
+            self.assertEqual(raw_trace_ref, result.attempt.evidence_summary["raw_trace_ref"])
 
     def test_run_agent_command_records_missing_command_as_failed_attempt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

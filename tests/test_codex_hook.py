@@ -147,6 +147,7 @@ class CodexHookE2ETests(unittest.TestCase):
                     "cwd": str(repo_root),
                     "source": "startup",
                     "agent_type": "default",
+                    "prompt": "refactor parser",
                 },
                 env,
             )
@@ -183,6 +184,8 @@ class CodexHookE2ETests(unittest.TestCase):
             attempt = show_attempt(repo_root, attempt_id=attempt_id)
             env_text = env_file.read_text(encoding="utf-8")
             persisted = repo_root / ".ait" / "transcripts" / f"{attempt_id}.jsonl"
+            prompt_ref = attempt.evidence_summary["raw_prompt_ref"]
+            prompt_text = (repo_root / prompt_ref).read_text(encoding="utf-8") if prompt_ref else ""
             persisted_exists = persisted.exists()
             persisted_bytes = persisted.read_bytes() if persisted_exists else b""
             upstream_bytes = upstream.read_bytes()
@@ -199,6 +202,9 @@ class CodexHookE2ETests(unittest.TestCase):
         self.assertEqual("codex:default", attempt.attempt["agent_id"])
         self.assertEqual(1, attempt.evidence_summary["observed_tool_calls"])
         self.assertEqual(1, attempt.evidence_summary["observed_file_writes"])
+        self.assertIsNotNone(prompt_ref)
+        self.assertIn("captured-from-hook-payload", prompt_text)
+        self.assertIn("refactor parser", prompt_text)
         self.assertEqual(("src/parser.py",), attempt.files["touched"])
         self.assertTrue(persisted_exists, f"expected transcript at {persisted}")
         self.assertEqual(upstream_bytes, persisted_bytes)

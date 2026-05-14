@@ -31,6 +31,7 @@ from typing import Any, Mapping
 from ait.app import create_attempt, create_intent
 from ait.daemon import daemon_status, start_daemon
 from ait.harness import AitHarness
+from ait.prompt_capture import record_payload_prompt
 
 
 STATE_DIR_NAME = "gemini-hooks"
@@ -109,6 +110,13 @@ def handle_session_start(
         "agent": agent,
     }
     write_state(repo_root, session_id, state)
+    record_payload_prompt(
+        repo_root,
+        attempt_id=attempt.attempt_id,
+        adapter_name="gemini",
+        payload=payload,
+        event_name="SessionStart",
+    )
     append_env_file(
         environ,
         {

@@ -376,8 +376,8 @@ Bypass events must never create fake successful attempts. They can appear in
 
 ### Required Behavior
 
-- `_record_command_as_prompt` must be renamed or narrowed so it cannot be
-  mistaken for a true prompt capture.
+- Command argv capture must be labeled so it cannot be mistaken for a true
+  interactive prompt capture.
 - Adapter prompt extractors must return structured metadata, not just text.
 - Interactive sessions without accessible transcript must produce a prompt
   record like:
@@ -796,4 +796,3 @@ history, failure explainability, bypass detection, or memory backfill must pass
 this spec's acceptance criteria. If a release only improves worktree isolation
 or apply gating, the release notes must avoid implying complete agent-work
 auditability or historical memory reconstruction.
-
