@@ -97,6 +97,32 @@ Do not tag or upload to PyPI if any of the following are true:
 - test failures are explained only as local flakiness without a recorded
   reproduction or mitigation
 
+## Attempt Provenance Hardening Gate
+
+Any release that changes prompt capture, transcript capture, runner failure
+evidence, adapter wrapper/hook behavior, memory import/backfill, global agent
+memory discovery, `ait status`, `ait attempt show`, `ait query`, `ait graph`,
+or future inspection commands must be reviewed against
+[`docs/attempt-provenance-hardening-spec.md`](attempt-provenance-hardening-spec.md).
+
+Do not broaden README, website, PyPI, or GitHub metadata claims around
+auditability, governance, prompt history, failure explainability, or bypass
+detection unless the acceptance criteria in that spec pass. Any backfill or
+global agent memory discovery feature must satisfy the spec's zero-interference
+rules: dry-run writes nothing, import writes only under `.ait/`, source files
+and global agent stores are never modified, and inferred history is advisory by
+default.
+
+At minimum, run:
+
+```bash
+PYTHONPATH=src uv run pytest tests/test_cli_run.py tests/test_query.py -q
+PYTHONPATH=src uv run pytest tests/test_*transcript*.py tests/test_*hook*.py -q
+PYTHONPATH=src uv run pytest tests/test_cli_adapters.py tests/test_cli_attempt_list.py -q
+PYTHONPATH=src uv run pytest tests/test_memory*.py -q
+git diff --check
+```
+
 ## Tagged Release
 
 Before tagging:
