@@ -38,12 +38,12 @@ ait run --adapter cursor --intent "Migrate to new SDK" -- cursor
 
 Or call the wrapped `cursor` command directly after setup.
 
-## Review and promote
+## Review and apply
 
 ```bash
 ait attempt list
 ait attempt show <attempt-id>
-ait attempt promote <attempt-id> --to main
+ait apply <attempt-id> --mode current
 ```
 
 ## See also

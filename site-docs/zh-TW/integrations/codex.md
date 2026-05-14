@@ -12,7 +12,7 @@ session 都在獨立 Git worktree 跑、含完整 provenance。
 
 ## 為什麼用 ait 包 Codex
 
-- Codex 變更被限制在 attempt worktree — promote 前 root checkout 不動。
+- Codex 變更被限制在 attempt worktree — apply 前 root checkout 不動。
 - 失敗的 session 留下供檢視，不會悄悄消失。
 - 連續 Codex 執行會餵 ait repo-local memory，下一次 session 會記得
   之前試過什麼。

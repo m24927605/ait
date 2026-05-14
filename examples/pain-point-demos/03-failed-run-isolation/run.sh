@@ -13,11 +13,11 @@ info "running Codex attempt that intentionally leaves a failing test"
 set +e
 AIT_INTENT="Codex: intentionally broken test attempt" \
 AIT_COMMIT_MESSAGE="codex broken test attempt" \
-codex "Change test/calculator.test.js so the add test expects 999 instead of 5. Run npm test and stop after the failure; do not fix the test."
+run_codex_cli "Change test/calculator.test.js so the add test expects 999 instead of 5. Run npm test and stop after the failure; do not fix the test."
 rc=$?
 set -e
 
-attempt="$(latest_attempt_id)"
+attempt="$(query_attempt_id 'title~"Codex: intentionally broken test attempt"')"
 [ -n "$attempt" ] || fail "could not determine latest attempt"
 state_set "$demo" "attempt_id" "$attempt"
 state_set "$demo" "agent_exit_code" "$rc"

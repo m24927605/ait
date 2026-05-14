@@ -10,6 +10,12 @@ description: >-
 
 AIT separates verification, risk scanning, and reviewer-agent execution.
 
+The practical split is simple:
+
+- `light` answers "how risky does this attempt look from deterministic signals?"
+- `adversarial` answers "what would a separate reviewer agent block before this lands?"
+- `risk-based` lets AIT choose between those paths during `ait run`
+
 ## `light`
 
 `light` mode is a deterministic risk scan. It does not call Claude Code,
@@ -56,6 +62,23 @@ the reviewer outside the target attempt worktree and captures stdout/stderr.
 
 High or critical findings can become blocking findings when the reviewer
 returns them in the expected schema.
+
+This is the mode to use when review quality matters. The reviewer is given a
+clear adversarial job: challenge the implementation, look for missing edge
+cases, weak tests, regressions, security-sensitive paths, and reasons the
+attempt should not be accepted as-is.
+
+When repo policy requires review before apply, a blocked adversarial review can
+hold the result:
+
+```bash
+ait apply <attempt-id> --mode current
+```
+
+```text
+Status: held
+Reason: review gate: required review is blocked
+```
 
 For the end-to-end workflow, see
 [Adversarial code review](adversarial-code-review.md).

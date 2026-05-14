@@ -3,16 +3,15 @@ title: Naked git-worktree vs ait — when to upgrade
 description: >-
   You can already run parallel AI coding agents with raw git-worktree.
   Here is what stays manual — attempt provenance, prompt search, cross-agent
-  memory, promote/discard — and when ait is worth adding on top of Git.
+  memory, apply/recover — and when ait is worth adding on top of Git.
 ---
 
 # Naked `git-worktree` vs ait
 
-ait is a Git-native version control layer for AI coding agents (Claude
-Code, Codex CLI, Aider, Gemini CLI, Cursor) — adding worktree
-isolation, attempt provenance, cross-agent memory, and reviewable
-promotion on top of Git. Open source (MIT), Python 3.14+,
-dependency-free, no SaaS, no telemetry.
+ait turns Claude Code, Codex CLI, Aider, Gemini CLI, and Cursor runs into
+isolated, reviewable attempts with worktree isolation, attempt provenance,
+cross-agent memory, and explicit apply/recover on top of Git. Open source
+(MIT), Python 3.14+, dependency-free, no SaaS, no telemetry.
 
 If you already use `git worktree add` to run parallel AI agents, this
 page is for you. It compares the raw worktree workflow with the same
@@ -51,7 +50,7 @@ For a wider walk through the design, see [Why ait](../why-ait.md).
 | **Cleanup** | `git worktree remove`, then `git branch -D`, then prune stash files | `ait attempt discard <id>` — one verb |
 | **Find a prompt** | `grep` shell history, hope you saved it | `ait attempt list --intent "auth retry"` |
 | **Cross-worktree memory** | None — each Claude/Codex/Aider session starts blank | `AIT_CONTEXT_FILE` summarizes prior attempts + `CLAUDE.md` / `AGENTS.md` |
-| **Promote to main** | Cherry-pick or merge the branch by hand, resolve drift | `ait attempt promote <id> --to main` |
+| **Apply to current branch** | Cherry-pick or merge the branch by hand, resolve drift | `ait apply <id> --mode current` |
 | **Discard a bad run** | Manual: remove worktree + delete branch + clear partial commits + delete stash | `ait attempt discard <id>` removes all of it |
 
 The point is not that any single column is impossible — it is that
@@ -130,7 +129,7 @@ Conversely, ait earns its keep when:
   memory layer alone repays the install.
 - You have **stricter review discipline**: you want to look at a
   diff with full provenance (prompt, exit status, files) before it
-  ever touches main. `ait attempt promote` is the explicit verb that
+  ever touches main. `ait apply` is the explicit verb that
   forces that habit.
 - You need **audit trail** for compliance, security review, or just
   a teammate asking "what prompt produced this diff three weeks

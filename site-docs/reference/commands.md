@@ -101,7 +101,7 @@ Advanced attempt commands remain available when you need low-level Git
 control:
 
 ```bash
-ait attempt promote <attempt-id> --to main
+ait apply <attempt-id> --mode current
 ait attempt rebase <attempt-id> --onto main
 ait attempt discard <attempt-id>
 ```

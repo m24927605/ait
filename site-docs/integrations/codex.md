@@ -13,7 +13,7 @@ runs in an isolated Git worktree with full provenance.
 ## Why wrap Codex with ait
 
 - Codex changes are confined to an attempt worktree — your root checkout is
-  untouched until you promote.
+  untouched until you apply.
 - Failed sessions remain available for inspection, not silently dropped.
 - Successive Codex runs feed `ait`'s repo-local memory, so the next session
   can recall what was already tried.

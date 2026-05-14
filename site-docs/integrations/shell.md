@@ -16,7 +16,7 @@ with full provenance.
 - You have a custom AI agent that is not (yet) a first-class adapter.
 - You want to record a fixture-regeneration script or a one-off automation
   as an attempt.
-- You want the same review-and-promote workflow for arbitrary commands.
+- You want the same review-and-apply workflow for arbitrary commands.
 
 ## Run any command under ait
 

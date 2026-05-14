@@ -2,10 +2,10 @@
 
 # ait
 
-### 給 AI coding agents 使用的 Git-native 安全工作流
+### AI agent 應該在 attempt 裡動手，不是直接碰你的 working tree
 
-讓 Claude Code、Codex、Aider、Gemini、Cursor 在隔離環境中執行，並
-保留可追溯的 commits、可 review 的 attempts，以及 repo-local memory。
+把 Claude Code、Codex、Aider、Gemini、Cursor 的每次執行變成隔離、
+可追溯、可審核的 attempt；在你明確 apply 前，不讓結果進入 root checkout。
 
 <sub>[English](README.md) · [繁體中文](README.zh-TW.md)</sub>
 
@@ -19,12 +19,16 @@
 
 ---
 
-AI agents 很快，但 Git history、review discipline、handoff context
-通常跟不上。
+AI coding agent 已經快到可以直接重構真實 repo，但預設工作流很容易讓它們把
+你的 working tree 當草稿紙。
 
-`ait` 會包住你已經在用的 agent CLI，並把每次執行變成一個可 review
-的 attempt。Agent 會在隔離環境裡改檔，`ait` 會記錄發生了什麼；在你明確
-apply 之前，主要 checkout 不會被碰到。
+`ait` 是包在既有 agent CLI 外面的一層 Git 工作流。你照常使用 Claude Code、
+Codex、Aider、Gemini 或 Cursor；AIT 會把每次執行變成一個可審核的
+attempt。Agent 在隔離 worktree 裡修改程式，AIT 記錄 prompt、狀態、變更、
+commit 與 evidence；在你明確 apply 之前，主要 checkout 不會被碰到。
+
+對高風險變更，AIT 也能加上一道對抗式 code review：讓另一個 agent 在套用前
+挑戰這次 attempt，必要時擋下 `ait apply`。
 
 ```bash
 pipx install ait-vcs
@@ -35,7 +39,7 @@ direnv allow   # 只有被提示時才需要
 claude ...
 ```
 
-偏好 npm？
+偏好 npm 的話：
 
 ```bash
 npm install -g ait-vcs
@@ -46,21 +50,60 @@ claude ...
 
 PyPI 與 npm 上的套件名稱是 `ait-vcs`，安裝後的指令是 `ait`。
 
+<p align="center">
+  <img src="site-docs/assets/ait-work-graph.png" alt="AIT Work Graph：attempts、evidence、memory、hot files 與 query filters" width="960">
+</p>
+
+<p align="center"><sub><code>ait graph --html</code> 產生的本機 HTML 報告：attempts、evidence、memory、hot files 與 query filters 集中在同一張圖裡。</sub></p>
+
+## 核心特色
+
+| 特色 | 說明 |
+| --- | --- |
+| Attempt-first 工作流 | AIT 包住你已經在用的 agent CLI，先把每次執行變成隔離 attempt，再由你決定是否 apply 到 root checkout。 |
+| Worktree 隔離 | 每次執行都有自己的內部 Git worktree，失敗或高風險 attempt 不會污染目前工作目錄。 |
+| Attempt provenance | prompt、intent、adapter、output、changed files、commits、trace references、status、outcome 會串成一筆紀錄。 |
+| 跨 agent 共同記憶 | Claude Code、Codex、Aider、Gemini、Cursor 與 shell agents 可以讀同一份 repo-local context，不必各自從零開始。 |
+| 長期 repo memory | 有價值的 attempts、commits、notes、匯入的 `CLAUDE.md` / `AGENTS.md`、accepted facts、prior findings 可以跨 terminal、跨 session、跨週期保留下來。 |
+| 跨 agent handoff | 一個 agent 做過的調查或決策，可以透過 AIT 傳給後續另一個 agent，而不是藏在某個聊天視窗裡。 |
+| 平行 agent attempts | 多個 agents 可以同時試不同做法，不會在同一個 checkout 裡互相覆蓋。 |
+| 明確 apply/recover 流程 | Agent 產出的結果在 apply 前只是提案；held 或 failed work 仍可 recover，不會變成 working-copy 爛攤子。 |
+| 對抗式審查 | 另一個 reviewer agent 可以挑戰 attempt；高風險 finding 可以被記錄，並用來 hold apply。 |
+| Local-first metadata | AIT metadata 存在 `.git/` 旁的 `.ait/`；不需要 SaaS dashboard、不做 telemetry、不要求上傳原始碼。 |
+| 可查詢歷史 | Attempts、intents、files、agents、statuses、review results、舊 prompts 都可以用 AIT 指令查，不必翻 shell history。 |
+
 ## ait 解決的問題
 
-| 用 AI agent 寫 code 的痛點 | ait 提供的解法 |
-| --- | --- |
-| 一個爛 prompt 在你發現前就改了半個 repo | 每次執行都落在隔離的 Git worktree — root checkout 永遠不動 |
-| diff 沒有 provenance — 不知道是哪個 prompt 產的 | Attempt 把 intent、command output、files、commits 串成一筆紀錄 |
-| 失敗或半成品的執行污染了 working copy | 爛 attempt 會被保留成可復原狀態，`ait recover latest` 可查看 |
-| 下一個 agent 又重做你已經花 token 買過的調查 | Repo-local memory 把過去 attempts、commits 餵給下一次執行 |
-| 兩個 agent 跑同一件事會互相覆蓋 | 每個 attempt 自帶 worktree — 可平行跑 N 個 agent |
-| Agent 說「修好了」，但真的修好了嗎？ | 顯式 `ait apply latest` — 不主動採納，主分支永遠由你決定 |
-| 跨 agent hand-off 會弄丟之前所有的決策 | Memory layer 自動匯入 `CLAUDE.md`、`AGENTS.md`、過往 attempts |
-| Provenance 工具強迫你把 code 上傳到 SaaS | Metadata 就在 `.git/` 旁的 `.ait/` — daemon 純本機 Unix socket、不對外連網、無 telemetry |
-| 「上個月寫過的那個 prompt 在哪？」→ grep shell history | 用結構化 DSL 直接查 attempts、intents、commits |
+| 用 AI agent 寫程式的痛點 | AIT 提供的解法 | 可執行範例 |
+| --- | --- | --- |
+| 一個不精準的 prompt 在你發現前就改了半個 repo | 每次執行都在隔離 Git worktree 裡進行，root checkout 不會被直接修改 | [`01-blast-radius`](examples/pain-point-demos/01-blast-radius/) |
+| diff 看得出改了什麼，卻看不出怎麼來的 | attempt 會串起 intent、prompt、command output、changed files 與 commits | [`02-provenance`](examples/pain-point-demos/02-provenance/) |
+| 失敗或半成品污染 working copy | 失敗 attempt 保留在隔離 worktree，主 checkout 維持乾淨，可用 `ait recover latest` 查看 | [`03-failed-run-isolation`](examples/pain-point-demos/03-failed-run-isolation/) |
+| 換一個 agent 接手，又從頭調查同一件事 | 共同 repo-local memory 會把過去 attempts、commits、notes、accepted facts 餵給後續執行 | [`04-memory-reuse`](examples/pain-point-demos/04-memory-reuse/) |
+| Claude 和 Codex 同時跑會互相覆蓋 | 每個 attempt 都有自己的 worktree，可以平行跑多個 agent 再比較結果 | [`05-parallel-agents`](examples/pain-point-demos/05-parallel-agents/) |
+| Agent 說「修好了」，但你不確定該不該採用 | `ait apply latest` 是明確動作；沒有 apply 前，agent 的成果只是提案 | [`06-explicit-promotion`](examples/pain-point-demos/06-explicit-promotion/) |
+| 跨 agent hand-off 會弄丟決策與脈絡 | 長期記憶可保存 `CLAUDE.md`、`AGENTS.md`、過往 attempts、notes 與已接受決策 | [`07-cross-agent-handoff`](examples/pain-point-demos/07-cross-agent-handoff/) |
+| provenance 工具要求把原始碼送到 SaaS | metadata 留在 repo 內的 `.ait/`；daemon 只走本機 Unix socket，沒有 telemetry | [`08-local-only-provenance`](examples/pain-point-demos/08-local-only-provenance/) |
+| 寫程式的 agent 自己審自己，容易放過盲點 | 可交給另一個 reviewer agent 做對抗式審查，高風險 finding 可以擋下 apply | [`09-verification-evidence`](examples/pain-point-demos/09-verification-evidence/)、[`09-1-codex-reviewer`](examples/pain-point-demos/09-1-codex-reviewer/) |
+| 想找上個月那段 prompt，只能 grep shell history | 用結構化 DSL 查 attempts、intents、commits、agent、狀態與變更檔案 | [`10-prompt-search`](examples/pain-point-demos/10-prompt-search/) |
 
-`ait` 不是另一個 agent。它是包在你信任的 agents 外面的 Git 工作層。
+`ait` 不是另一個 agent。它是包在你已經信任的 agents 外面的本機 attempt
+工作流。
+
+## 核心概念
+
+AIT 的核心不是取代 Claude Code 或 Codex，而是讓它們先在 attempt 裡工作。
+每次 agent 執行都會變成一筆 attempt：有自己的隔離 worktree、有 provenance、
+有可查詢的 metadata，也有明確的 apply/recover 流程。
+
+這讓 AI 產生的修改先停留在「可審核的提案」狀態。你可以比較不同 agents 的
+attempts、查看它們改了哪些檔案、保留失敗結果作為 recovery 線索，最後再決定
+哪一個要套用到目前 checkout。
+
+AIT 的 memory 是 repo-local、可檢查的專案記憶，不是某個聊天視窗裡的隱藏
+上下文。它可以依 policy 召回過去 attempts、commits、notes、accepted facts、
+匯入的 `CLAUDE.md` / `AGENTS.md`，以及 prior findings，讓不同 terminal、
+不同 session、不同 agent 都能接續同一份脈絡。
 
 ## 使用起來像這樣
 
@@ -81,36 +124,39 @@ gemini ...
 cursor ...
 ```
 
-Agent 成功執行後，查看結果：
+Agent 執行完後，先看結果：
 
 ```bash
 ait status
 ait recover latest --debug   # 需要低階細節時才用
 ```
 
-確認沒問題後再 apply：
+確認可以接受，再套用到目前 checkout：
 
 ```bash
 ait apply latest
 ```
 
-在 apply 之前，你的 root checkout 會保持不變。若你的本地修改與結果重疊，
-AIT 會保守 hold 並保留 recovery handle，不會自動 stash 或覆蓋你的檔案。
+在 apply 之前，root checkout 保持不變。如果你的本地修改和 attempt 結果
+重疊，AIT 會保守 hold，並留下 recovery handle；它不會自動 stash，也不會
+覆蓋你手上的工作。
 
 ## 核心功能
 
 | 功能 | 說明 |
 | --- | --- |
-| Worktree isolation | Agent 的修改會發生在 root checkout 之外；worktree 是內部細節 |
-| Attempt provenance | commands、status、output、changed files、commits 會被串在一起 |
+| Worktree isolation | agent 的修改發生在 root checkout 之外；worktree 是 AIT 管理的內部細節 |
+| Attempt provenance | command、status、output、changed files、commits 會被串成一筆紀錄 |
 | Agent wrappers | repo-local 的 `claude`、`codex`、`aider`、`gemini`、`cursor` wrappers |
-| Auto commit capture | 成功的修改會變成 attempt-linked commits；若 agent 已 commit，ait 不會重複 commit |
-| Local memory | 過去的 attempts、commits、notes、imported agent memory 會提供給後續 runs |
+| Auto commit capture | 成功的修改會成為 attempt-linked commits；若 agent 已 commit，AIT 不會重複 commit |
+| 共同記憶 | Claude Code、Codex 與其他 agents 可以共用同一份 repo-local context |
+| 長期記憶 | 過去 attempts、commits、notes、imported agent memory、accepted facts 與 findings 可以跨 session 保留 |
+| Adversarial review | 讓另一個 reviewer agent 主動挑戰 attempt，並保存 blocking findings |
 | Review flow | 用 `apply`、`recover`、inspect、query 管理日常 attempt flow |
 
 ## 快速範例
 
-明確指定 intent 與 commit message：
+指定 intent 與 commit message：
 
 ```bash
 AIT_INTENT="Update README" \
@@ -119,7 +165,7 @@ claude -p --permission-mode bypassPermissions \
   "Shorten the README and improve the quickstart"
 ```
 
-直接包住某個 command：
+直接用 AIT 包住某個 command：
 
 ```bash
 ait run --adapter claude-code --intent "Refactor query parser" -- claude
@@ -137,6 +183,19 @@ ait memory search "auth adapter"
 ait memory recall "billing retry"
 ```
 
+Apply 前先跑對抗式審查：
+
+```bash
+ait review attempt latest-reviewable \
+  --mode adversarial \
+  --review-adapter claude-code \
+  --review-budget standard
+
+ait review finding list --severity high --format text
+ait review report --attempt latest --format json
+ait apply latest --mode current
+```
+
 修復本機 wrapper 設定：
 
 ```bash
@@ -144,15 +203,19 @@ ait repair
 ait repair codex
 ```
 
-## 整合（Integrations）
+## 整合
 
-`ait` 為主流 AI coding agent 提供 first-class adapter，把每次執行都放進
-隔離環境，並把過程記錄在 `.ait/`。
+AIT 內建常見 AI coding agent 的 adapter。每個 adapter 都會包住原本的 CLI，
+把執行放進隔離 worktree，並把 attempt 紀錄存在 repo 內的 `.ait/`。
 
-`ait init` 會掃 `$PATH` 上每個支援的 agent CLI 並一次裝好——repo-local
-wrapper 在 `.ait/bin/`、hook 設定 merge 進對應的 `.claude/`、`.codex/`、
-`.gemini/`。下面各 adapter 範例都假設你已跑過 `ait init`。要顯式重跑某
-個 agent 的 setup（例如 agent 升級後），用 `ait adapter setup <name>`。
+`ait init` 會掃描 `$PATH` 上支援的 agent CLI 並完成設定：wrapper 放在
+`.ait/bin/`，hook 設定合併到對應的 `.claude/`、`.codex/`、`.gemini/`
+設定。下面範例都假設你已經跑過 `ait init`。若 agent 升級後需要重建設定，
+可以執行：
+
+```bash
+ait adapter setup <name>
+```
 
 ### 安全地執行 Claude Code
 
@@ -160,18 +223,18 @@ wrapper 在 `.ait/bin/`、hook 設定 merge 進對應的 `.claude/`、`.codex/`�
 claude -p --permission-mode bypassPermissions "Refactor the auth module"
 ```
 
-`ait` 會把 prompt、變更檔案、執行狀態與 commits 紀錄為一次 attempt。確認
-結果後用 `ait apply latest` 套用；若想讓安全結果自動套用，可用
+AIT 會把 prompt、變更檔案、執行狀態與 commits 記成一次 attempt。確認結果
+後用 `ait apply latest` 套用；若想讓安全結果自動套用，可用
 `ait run --apply auto ...`。
 
-### 安全地在真實 repo 跑 Codex CLI
+### 在真實 repo 裡安全地跑 Codex CLI
 
 ```bash
 ait run --adapter codex --intent "Implement parser edge cases" -- codex
 ```
 
-每個 Codex session 都在隔離環境裡編輯。失敗的 attempt 會留下供
-recover；只有 apply 過的 attempt 會碰到 root checkout。
+每個 Codex session 都在隔離環境裡編輯。失敗 attempt 會留下來供 recover；
+只有 apply 過的 attempt 會碰到 root checkout。
 
 ### 在隔離環境中跑 Aider
 
@@ -179,8 +242,8 @@ recover；只有 apply 過的 attempt 會碰到 root checkout。
 ait run --adapter aider --intent "Fix auth expiry" -- aider src/auth.py
 ```
 
-Aider 的 commits 會被捕捉成 attempt result，附帶完整的 prompt、檔案、
-commit 對應關係。
+Aider 產生的 commits 會被收進 attempt result，並保留 prompt、檔案與 commit
+之間的對應關係。
 
 ### Gemini CLI 搭配 attempt 歷史
 
@@ -188,17 +251,17 @@ commit 對應關係。
 ait run --adapter gemini --intent "Add config validation" -- gemini
 ```
 
-Gemini 的 session 與 Claude Code、Codex 一樣會被記錄成 attempt。日後可
-用 `ait memory recall` 查找各 agent 嘗試過什麼。
+Gemini session 會和 Claude Code、Codex 一樣被記錄成 attempt。之後可以用
+`ait memory recall` 查各 agent 嘗試過什麼。
 
-### Cursor agent 帶可審核的 provenance
+### Cursor agent 搭配可審核 provenance
 
 ```bash
 ait run --adapter cursor --intent "Migrate to new SDK" -- cursor
 ```
 
-Cursor 的編輯在 apply 之前不會進入 root checkout。Attempt log 保留變更
-檔案、退出狀態與 commits，方便審核與 recover。
+Cursor 的修改在 apply 前不會進入 root checkout。Attempt log 會保留變更檔案、
+退出狀態與 commits，方便後續審核或 recover。
 
 ### 包裝其他 shell agent
 
@@ -207,8 +270,7 @@ ait run --adapter shell --intent "Regenerate fixtures" -- \
   python scripts/regenerate_fixtures.py
 ```
 
-使用通用 `shell` adapter 即可為任何自訂 agent 或 script 加上 attempt
-provenance。
+用通用 `shell` adapter，就能替自訂 agent 或 script 加上 attempt provenance。
 
 ## 運作方式
 
@@ -228,7 +290,7 @@ attempt metadata + commits + memory
 review、apply、recover 或 inspect
 ```
 
-被包住的 process 會收到：
+被 AIT 包住的 process 會收到：
 
 ```text
 AIT_INTENT_ID
@@ -237,20 +299,20 @@ AIT_WORKSPACE_REF
 AIT_CONTEXT_FILE   # 啟用 context 時
 ```
 
-`AIT_CONTEXT_FILE` 會包含精簡的 repo-local handoff，內容來自過去的
-attempts、commits、curated notes，以及匯入的 agent memory files，例如
-`CLAUDE.md` 和 `AGENTS.md`。
+`AIT_CONTEXT_FILE` 是一份精簡的 repo-local handoff，內容來自過去 attempts、
+commits、curated notes，以及匯入的 agent memory files，例如 `CLAUDE.md`
+和 `AGENTS.md`。
 
 ## 安裝
 
-推薦方式：
+推薦使用 `pipx`：
 
 ```bash
 pipx install ait-vcs
 ait --version
 ```
 
-Virtual environment：
+使用 virtual environment：
 
 ```bash
 python3.14 -m venv .venv
@@ -258,17 +320,17 @@ python3.14 -m venv .venv
 .venv/bin/ait --help
 ```
 
-npm wrapper：
+使用 npm wrapper：
 
 ```bash
 npm install -g ait-vcs
 ait --version
 ```
 
-指定 GitHub release：
+安裝指定 GitHub release：
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.55.57"
+pipx install "git+https://github.com/m24927605/ait.git@v0.55.58"
 ```
 
 升級：
@@ -278,7 +340,7 @@ ait upgrade
 ait --version
 ```
 
-預覽升級指令：
+預覽升級：
 
 ```bash
 ait upgrade --dry-run
@@ -311,7 +373,7 @@ ait graph
 ait graph --html
 ```
 
-Shell auto-activation：
+Shell 自動啟用：
 
 ```bash
 ait shell show --shell zsh
@@ -328,10 +390,10 @@ ait shell uninstall --shell zsh
 
 ## 狀態
 
-`ait` 目前是 `0.55.57`，仍屬 alpha quality。它適合 local dogfooding，
+`ait` 目前是 `0.55.58`，仍屬 alpha quality。它適合 local dogfooding，
 以及熟悉 Git workflow、願意早期試用的使用者。
 
-Metadata 只會存在單一 repo 的 `.ait/` 底下，不會跨機器同步。
+Metadata 只存在單一 repo 的 `.ait/` 裡，不會跨機器同步。
 
 ## 開發
 
@@ -362,11 +424,11 @@ git status --short
 
 ## 文件
 
-- [Getting started](docs/getting-started.md)
-- [Claude Code run worktree workflow](docs/claude-code-run-worktree.md)
-- [Claude Code hook smoke test](docs/claude-code-live-smoke.md)
-- [Long-term memory design](docs/long-term-memory-design.md)
-- [Long-term memory acceptance](docs/long-term-memory-acceptance.md)
-- [Repo brain design](docs/repo-brain-design.md)
-- [Repo brain acceptance](docs/repo-brain-acceptance.md)
-- [Release checklist](docs/release-checklist.md)
+- [Documentation site](https://m24927605.github.io/ait/) — 英文與繁體中文完整文件
+- [為什麼用 ait](https://m24927605.github.io/ait/zh-TW/why-ait/) — AIT 解決的痛點
+- [開始使用](https://m24927605.github.io/ait/zh-TW/getting-started/)
+- [對抗式 code review](https://m24927605.github.io/ait/zh-TW/reference/adversarial-code-review/)
+- [指令參考](https://m24927605.github.io/ait/zh-TW/reference/commands/)
+- [Compare: naked git-worktree vs ait](https://m24927605.github.io/ait/compare/git-worktree-naked-vs-ait/)
+
+內部設計筆記、規格與 refactor plan 請見 [`docs/`](docs/)。

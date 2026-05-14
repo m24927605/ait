@@ -8,10 +8,15 @@ description: >-
 
 # Adversarial code review
 
-Adversarial review is a second-pass reviewer agent for a finished AIT
-attempt. The reviewer does not edit the target attempt worktree. AIT gives it
-a structured brief, captures its output, parses findings, and stores the
-review evidence under `.ait/`.
+Adversarial review is the workflow that makes AIT feel less like "safer agent
+runs" and more like an AI engineering control plane.
+
+One agent implements. A different reviewer agent challenges the result. AIT
+records the decision and can stop a blocked attempt from being applied.
+
+The reviewer does not edit the target attempt worktree. AIT gives it a
+structured brief, captures its output, parses findings, and stores the review
+evidence under `.ait/`.
 
 This is different from asking another agent to "look at the diff" manually:
 
@@ -20,6 +25,27 @@ This is different from asking another agent to "look at the diff" manually:
   evidence, transcript evidence, and required JSON schema
 - findings are persisted and queryable
 - high and critical findings can become blocking review evidence
+- review-gated apply can hold blocked attempts before they touch your checkout
+
+## Why it raises review quality
+
+Adversarial review improves AI code review because it changes both the role and
+the information flow.
+
+- **Role separation:** the implementing agent is no longer grading its own
+  answer. A separate reviewer agent is asked to challenge the attempt.
+- **Sharper prompt contract:** the reviewer is not asked for generic advice; it
+  is asked to find reasons the attempt should not be accepted.
+- **Better context:** the reviewer sees attempt metadata, changed files, diff
+  evidence, test evidence, transcript references, risk reasons, and local
+  baseline context.
+- **Structured output:** findings become records with severity, path, body,
+  confidence, and `blocking`.
+- **Operational consequence:** when review gating is enabled, a blocked review
+  can hold `ait apply`.
+
+That is why the review is more than another chat response. It becomes
+queryable, reportable, and enforceable workflow evidence.
 
 ## Quick start
 
@@ -43,6 +69,32 @@ Inspect findings and produce a portable report:
 ```bash
 ait review finding list --status open
 ait review report --attempt latest --format markdown --output docs/reviews/latest.md
+```
+
+Enable review-gated apply in repo policy when you want blocked reviews to hold
+apply:
+
+```json
+{
+  "review": {
+    "auto_apply_requires_review": true,
+    "allow_override": false
+  }
+}
+```
+
+Then try to apply a blocked attempt:
+
+```bash
+ait apply <attempt-id> --mode current
+```
+
+Expected result:
+
+```text
+AIT held the result because this repo requires review before apply.
+Status: held
+Reason: review gate: required review is blocked
 ```
 
 When a finding is intentionally accepted or judged false positive, record the
@@ -150,18 +202,18 @@ ait review worker --once
 
 A compact demo for an audience already familiar with Claude Code and Codex:
 
-1. Run one task with Claude Code and another with Codex, each as its own AIT
-   attempt.
-2. Show `ait attempt list` to compare the attempts without long IDs.
-3. Run `ait review attempt latest-reviewable --mode light` to show deterministic
-   risk reasons.
-4. Run `ait review attempt latest-reviewable --mode adversarial
-   --review-adapter claude-code` to show a real reviewer adapter.
-5. Show `ait review finding list --status open` and `ait review report`.
-6. Apply or promote only after the review evidence is acceptable.
+1. Run Claude Code as the implementer.
+2. Run Codex as the adversarial reviewer with `ait review attempt --mode
+   adversarial --review-adapter codex`.
+3. Show `ait query --on attempt 'review.status="blocked"' --format table`.
+4. Show `ait review finding list --severity high --format text`.
+5. Show `ait review report --attempt <attempt-id> --format json`.
+6. Run `ait apply <attempt-id> --mode current` and show that the review gate
+   holds the blocked attempt.
 
 The key point is that AIT is not "another prompt wrapper". It turns agent work
-and reviewer work into durable, reviewable records tied to Git attempts.
+and reviewer work into durable, reviewable records tied to Git attempts, then
+lets that evidence affect whether code can land.
 
 ## Boundaries
 

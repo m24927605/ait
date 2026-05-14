@@ -2,17 +2,18 @@
 title: 為什麼用 ait — ait 解決的問題
 description: >-
   ait 解決的 10 個 AI coding agent 痛點深入解析：blast radius、provenance、
-  失敗污染、重複調查、平行安全、promote 模糊、跨 agent 脈絡、強迫 SaaS、
-  自述驗證、prompt 搜尋。
+  失敗污染、重複調查、平行安全、apply 模糊、跨 agent 脈絡、強迫 SaaS、
+  對抗式審查、prompt 搜尋。
 ---
 
 # 為什麼用 ait
 
 AI coding agent 跑得快。Git history、審核紀律、跨 session 的 hand-off
-脈絡跟不上。`ait` 用一層薄的 Git-native 設計把這個落差補起來。下面是
-ait 解決的每個問題的長版本，以及對應的解法。
+脈絡跟不上。`ait` 先把每次 agent 執行變成隔離、可審核的 attempt，再讓你
+決定哪些結果可以進 working tree。下面是 ait 解決的每個問題的長版本，以及
+對應的解法。
 
-想看可重跑 proof，請看 [痛點 demo](demos/pain-point-demos.md)。
+想看可重跑證據，請看 [痛點 demo](demos/pain-point-demos.md)。
 
 ## 1. Blast radius 失控
 
@@ -23,6 +24,8 @@ reset --hard`，常常順手把自己的進行中工作也炸掉。
 **解法：** 每次執行落在隔離 Git worktree。Root checkout 永遠不動。
 爛 attempt 直接 `ait attempt discard <id>` — 零波及。
 
+可執行範例：[`01-blast-radius`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/01-blast-radius)
+
 ## 2. Diff 沒有 provenance
 
 **痛點：** 三天後你回不答：這段 diff 是哪個 prompt 產的？用了哪些
@@ -32,6 +35,8 @@ context 檔？exit 0 還是 130？Shell history 不夠。
 output、產生的 commits 串成一筆可查的紀錄。`ait attempt show <id>`
 一次拿全。
 
+可執行範例：[`02-provenance`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/02-provenance)
+
 ## 3. 失敗的執行污染 working copy
 
 **痛點：** Agent 跑到一半 timeout，留下一堆雜亂 commits、半套修改、
@@ -39,6 +44,8 @@ output、產生的 commits 串成一筆可查的紀錄。`ait attempt show <id>`
 
 **解法：** 失敗 attempt 留在自己的 worktree 裡審或 `discard`。主分支
 從頭到尾乾淨。
+
+可執行範例：[`03-failed-run-isolation`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/03-failed-run-isolation)
 
 ## 4. 同份調查付兩次錢
 
@@ -49,21 +56,28 @@ output、產生的 commits 串成一筆可查的紀錄。`ait attempt show <id>`
 （`CLAUDE.md`、`AGENTS.md`）摘要成一份 `AIT_CONTEXT_FILE` 餵給下一次
 執行。
 
+可執行範例：[`04-memory-reuse`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/04-memory-reuse)
+
 ## 5. 平行 agent 互相覆蓋
 
 **痛點：** 想讓 Claude 和 Codex 同時試兩種解法、再挑一個更好的 diff？
 兩個都搶 working copy，互相破壞。
 
-**解法：** 每個 attempt 自帶 worktree。可平行跑 N 個 agent，比 attempts
-側邊側邊比，promote 你信的那一個。
+**解法：** 每個 attempt 自帶 worktree。可平行跑 N 個 agent，把 attempts
+並排比較，再 apply 你信的那一個。
 
-## 6. Promote 模糊
+可執行範例：[`05-parallel-agents`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/05-parallel-agents)
+
+## 6. Apply 模糊
 
 **痛點：** Agent 說「我修好了」。要不要採用 diff？直接 commit 怕髒，
 事後 revert 又是磨擦。
 
-**解法：** Promotion 是顯式動詞：`ait attempt promote <id> --to main`。
-你不呼叫，agent 的工作就只是提案，不是事實。
+**解法：** Apply 是顯式步驟：`ait apply latest` 或
+`ait apply <attempt-id> --mode current`。你不呼叫，agent 的工作就只是提案，
+不是事實。
+
+可執行範例：[`06-explicit-promotion`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/06-explicit-promotion)
 
 ## 7. 跨 agent hand-off 弄丟脈絡
 
@@ -72,6 +86,8 @@ output、產生的 commits 串成一筆可查的紀錄。`ait attempt show <id>`
 
 **解法：** Memory layer 自動匯入 `CLAUDE.md`、`AGENTS.md` 與過去 attempts，
 下一個 agent — 同一個或不同 — 接續共同的歷史。
+
+可執行範例：[`07-cross-agent-handoff`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/07-cross-agent-handoff)
 
 ## 8. Provenance 工具強迫你上雲
 
@@ -82,13 +98,25 @@ prompt、diff、原始碼上傳。對很多 repo 而言不可能。
 Unix socket、不對外連網。沒 telemetry、沒 SaaS、沒跨機器同步。安全敏感
 的 repo 也能用。
 
-## 9. 自述的成功不可驗證
+可執行範例：[`08-local-only-provenance`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/08-local-only-provenance)
 
-**痛點：** Agent 聲稱「all tests pass」。有時真的跑了。有時 cherry-pick
-某個 suite。有時根本沒跑。
+## 9. 看起來合理的 agent 結果仍然需要被挑戰
 
-**解法：** Verifier 依實際退出狀態、檔案變更、commit 結果決定
-`succeeded` / `promoted` / `failed`，不依 agent 自述。
+**痛點：** Agent 產生的修改看起來可能很合理，但證據不足：沒有測試、檢查
+不完整，或用很有自信的說法掩蓋了邊界條件風險。
+
+**解法：** AIT 可以保留原本 attempt，並另外記錄一份對抗式審查。審查目標
+是一筆 AIT attempt，不是鬆散 diff；審查結果會變成可查詢 evidence。當
+review gate 開啟時，blocked review 可以 hold 住 `ait apply`。
+
+```bash
+ait query --on attempt 'review.mode="adversarial"' --format table
+ait query --on attempt 'review.status="blocked"' --format table
+ait review finding list --severity high --format text
+ait apply <attempt-id> --mode current
+```
+
+可執行範例：[`09-verification-evidence`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/09-verification-evidence)、[`09-1-codex-reviewer`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/09-1-codex-reviewer)
 
 ## 10. 找舊 prompt 要 grep shell history
 
@@ -97,6 +125,8 @@ shell history 答不出來。
 
 **解法：** Attempts、intents、commits 用結構化 DSL 可查。可依 intent 文字、
 狀態、agent、時間範圍、變更檔案等等查。
+
+可執行範例：[`10-prompt-search`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/10-prompt-search)
 
 ## 那又怎樣
 

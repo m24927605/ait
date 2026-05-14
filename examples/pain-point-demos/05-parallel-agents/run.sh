@@ -24,7 +24,7 @@ claude_pid=$!
   use_demo_workspace
   AIT_INTENT="Codex: parallel approach B $run_id" \
   AIT_COMMIT_MESSAGE="codex approach B" \
-  codex "Create approach.txt containing only B. Do not run git commands."
+  run_codex_cli "Create approach.txt containing only B. Do not run git commands."
 ) &
 codex_pid=$!
 

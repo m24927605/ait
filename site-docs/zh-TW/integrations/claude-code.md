@@ -3,7 +3,7 @@ title: 用 ait 在 Git worktree 中執行 Claude Code
 description: >-
   用 ait 包住 Claude Code，每次 session 都在獨立 Git worktree 編輯，並
   記錄完整 attempt provenance — prompt、檔案、狀態、commits — root
-  checkout 在 promote 前完全不動。
+  checkout 在 apply 前完全不動。
 ---
 
 # Claude Code
@@ -19,7 +19,7 @@ Claude Code 又快又強，但一個 prompt 就能改你 repo 裡很多檔案。
 - Agent 編輯**獨立 worktree**而不是 root checkout。
 - 每次 Claude 執行都成為一筆 **attempt** — prompt、檔案、狀態、output、
   commits 全部串起來。
-- 你可以用 Git 概念**檢視、丟棄、rebase、promote** attempt。
+- 你可以用 Git 概念**檢視、recover、rebase、apply** attempt。
 - Repo-local memory 把過去 Claude 跑過的東西攤給下一次。
 
 ## 設定
@@ -58,7 +58,7 @@ claude -p --permission-mode bypassPermissions \
   "縮短 README，改善 quickstart"
 ```
 
-## 審核與 promote
+## 審核與 apply
 
 ```bash
 ait status
@@ -66,10 +66,10 @@ ait attempt list
 ait attempt show <attempt-id>
 ```
 
-Diff OK 就 promote：
+Diff OK 就 apply：
 
 ```bash
-ait attempt promote <attempt-id> --to main
+ait apply <attempt-id> --mode current
 ```
 
 不 OK 就丟掉：

@@ -18,7 +18,7 @@ AIT_COMMIT_MESSAGE="claude calculator module decision" \
 run_claude_code -p --permission-mode bypassPermissions \
   "Create AGENTS.md with this exact line: $decision Do not run git commands."
 
-decision_attempt="$(latest_attempt_id)"
+decision_attempt="$(query_attempt_id "title~\"Claude: record calculator module decision $run_id\"")"
 status="$(attempt_verified_status "$decision_attempt")"
 if [ "$status" != "promoted" ]; then
   "$AIT_BIN" attempt promote "$decision_attempt" --to main >/dev/null
@@ -28,9 +28,9 @@ fi
 info "running Codex handoff proof"
 AIT_INTENT="Codex: read calculator module handoff $run_id" \
 AIT_COMMIT_MESSAGE="codex handoff proof" \
-codex "Read AIT_CONTEXT_FILE. Copy the exact line containing $proof into handoff-proof.txt. Do not inspect AGENTS.md directly."
+run_codex_cli "Read AIT_CONTEXT_FILE. Copy the exact line containing $proof into handoff-proof.txt. Do not inspect AGENTS.md directly."
 
-codex_attempt="$(latest_attempt_id)"
+codex_attempt="$(query_attempt_id "title~\"Codex: read calculator module handoff $run_id\"")"
 state_set "$demo" "run_id" "$run_id"
 state_set "$demo" "proof" "$proof"
 state_set "$demo" "decision_attempt_id" "$decision_attempt"

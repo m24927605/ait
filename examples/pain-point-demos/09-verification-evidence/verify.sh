@@ -12,6 +12,7 @@ attempt="$(require_demo_attempt "$demo")"
 workspace="$(attempt_workspace "$attempt")"
 tests_run="$(attempt_observed_tests_run "$attempt")"
 review_json="$DEMO_STATE_DIR/$demo/light-review.json"
+adversarial_json="$DEMO_STATE_DIR/$demo/adversarial-review.json"
 mkdir -p "$(dirname "$review_json")"
 
 assert_file_exists "$workspace/src/multiply.js"
@@ -19,5 +20,10 @@ assert_file_exists "$workspace/src/multiply.js"
 
 "$AIT_BIN" review attempt "$attempt" --mode light --json > "$review_json"
 assert_file_contains "$review_json" "test"
+assert_file_contains "$adversarial_json" "\"mode\": \"adversarial\""
+assert_file_contains "$adversarial_json" "\"status\": \"blocked\""
+assert_file_contains "$adversarial_json" "\"blocking\": true"
+"$AIT_BIN" review finding list --severity high --format text | grep -Fq "Potential regression" ||
+  fail "expected high severity adversarial finding"
 
-pass "AIT captured missing test evidence for review"
+pass "AIT captured blocking adversarial review finding"

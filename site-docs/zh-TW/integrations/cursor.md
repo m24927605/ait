@@ -35,12 +35,12 @@ ait run --adapter cursor --intent "遷移到新 SDK" -- cursor
 
 或設定完後直接呼叫包裝過的 `cursor` 指令。
 
-## 審核與 promote
+## 審核與 apply
 
 ```bash
 ait attempt list
 ait attempt show <attempt-id>
-ait attempt promote <attempt-id> --to main
+ait apply <attempt-id> --mode current
 ```
 
 ## 相關

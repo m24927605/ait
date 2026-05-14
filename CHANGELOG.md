@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.55.58 - 2026-05-14
+
+### Documentation
+
+- Reposition the README and documentation homepage around reviewable
+  attempts: AI coding agents should work in attempts, not the user's working
+  tree.
+- Add an `ait graph --html` screenshot to the README and documentation
+  homepage to show attempts, evidence, memory, hot files, and query filters.
+- Add Staff-level positioning research notes and synchronize English and
+  zh-TW copy across the website, README, integrations, and pain-point demos.
+
+### Packaging
+
+- Align PyPI, npm, MkDocs, CITATION, and SEO metadata with the new
+  attempt-first positioning.
+
 ## 0.55.57 - 2026-05-13
 
 ### Added

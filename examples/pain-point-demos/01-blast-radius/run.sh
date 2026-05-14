@@ -15,7 +15,7 @@ AIT_COMMIT_MESSAGE="claude broad risky edit" \
 run_claude_code -p --permission-mode bypassPermissions \
   "Create docs/claude-risk.md and tmp/claude-generated.txt, then delete src/calculator.js. Do not run git commands."
 
-attempt="$(latest_attempt_id)"
+attempt="$(query_attempt_id 'title~"Claude: broad risky edit"')"
 [ -n "$attempt" ] || fail "could not determine latest attempt"
 state_set "$demo" "attempt_id" "$attempt"
 pass "recorded attempt $attempt"

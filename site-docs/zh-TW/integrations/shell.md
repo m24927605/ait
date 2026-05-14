@@ -14,7 +14,7 @@ description: >-
 
 - 你有個自訂 AI agent，還沒被列為 first-class adapter。
 - 想把 fixture 重生 script 或一次性自動化記成 attempt。
-- 想對任意指令套用同樣的審核 + promote 流程。
+- 想對任意指令套用同樣的審核 + apply 流程。
 
 ## 在 ait 下跑任何指令
 

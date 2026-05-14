@@ -9,12 +9,20 @@ DEMO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 demo="09-verification-evidence"
 use_demo_workspace
 
-info "running Claude Code change with no test command"
-AIT_INTENT="Claude: claim tests pass without test evidence" \
-AIT_COMMIT_MESSAGE="claude claimed test success" \
+info "running Claude Code change that leaves reviewable risk"
+AIT_INTENT="Claude: risky multiply change without test evidence" \
+AIT_COMMIT_MESSAGE="claude risky multiply without tests" \
 run_claude_code -p --permission-mode bypassPermissions \
-  "Create src/multiply.js exporting multiply(a, b). Say tests should pass, but do not run npm test or any test command. Do not run git commands."
+  "Create src/multiply.js exporting multiply(a, b). Do not add tests. Do not run npm test or any test command. Do not run git commands."
 
-attempt="$(latest_attempt_id)"
+attempt="$(query_attempt_id 'title~"Claude: risky multiply change without test evidence"')"
 state_set "$demo" "attempt_id" "$attempt"
-pass "recorded attempt $attempt"
+
+info "running adversarial AIT review"
+"$AIT_BIN" review attempt "$attempt" \
+  --mode adversarial \
+  --review-adapter fake:high \
+  --review-budget standard \
+  --json > "$DEMO_STATE_DIR/$demo/adversarial-review.json"
+
+pass "recorded adversarially reviewed attempt $attempt"

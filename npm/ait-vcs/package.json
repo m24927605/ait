@@ -1,7 +1,7 @@
 {
   "name": "ait-vcs",
-  "version": "0.55.57",
-  "description": "Git worktree isolation and provenance for AI coding agents — wraps Claude Code, Codex, Aider, Gemini CLI, Cursor. MIT, Python, no SaaS.",
+  "version": "0.55.58",
+  "description": "Run Claude Code, Codex, Aider, Gemini CLI, and Cursor as isolated, reviewable attempts with provenance, memory, and apply/recover. MIT, no SaaS.",
   "license": "MIT",
   "author": "sin-chengchen",
   "homepage": "https://m24927605.github.io/ait/",

@@ -10,6 +10,12 @@ description: >-
 
 AIT 會把驗證、風險掃描、reviewer agent 執行分開處理。
 
+實務上可以這樣理解：
+
+- `light` 回答「從 deterministic signals 看，這次 attempt 風險多高？」
+- `adversarial` 回答「如果交給另一個 reviewer agent，它會擋下什麼？」
+- `risk-based` 讓 AIT 在 `ait run` 期間依風險自動選擇路徑
+
 ## `light`
 
 `light` mode 是 deterministic risk scan。它不會呼叫 Claude Code、Codex，
@@ -39,7 +45,7 @@ ait review attempt latest-reviewable --mode light
 - `low` risk 會成為 `passed`
 - `medium`、`high`、`critical` risk 會成為 `warning`
 - 不會產生逐行 findings
-- 不會單獨阻擋 apply 或 promotion
+- 不會單獨阻擋 apply
 
 ## `adversarial`
 
@@ -56,6 +62,22 @@ target attempt worktree 外執行 reviewer，並捕捉 stdout/stderr。
 
 當 reviewer 依 schema 回傳 high 或 critical finding 時，這些 finding 可以成為
 blocking findings。
+
+當 review 品質很重要時，就應該用這個 mode。Reviewer 會被賦予明確的對抗式
+任務：挑戰實作、找遺漏邊界條件、薄弱測試、regression、安全敏感路徑，以及
+這個 attempt 不應該被直接接受的理由。
+
+當 repo policy 要求 apply 前必須通過 review，blocked adversarial review
+可以 hold 住結果：
+
+```bash
+ait apply <attempt-id> --mode current
+```
+
+```text
+Status: held
+Reason: review gate: required review is blocked
+```
 
 完整操作流程請看 [對抗式 code review](adversarial-code-review.md)。
 

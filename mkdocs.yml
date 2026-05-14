@@ -1,11 +1,12 @@
-site_name: ait — Git workflow layer for AI coding agents
+site_name: ait — Reviewable attempts for AI coding agents
 site_url: https://m24927605.github.io/ait/
 site_description: >-
-  ait is a Git-native version control layer for AI coding agents
-  (Claude Code, Codex CLI, Aider, Gemini CLI, Cursor) — adding
-  worktree isolation, attempt provenance, cross-agent memory, and
-  reviewable promotion on top of Git. Open source (MIT), Python
-  3.14+, dependency-free, no SaaS, no telemetry.
+  AI coding agents should work in attempts, not your working tree. ait turns
+  Claude Code, Codex CLI, Aider, Gemini CLI, and Cursor runs into isolated,
+  reviewable attempts with provenance, shared long-term repo memory,
+  cross-agent handoff, adversarial review, and explicit apply/recover flow on
+  top of Git. Open source (MIT), Python 3.14+, dependency-free, no SaaS, no
+  telemetry.
 site_author: sin-chengchen
 repo_url: https://github.com/m24927605/ait
 repo_name: m24927605/ait
@@ -59,7 +60,7 @@ plugins:
         - locale: zh-TW
           name: 繁體中文
           build: true
-          site_name: ait — AI coding agent 的 Git 工作層
+          site_name: ait — AI agent 的可審核 attempts
           nav_translations:
             Home: 首頁
             Why ait: 為什麼用 ait

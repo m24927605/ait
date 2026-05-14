@@ -3,18 +3,19 @@ title: Why ait — problems it solves for AI coding agents
 description: >-
   Deep dive on the ten problems ait solves for teams running Claude Code,
   Codex, Aider, Gemini CLI, and Cursor — blast radius, provenance, failed
-  attempts, repeated investigation, parallel safety, promotion ambiguity,
-  cross-agent hand-off, local-first metadata, verification, and prompt
+  attempts, repeated investigation, parallel safety, apply ambiguity,
+  cross-agent hand-off, local-first metadata, adversarial review, and prompt
   search.
 ---
 
 # Why ait
 
 AI coding agents are fast. Git history, review discipline, and handoff
-context across runs are not. `ait` closes that gap with a thin Git-native
-layer. Here is the long form of every problem it solves and how.
+context across runs are not. `ait` closes that gap by making every agent run
+an isolated, reviewable attempt before it reaches your working tree. Here is
+the long form of every problem it solves and how.
 
-For runnable proof, see [Pain-point demos](demos/pain-point-demos.md).
+For runnable evidence, see [Pain-point demos](demos/pain-point-demos.md).
 
 ## 1. Blast radius is unbounded
 
@@ -27,6 +28,8 @@ trash your own in-progress work.
 is never touched. A bad attempt is `ait attempt discard <id>` — zero
 collateral damage.
 
+Runnable example: [`01-blast-radius`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/01-blast-radius)
+
 ## 2. The diff has no useful provenance
 
 **Pain.** Three days later you cannot answer: which prompt produced this
@@ -37,6 +40,8 @@ is not enough.
 captured output, and resulting commits as one queryable record. `ait
 attempt show <id>` returns the full picture.
 
+Runnable example: [`02-provenance`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/02-provenance)
+
 ## 3. Failed runs pollute the working copy
 
 **Pain.** The agent times out halfway, leaves stray commits, partial
@@ -45,6 +50,8 @@ contaminate the next run.
 
 **ait.** Failed attempts are kept inside their own worktree for review
 or `discard`. Main stays clean from end to end.
+
+Runnable example: [`03-failed-run-isolation`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/03-failed-run-isolation)
 
 ## 4. You pay for the same investigation twice
 
@@ -55,6 +62,8 @@ week Codex starts the investigation from scratch. Same tokens, twice.
 memory files (`CLAUDE.md`, `AGENTS.md`), and curated notes into a compact
 context handoff (`AIT_CONTEXT_FILE`) for the next run.
 
+Runnable example: [`04-memory-reuse`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/04-memory-reuse)
+
 ## 5. Parallel agents stomp each other
 
 **Pain.** You want Claude and Codex to try two approaches simultaneously,
@@ -62,15 +71,20 @@ then pick the better diff. Both fight over the working copy and corrupt
 each other.
 
 **ait.** Each attempt has its own worktree. Run N agents in parallel,
-compare attempts side by side, promote the one you trust.
+compare attempts side by side, and apply the one you trust.
 
-## 6. Promotion is ambiguous
+Runnable example: [`05-parallel-agents`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/05-parallel-agents)
+
+## 6. Apply is ambiguous
 
 **Pain.** The agent says "I have fixed it." Should you accept the diff
 or not? Direct commits feel risky; reverting after the fact is friction.
 
-**ait.** Promotion is an explicit verb: `ait attempt promote <id> --to
-main`. Until you call it, the agent's work is a proposal, not a fact.
+**ait.** Apply is an explicit step: `ait apply latest` or `ait apply
+<attempt-id> --mode current`. Until you call it, the agent's work is a
+proposal, not a fact.
+
+Runnable example: [`06-explicit-promotion`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/06-explicit-promotion)
 
 ## 7. Cross-agent hand-off loses context
 
@@ -80,6 +94,8 @@ nothing about the decisions, dead ends, or partial fixes from before.
 **ait.** The memory layer auto-imports `CLAUDE.md`, `AGENTS.md`, and
 prior attempts so the next agent — same or different — picks up with the
 shared history.
+
+Runnable example: [`07-cross-agent-handoff`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/07-cross-agent-handoff)
 
 ## 8. Provenance tools want your code in their cloud
 
@@ -91,14 +107,27 @@ repos.
 daemon is local-only — Unix socket, no network. No telemetry, no SaaS,
 no cross-machine sync. Suitable for security-sensitive repos.
 
-## 9. Self-reported success is unverifiable
+Runnable example: [`08-local-only-provenance`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/08-local-only-provenance)
 
-**Pain.** The agent claims "all tests pass." Sometimes it ran them.
-Sometimes it cherry-picked one suite. Sometimes it never ran anything.
+## 9. Plausible agent output still needs challenge
 
-**ait.** The verifier decides `succeeded`, `promoted`, or `failed` based
-on actual exit status, file changes, and commit results — not on what the
-agent says about itself.
+**Pain.** An agent can produce a convincing code change with weak evidence:
+no tests, incomplete checks, or a confident explanation that hides a risky edge
+case.
+
+**ait.** AIT can preserve the original attempt and record a separate
+adversarial review. The review target is an AIT attempt, not a loose diff, and
+the result is queryable evidence. With review gating enabled, a blocked review
+can hold `ait apply`.
+
+```bash
+ait query --on attempt 'review.mode="adversarial"' --format table
+ait query --on attempt 'review.status="blocked"' --format table
+ait review finding list --severity high --format text
+ait apply <attempt-id> --mode current
+```
+
+Runnable examples: [`09-verification-evidence`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/09-verification-evidence), [`09-1-codex-reviewer`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/09-1-codex-reviewer)
 
 ## 10. Finding old prompts means grepping shell history
 
@@ -108,6 +137,8 @@ query parser?" There is no good answer with raw shell history.
 **ait.** Attempts, intents, and commits are queryable with a structured
 DSL. Find by intent text, status, agent, time range, files touched, and
 more.
+
+Runnable example: [`10-prompt-search`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/10-prompt-search)
 
 ## So what
 

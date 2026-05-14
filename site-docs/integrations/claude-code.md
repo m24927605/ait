@@ -3,7 +3,7 @@ title: Run Claude Code in a Git worktree with ait
 description: >-
   Use ait to wrap Claude Code so each session edits an isolated Git worktree
   with full attempt provenance — prompt, files, status, and commits — and your
-  main checkout stays untouched until you promote.
+  main checkout stays untouched until you apply.
 ---
 
 # Claude Code
@@ -19,7 +19,7 @@ across your repository. `ait` keeps that work contained:
 - The agent edits an **isolated worktree** instead of your root checkout.
 - Every Claude Code run becomes one **attempt** — prompt, files, status,
   output, and commits stay linked.
-- You can **inspect, discard, rebase, or promote** an attempt with normal
+- You can **inspect, recover, rebase, or apply** an attempt with normal
   Git concepts.
 - A repo-local memory layer surfaces what previous Claude runs already
   tried.
@@ -61,7 +61,7 @@ claude -p --permission-mode bypassPermissions \
   "Shorten the README and improve the quickstart"
 ```
 
-## Review and promote
+## Review and apply
 
 ```bash
 ait status
@@ -69,10 +69,10 @@ ait attempt list
 ait attempt show <attempt-id>
 ```
 
-Promote when the diff is good:
+Apply when the diff is good:
 
 ```bash
-ait attempt promote <attempt-id> --to main
+ait apply <attempt-id> --mode current
 ```
 
 Discard when it is not:

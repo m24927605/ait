@@ -11,3 +11,5 @@ npm/ait-vcs/coverage/
 npm/ait-vcs/*.tgz
 site/
 docs/llm-long-term-memory-zh.md
+examples/pain-point-demos/*/workspace/
+examples/pain-point-demos/*/.state/

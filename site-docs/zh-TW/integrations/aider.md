@@ -3,7 +3,7 @@ title: 用 ait 在隔離 Git worktree 中跑 Aider
 description: >-
   用 ait 包住 Aider，每次 session 都在獨立 Git worktree 編輯。Aider
   的 commits 落在 attempt 內，附完整 prompt 與檔案 provenance，可審
-  可 promote。
+  可 apply。
 ---
 
 # Aider
@@ -13,7 +13,7 @@ description: >-
 
 ## 為什麼用 ait 包 Aider
 
-- Aider commits 進隔離 worktree — 在 promote 之前主分支保持乾淨。
+- Aider commits 進隔離 worktree — 在 apply 之前主分支保持乾淨。
 - 每次 session 變成一筆 attempt，含 prompt、變更檔案、Aider 產生的
   commits。
 - Repo-local memory 把過去 Aider session 留下可查。
@@ -37,12 +37,12 @@ ait run --adapter aider --intent "修 auth expiry" -- aider src/auth.py
 
 或設定完後直接在 repo 內呼叫 `aider`。
 
-## 審核與 promote
+## 審核與 apply
 
 ```bash
 ait attempt list
 ait attempt show <attempt-id>
-ait attempt promote <attempt-id> --to main
+ait apply <attempt-id> --mode current
 ```
 
 ## 相關

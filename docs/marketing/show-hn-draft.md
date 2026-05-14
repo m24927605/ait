@@ -6,7 +6,7 @@
 
 ## Title
 
-Show HN: ait – Git worktree isolation and provenance for AI coding agents
+Show HN: ait - AI coding agents should work in attempts, not your working tree
 
 ## URL
 
@@ -18,17 +18,17 @@ I built `ait` because Claude Code, Codex, Aider, Gemini CLI, and Cursor are
 fast — but Git history, review discipline, and handoff context across runs
 were not.
 
-`ait` wraps the agent CLIs you already use. Each run happens inside an
-isolated Git worktree. The attempt log links the prompt, edited files, exit
-status, and resulting commits. Your main checkout stays untouched until you
-explicitly promote.
+`ait` wraps the agent CLIs you already use and turns each run into a
+reviewable attempt. The agent edits an isolated Git worktree, while the
+attempt log links the prompt, edited files, exit status, and resulting commits.
+Your main checkout stays untouched until you explicitly apply.
 
 Why this might be interesting:
 
 - **Worktree isolation per attempt.** A bad agent run cannot stomp on your
   working copy. You can run multiple agents in parallel without interference.
 - **Reviewable attempts.** `ait attempt show <id>` gives you the prompt,
-  status, files, and commits in one view. Promote, discard, rebase, or
+  status, files, and commits in one view. Apply, discard, rebase, or
   inspect — normal Git concepts.
 - **Repo-local memory.** Prior attempts feed future runs as compact context,
   so the next agent does not repeat investigation you already paid for.

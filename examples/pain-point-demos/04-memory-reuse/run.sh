@@ -18,7 +18,7 @@ AIT_COMMIT_MESSAGE="claude auth retry investigation" \
 run_claude_code -p --permission-mode bypassPermissions \
   "Create notes/auth-retry.md with this exact line: Decision: auth retry backoff uses missing jitter. $proof. Do not run git commands."
 
-claude_attempt="$(latest_attempt_id)"
+claude_attempt="$(query_attempt_id "title~\"Claude: investigate auth retry $run_id\"")"
 claude_workspace="$(attempt_workspace "$claude_attempt")"
 assert_file_contains "$claude_workspace/notes/auth-retry.md" "$proof"
 
@@ -28,9 +28,9 @@ note_body="$(sed -n '1p' "$claude_workspace/notes/auth-retry.md")"
 info "running Codex with AIT_CONTEXT_FILE memory handoff"
 AIT_INTENT="Codex: reuse auth retry investigation $run_id" \
 AIT_COMMIT_MESSAGE="codex context reuse proof" \
-codex "Read AIT_CONTEXT_FILE. Copy the exact line containing $proof into context-proof.txt. Do not inspect notes/auth-retry.md directly."
+run_codex_cli "Read AIT_CONTEXT_FILE. Copy the exact line containing $proof into context-proof.txt. Do not inspect notes/auth-retry.md directly."
 
-codex_attempt="$(latest_attempt_id)"
+codex_attempt="$(query_attempt_id "title~\"Codex: reuse auth retry investigation $run_id\"")"
 state_set "$demo" "run_id" "$run_id"
 state_set "$demo" "proof" "$proof"
 state_set "$demo" "claude_attempt_id" "$claude_attempt"

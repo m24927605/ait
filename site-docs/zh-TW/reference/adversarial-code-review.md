@@ -7,9 +7,15 @@ description: >-
 
 # 對抗式 code review
 
-Adversarial review 是針對已完成 AIT attempt 的第二道 reviewer agent。Reviewer
-不會編輯 target attempt worktree。AIT 會給 reviewer 一份 structured brief、
-捕捉輸出、解析 findings，並把 review evidence 存在 `.ait/`。
+對抗式 review 是讓 AIT 從「比較安全地跑 agent」變成「AI engineering
+control plane」的關鍵能力。
+
+一個 agent 實作，另一個 reviewer agent 挑戰結果。AIT 記錄審查結論，並且
+可以在 blocked attempt 進入目前 checkout 前擋下 apply。
+
+Reviewer 不會編輯 target attempt worktree。AIT 會給 reviewer 一份
+structured brief、捕捉輸出、解析 findings，並把 review evidence 存在
+`.ait/`。
 
 這跟手動叫另一個 agent「幫我看一下 diff」不一樣：
 
@@ -18,6 +24,27 @@ Adversarial review 是針對已完成 AIT attempt 的第二道 reviewer agent。
   transcript evidence，以及必須遵守的 JSON schema
 - findings 會被保存，而且可查詢
 - high 與 critical findings 可以成為 blocking review evidence
+- 開啟 review-gated apply 後，blocked attempt 會在套用前被 hold
+
+## 為什麼 review 品質會變好
+
+對抗式 review 會提升 AI code review 品質，因為它同時改變了 reviewer 的
+角色與輸入資訊。
+
+- **角色分離：** 寫程式的 agent 不再自己審自己。另一個 reviewer agent
+  會被要求挑戰這次 attempt。
+- **任務更尖銳：** reviewer 不是被要求給泛泛建議，而是要找出這個 attempt
+  為什麼不應該被接受。
+- **脈絡更完整：** reviewer 會看到 attempt metadata、changed files、diff
+  evidence、test evidence、transcript references、risk reasons，以及本機
+  baseline context。
+- **輸出可結構化：** finding 會變成含 severity、path、body、confidence、
+  `blocking` 的紀錄。
+- **結果有後果：** review gate 開啟後，blocked review 可以 hold 住
+  `ait apply`。
+
+所以它不是另一段聊天回覆，而是可查詢、可產 report、可執行 gate 的 workflow
+evidence。
 
 ## 快速開始
 
@@ -43,6 +70,31 @@ ait review finding list --status open
 ait review report --attempt latest --format markdown --output docs/reviews/latest.md
 ```
 
+如果要讓 blocked review 真的擋下 apply，請在 repo policy 開啟 review gate：
+
+```json
+{
+  "review": {
+    "auto_apply_requires_review": true,
+    "allow_override": false
+  }
+}
+```
+
+接著嘗試套用 blocked attempt：
+
+```bash
+ait apply <attempt-id> --mode current
+```
+
+預期結果：
+
+```text
+AIT held the result because this repo requires review before apply.
+Status: held
+Reason: review gate: required review is blocked
+```
+
 如果某個 finding 是 false positive，或你決定接受風險，要記錄理由：
 
 ```bash
@@ -59,7 +111,7 @@ review：
   相關變更
 - 大 diff，或跨多個 subsystem 的變更
 - test evidence 缺失或偏弱的 attempt
-- 套用或 promote 重要 AI-generated result 之前
+- apply 重要 AI-generated result 之前
 - 比較 Claude Code 與 Codex 針對同一任務產生的不同 attempts 時
 
 低風險修改通常用 `light` mode 就夠，因為它是本機、deterministic、速度快。
@@ -143,18 +195,18 @@ ait review worker --once
 
 如果觀眾已經熟悉 Claude Code 與 Codex，可以這樣 demo：
 
-1. 用 Claude Code 跑一個 task，再用 Codex 跑另一個 task，每個都是獨立 AIT
-   attempt。
-2. 用 `ait attempt list` 比較 attempts，畫面不會塞滿長 ID。
-3. 跑 `ait review attempt latest-reviewable --mode light` 展示 deterministic
-   risk reasons。
-4. 跑 `ait review attempt latest-reviewable --mode adversarial
-   --review-adapter claude-code` 展示真正的 reviewer adapter。
-5. 展示 `ait review finding list --status open` 與 `ait review report`。
-6. Review evidence 可接受後，才 apply 或 promote。
+1. 用 Claude Code 當實作者。
+2. 用 Codex 當對抗式 reviewer，執行 `ait review attempt --mode adversarial
+   --review-adapter codex`。
+3. 展示 `ait query --on attempt 'review.status="blocked"' --format table`。
+4. 展示 `ait review finding list --severity high --format text`。
+5. 展示 `ait review report --attempt <attempt-id> --format json`。
+6. 執行 `ait apply <attempt-id> --mode current`，讓觀眾看到 review gate hold
+   住 blocked attempt。
 
 重點是：AIT 不是「另一層 prompt wrapper」。它把 agent work 與 reviewer work
-都變成和 Git attempts 綁定的 durable、reviewable records。
+都變成和 Git attempts 綁定的 durable、reviewable records，並且讓這些
+evidence 影響程式能不能落地。
 
 ## 邊界
 

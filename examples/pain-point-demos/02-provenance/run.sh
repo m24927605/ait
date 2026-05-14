@@ -15,7 +15,7 @@ AIT_COMMIT_MESSAGE="claude provenance proof" \
 run_claude_code -p --permission-mode bypassPermissions \
   "Create notes/provenance-proof.md with this exact line: AIT_PROVENANCE_PROOF=claude_prompt_recorded. Do not run git commands."
 
-attempt="$(latest_attempt_id)"
+attempt="$(query_attempt_id 'title~"Claude: provenance proof"')"
 [ -n "$attempt" ] || fail "could not determine latest attempt"
 state_set "$demo" "attempt_id" "$attempt"
 pass "recorded attempt $attempt"

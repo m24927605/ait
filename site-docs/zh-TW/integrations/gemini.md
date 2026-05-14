@@ -14,7 +14,7 @@ description: >-
 
 - 每次 Gemini session 編輯 attempt worktree，不是 root checkout。
 - Sessions 日後可用 `ait memory recall` 查。
-- 你只 promote 想要的 attempts。
+- 你只 apply 想要的 attempts。
 
 ## 設定
 

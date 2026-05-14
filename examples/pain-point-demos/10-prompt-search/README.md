@@ -4,13 +4,40 @@
 
 Finding an old prompt through raw shell history is unreliable.
 
-## Demo
+## Demo Project
+
+This case owns its own project:
+
+```text
+10-prompt-search/workspace/
+```
+
+The demo creates a searchable Claude Code attempt, then recovers it through AIT
+queries.
+
+## Run
 
 ```bash
 ./run.sh
-./verify.sh
 ```
 
-`run.sh` queries the auth retry attempt from `04-memory-reuse`, running that
-prerequisite first if needed. `verify.sh` proves AIT can recover the attempt
-by intent text, changed file, and prompt or trace metadata.
+## AIT Verification Flow
+
+Run these from `10-prompt-search/workspace/`.
+
+```bash
+ait query --on attempt 'title~"auth retry"' --format table
+ait query --on attempt 'files_changed~"notes/auth-retry.md"' --format table
+ait attempt show <attempt-id>
+```
+
+Use the output to explain:
+
+- AIT can recover an old attempt by intent text.
+- AIT can recover an old attempt by changed file.
+- `raw_prompt_ref` or `raw_trace_ref` points to captured prompt/trace evidence.
+- This is more reliable than shell history or terminal scrollback.
+
+## Demo Takeaway
+
+AIT makes prompt and attempt history queryable through local metadata.

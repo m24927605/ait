@@ -16,7 +16,7 @@ reviewable attempt.
 
 - Each Gemini session edits an attempt worktree, not your root checkout.
 - Sessions are queryable later via `ait memory recall`.
-- You promote only the attempts you want.
+- You apply only the attempts you want.
 
 ## Setup
 

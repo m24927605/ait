@@ -96,7 +96,7 @@ ait context <intent-id>
 需要低階 Git 控制時，仍可使用進階 attempt 指令：
 
 ```bash
-ait attempt promote <attempt-id> --to main
+ait apply <attempt-id> --mode current
 ait attempt rebase <attempt-id> --onto main
 ait attempt discard <attempt-id>
 ```

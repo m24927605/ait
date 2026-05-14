@@ -13,6 +13,7 @@ for demo in \
   07-cross-agent-handoff \
   08-local-only-provenance \
   09-verification-evidence \
+  09-1-codex-reviewer \
   10-prompt-search
 do
   printf '\n==> verifying %s\n' "$demo"
