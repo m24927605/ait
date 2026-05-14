@@ -63,6 +63,7 @@ PyPI 與 npm 上的套件名稱是 `ait-vcs`，安裝後的指令是 `ait`。
 | Attempt-first 工作流 | AIT 包住你已經在用的 agent CLI，先把每次執行變成隔離 attempt，再由你決定是否 apply 到 root checkout。 |
 | Worktree 隔離 | 每次執行都有自己的內部 Git worktree，失敗或高風險 attempt 不會污染目前工作目錄。 |
 | Attempt provenance | prompt、intent、adapter、output、changed files、commits、trace references、status、outcome 會串成一筆紀錄。 |
+| Wrapper bypass 偵測 | `ait status <adapter>` 會告訴你目前 shell 會進 AIT wrapper，還是會 silent 地直接呼叫真正的 agent binary。 |
 | 跨 agent 共同記憶 | Claude Code、Codex、Aider、Gemini、Cursor 與 shell agents 可以讀同一份 repo-local context，不必各自從零開始。 |
 | 長期 repo memory | 有價值的 attempts、commits、notes、匯入的 `CLAUDE.md` / `AGENTS.md`、accepted facts、prior findings 可以跨 terminal、跨 session、跨週期保留下來。 |
 | 跨 agent handoff | 一個 agent 做過的調查或決策，可以透過 AIT 傳給後續另一個 agent，而不是藏在某個聊天視窗裡。 |
@@ -113,6 +114,19 @@ AIT 的 memory 是 repo-local、可檢查的專案記憶，不是某個聊天視
 ait init
 direnv allow   # 只有被提示時才需要
 ```
+
+確認目前 shell 真的會走進 AIT：
+
+```bash
+ait status claude-code
+ait status codex
+ait status --all
+```
+
+`Bypass detection: wrapped` 代表 agent 指令會解析到 repo-local AIT wrapper。
+`Bypass detection: bypass_risk` 代表目前 shell 會直接呼叫真正的 agent binary，
+AIT 抓不到 prompt、attempt 或失敗 evidence。重新啟用 shell integration、
+執行 `direnv allow` 或 `ait repair`，再檢查一次 status。
 
 接著照常使用你的 agent：
 
@@ -181,7 +195,14 @@ ait run --adapter shell --intent "Regenerate fixtures" -- \
 ait memory
 ait memory search "auth adapter"
 ait memory recall "billing retry"
+ait memory backfill --dry-run
+ait memory backfill --import
 ```
+
+`ait memory backfill --dry-run` 只掃描既有 repo-local agent memory，例如
+`CLAUDE.md`、`AGENTS.md`、`.cursor/rules`，不會寫入任何檔案。只有加上
+`--import` 時，AIT 才會把 advisory memory 放進 `.ait/`。Global 或 repo
+外部 memory 必須明確指定 `--global --path ...`。
 
 Apply 前先跑對抗式審查：
 
@@ -330,7 +351,7 @@ ait --version
 安裝指定 GitHub release：
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.55.58"
+pipx install "git+https://github.com/m24927605/ait.git@v0.55.59"
 ```
 
 升級：
@@ -350,6 +371,8 @@ ait upgrade --dry-run
 
 ```bash
 ait status
+ait status claude-code
+ait status codex
 ait status --all
 ait doctor
 ait doctor --fix
@@ -366,6 +389,9 @@ ait context <intent-id>
 
 ait memory
 ait memory search "auth adapter"
+ait memory recall "billing retry"
+ait memory backfill --dry-run
+ait memory backfill --import
 ait memory lint
 ait memory lint --fix
 
@@ -390,7 +416,7 @@ ait shell uninstall --shell zsh
 
 ## 狀態
 
-`ait` 目前是 `0.55.58`，仍屬 alpha quality。它適合 local dogfooding，
+`ait` 目前是 `0.55.59`，仍屬 alpha quality。它適合 local dogfooding，
 以及熟悉 Git workflow、願意早期試用的使用者。
 
 Metadata 只存在單一 repo 的 `.ait/` 裡，不會跨機器同步。

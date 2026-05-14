@@ -38,6 +38,7 @@ _`ait graph --html` 產生的本機 HTML 報告：attempts、evidence、memory�
 | Attempt-first 工作流 | 包住你已經在用的 agent CLI，先把每次執行變成隔離 attempt，再由你決定是否 apply 到 root checkout。 |
 | Worktree 隔離 | 每次執行都有自己的內部 Git worktree，失敗或高風險 attempt 不會污染目前 workspace。 |
 | Attempt provenance | prompt、intent、adapter、output、changed files、commits、trace references、status、outcome 會串成一筆紀錄。 |
+| Wrapper bypass 偵測 | `ait status <adapter>` 會告訴你目前 shell 會進 AIT wrapper，還是會 silent 地直接呼叫真正的 agent binary。 |
 | 跨 agent 共同記憶 | Claude Code、Codex、Aider、Gemini、Cursor 與 shell agents 可以共用同一份 repo-local context。 |
 | 長期 repo memory | attempts、commits、notes、匯入的 `CLAUDE.md` / `AGENTS.md`、accepted facts、prior findings 可以跨 session 保留。 |
 | 跨 agent handoff | 一個 agent 的調查或決策，可以透過 AIT 傳給後續另一個 agent。 |
@@ -97,6 +98,11 @@ Repo-local memory 只在同一個 repository 的 `.ait/` 內共享。AIT 會記�
 attempts、commits、notes、匯入的 agent memory files、accepted memory facts
 以及 prior findings，之後只把 policy 允許的 context 召回給未來執行。
 這是可檢查的專案記憶，不是某個聊天視窗裡的隱藏上下文。
+
+既有專案中途導入 AIT 時，先跑 `ait memory backfill --dry-run`。它只預覽
+repo-local agent memory，例如 `CLAUDE.md`、`AGENTS.md`、`.cursor/rules`，
+不會寫入任何檔案。只有加上 `--import` 時，AIT 才會把 advisory memory
+放進 `.ait/`。
 
 對抗式審查的細節請看 [對抗式 code review](reference/adversarial-code-review.md)：reviewer adapter、findings、report，以及 review-gated apply。
 

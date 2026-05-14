@@ -39,6 +39,7 @@ _Static HTML from `ait graph --html`: attempts, evidence, memory, hot files, and
 | Attempt-first workflow | Wrap the agent CLIs you already use and turn each run into an isolated attempt before anything touches the root checkout. |
 | Worktree isolation | Every run gets an internal isolated Git worktree, so failed or risky attempts do not pollute your workspace. |
 | Attempt provenance | Prompt, intent, adapter, output, changed files, commits, trace references, status, and outcome stay linked. |
+| Wrapper bypass detection | `ait status <adapter>` shows whether this shell will enter AIT or silently call the real agent binary. |
 | Shared cross-agent memory | Claude Code, Codex, Aider, Gemini, Cursor, and shell agents can reuse the same repo-local context. |
 | Long-term repo memory | Attempts, commits, notes, imported `CLAUDE.md` / `AGENTS.md`, accepted facts, and prior findings can survive across sessions. |
 | Cross-agent handoff | One agent can record an investigation or decision, and another agent can receive it later through AIT. |
@@ -102,6 +103,11 @@ Repo-local memory is shared through `.ait/` inside one repository. AIT records
 attempts, commits, notes, imported agent memory files, accepted memory facts,
 and prior findings, then recalls only policy-allowed context for future runs.
 This is inspectable project memory, not hidden chat-window memory.
+
+When you introduce AIT to an existing repository, start with
+`ait memory backfill --dry-run`. It previews repo-local agent memory files such
+as `CLAUDE.md`, `AGENTS.md`, and `.cursor/rules` without writing anything. Use
+`--import` only when you want AIT to add advisory memory under `.ait/`.
 
 See [Adversarial code review](reference/adversarial-code-review.md) for details
 on reviewer adapters, findings, reports, and review-gated apply.

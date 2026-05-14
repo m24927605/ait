@@ -66,6 +66,7 @@ The package is named `ait-vcs` on PyPI and npm. The installed command is
 | Attempt-first workflow | AIT wraps the agent CLIs you already use and turns each run into an isolated attempt before anything touches your root checkout. |
 | Worktree isolation | Every run gets an internal isolated Git worktree, so failed or risky attempts do not pollute your current workspace. |
 | Attempt provenance | Prompt, intent, adapter, output, changed files, commits, trace references, status, and outcome stay linked in one attempt record. |
+| Wrapper bypass detection | `ait status <adapter>` shows whether this shell will enter AIT or silently call the real agent binary. |
 | Shared cross-agent memory | Claude Code, Codex, Aider, Gemini, Cursor, and shell agents can all read from the same repo-local context instead of starting from scratch. |
 | Long-term repo memory | Useful attempts, commits, notes, imported `CLAUDE.md` / `AGENTS.md`, accepted facts, and prior findings can survive across terminals, sessions, and weeks. |
 | Cross-agent handoff | One agent can record an investigation or decision, and another agent can receive that context later through AIT rather than hidden chat state. |
@@ -117,6 +118,20 @@ Initialize once:
 ait init
 direnv allow   # only if prompted
 ```
+
+Confirm the current shell is actually routed through AIT:
+
+```bash
+ait status claude-code
+ait status codex
+ait status --all
+```
+
+`Bypass detection: wrapped` means the agent command resolves to the repo-local
+AIT wrapper. `Bypass detection: bypass_risk` means this shell would call the
+real agent binary directly, so AIT would not capture prompt, attempt, or
+failure evidence. Re-run shell activation, `direnv allow`, or `ait repair`,
+then check status again.
 
 Then keep using your agent:
 
@@ -197,7 +212,14 @@ Use repo-local memory:
 ait memory
 ait memory search "auth adapter"
 ait memory recall "billing retry"
+ait memory backfill --dry-run
+ait memory backfill --import
 ```
+
+`ait memory backfill --dry-run` previews existing repo-local agent memory files
+such as `CLAUDE.md`, `AGENTS.md`, and `.cursor/rules` without writing anything.
+Use `--import` only when you want AIT to add advisory memory under `.ait/`.
+Global or out-of-repo memory requires an explicit `--global --path ...`.
 
 Run adversarial review before apply:
 
@@ -359,7 +381,7 @@ ait --version
 Tagged GitHub release:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.55.58"
+pipx install "git+https://github.com/m24927605/ait.git@v0.55.59"
 ```
 
 Upgrade:
@@ -379,6 +401,8 @@ ait upgrade --dry-run
 
 ```bash
 ait status
+ait status claude-code
+ait status codex
 ait status --all
 ait doctor
 ait doctor --fix
@@ -395,6 +419,9 @@ ait context <intent-id>
 
 ait memory
 ait memory search "auth adapter"
+ait memory recall "billing retry"
+ait memory backfill --dry-run
+ait memory backfill --import
 ait memory lint
 ait memory lint --fix
 
@@ -419,7 +446,7 @@ ait shell uninstall --shell zsh
 
 ## Status
 
-`ait` is currently `0.55.58` and alpha quality. It is intended for local
+`ait` is currently `0.55.59` and alpha quality. It is intended for local
 dogfooding and early users who are comfortable with Git workflows.
 
 Metadata is local to one repository under `.ait/`. It is not

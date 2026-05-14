@@ -13,10 +13,17 @@ description: >-
 ```bash
 ait init
 ait status
+ait status claude-code
+ait status codex
 ait status --all
 ait doctor
 ait doctor --fix
 ```
+
+跑真實 agent 前可以先用 `ait status <adapter>` 確認目前 shell 會進 AIT。
+`Bypass detection: wrapped` 代表指令解析到 repo-local wrapper。
+`Bypass detection: bypass_risk` 代表指令解析到真正的 agent binary，會繞過
+attempt capture。
 
 ## Adapter
 
@@ -107,6 +114,8 @@ ait attempt discard <attempt-id>
 ait memory
 ait memory search "auth adapter"
 ait memory recall "billing retry"
+ait memory backfill --dry-run
+ait memory backfill --import
 ait memory lint
 ait memory lint --fix
 ```
@@ -114,6 +123,10 @@ ait memory lint --fix
 Memory 是 repo-local，存在 `.ait/`。它整合 prior attempts、commits、
 curated notes、匯入的 agent memory files，以及 accepted memory facts，
 之後只召回 policy 允許的 context 給未來執行。
+
+`ait memory backfill --dry-run` 只預覽 repo-local agent memory，不會寫入。
+`--import` 才會把 advisory memory 加到 `.ait/`。Global 或 repo 外部
+memory 必須明確指定 `--global --path ...`。
 
 ## Graph
 

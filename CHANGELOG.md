@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.55.59 - 2026-05-14
+
+### Added
+
+- Capture structured prompt payloads from wrapped Claude Code, Codex, and
+  Gemini runs when the adapter hook receives prompt content.
+- Preserve non-TTY stdout/stderr transcripts for wrapped commands so failed
+  attempts keep local failure evidence.
+- Add `prompt-status` evidence so attempts can distinguish captured,
+  command-derived, and unavailable prompt data.
+- Add wrapper bypass detection to `ait status <adapter>` and `ait status --all`.
+- Add zero-interference `ait memory backfill --dry-run` plus explicit
+  `--import` for repo-local advisory memory.
+
+### Documentation
+
+- Document bypass detection, zero-write memory backfill, and existing-project
+  onboarding in README and website docs.
+
 ## 0.55.58 - 2026-05-14
 
 ### Documentation

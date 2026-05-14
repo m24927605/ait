@@ -13,10 +13,17 @@ description: >-
 ```bash
 ait init
 ait status
+ait status claude-code
+ait status codex
 ait status --all
 ait doctor
 ait doctor --fix
 ```
+
+Use `ait status <adapter>` before a real agent run when you want to confirm
+that this shell will enter AIT. `Bypass detection: wrapped` means the command
+resolves to the repo-local wrapper. `Bypass detection: bypass_risk` means the
+command resolves to the real agent binary and will bypass attempt capture.
 
 ## Adapters
 
@@ -112,6 +119,8 @@ ait attempt discard <attempt-id>
 ait memory
 ait memory search "auth adapter"
 ait memory recall "billing retry"
+ait memory backfill --dry-run
+ait memory backfill --import
 ait memory lint
 ait memory lint --fix
 ```
@@ -119,6 +128,10 @@ ait memory lint --fix
 Memory is repo-local under `.ait/`. It combines prior attempts, commits,
 curated notes, imported agent memory files, and accepted memory facts, then
 recalls only policy-allowed context for future runs.
+
+`ait memory backfill --dry-run` previews repo-local agent memory files without
+writing. `--import` adds advisory memory under `.ait/`. Global or out-of-repo
+memory requires an explicit `--global --path ...`.
 
 ## Graph
 

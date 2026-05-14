@@ -41,7 +41,7 @@ ait --version
 Pinned GitHub tag:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.55.58"
+pipx install "git+https://github.com/m24927605/ait.git@v0.55.59"
 ```
 
 ## Initialize a repository
@@ -56,6 +56,20 @@ direnv allow   # only if prompted
 
 `ait init` creates a `.ait/` directory next to `.git/`. All AI metadata stays
 inside this directory and is not synced across machines.
+
+Check whether this shell will really route agent commands through AIT:
+
+```bash
+ait status claude-code
+ait status codex
+ait status --all
+```
+
+`Bypass detection: wrapped` means the command resolves to the repo-local AIT
+wrapper. `Bypass detection: bypass_risk` means the command resolves to the
+real agent binary and would bypass AIT, so prompt and failure evidence would
+not be captured. Re-run shell activation, `direnv allow`, or `ait repair`,
+then check status again.
 
 ## First wrapped run
 
@@ -80,6 +94,24 @@ ait apply latest
 Until apply, your root checkout stays unchanged. If a run fails or cannot
 be applied safely, use `ait recover latest`. If your agent session was closed
 and you want to continue editing the kept worktree, run `ait resume latest`.
+
+## Bring existing agent memory into view
+
+For a project that already has agent memory files, preview what AIT can see:
+
+```bash
+ait memory backfill --dry-run
+```
+
+Dry-run mode writes nothing. To import repo-local advisory memory into `.ait/`,
+run:
+
+```bash
+ait memory backfill --import
+```
+
+Global or out-of-repo memory is ignored unless you explicitly pass
+`--global --path ...`.
 
 ## Next steps
 
