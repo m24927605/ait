@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from ait import cli
+from ait.adapters import setup_adapter
 from ait.db import (
     connect_db,
     insert_attempt,
@@ -1293,6 +1294,84 @@ class CliAdapterTests(unittest.TestCase):
             self.assertIn("run ait init once", stderr.getvalue())
             self.assertEqual("", second_stderr.getvalue())
             self.assertTrue(hints["claude_code_automation_hint_v1"])
+
+    def test_status_reports_bypass_risk_when_real_binary_precedes_wrapper(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            json_stdout = io.StringIO()
+            text_stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                setup_adapter("claude-code", repo_root, install_wrapper=True)
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "status", "claude-code", "--format", "json"]):
+                        with redirect_stdout(json_stdout):
+                            json_exit = cli.main()
+                    with patch("sys.argv", ["ait", "status", "claude-code"]):
+                        with redirect_stdout(text_stdout), redirect_stderr(io.StringIO()):
+                            text_exit = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+        payload = json.loads(json_stdout.getvalue())
+        bypass = payload["bypass_detection"]
+        text = text_stdout.getvalue()
+
+        self.assertEqual(0, json_exit)
+        self.assertEqual(0, text_exit)
+        self.assertFalse(payload["path_wrapper_active"])
+        self.assertTrue(payload["wrapper_installed"])
+        self.assertEqual("bypass_risk", bypass["status"])
+        self.assertFalse(bypass["will_use_ait"])
+        self.assertEqual(str(real_claude.resolve()), bypass["active_binary"])
+        self.assertTrue(bypass["wrapper_path"].endswith(".ait/bin/claude"))
+        self.assertTrue(bypass["wrapper_dir"].endswith(".ait/bin"))
+        self.assertIn("will bypass AIT", bypass["message"])
+        self.assertIn(".ait/bin first on PATH", bypass["message"])
+        self.assertIn("Bypass detection: bypass_risk", text)
+        self.assertIn("Bypass detail: running `claude` in this shell will bypass AIT", text)
+
+    def test_status_reports_wrapped_when_wrapper_is_first_on_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text("#!/bin/sh\nprintf 'real claude\\n'\n", encoding="utf-8")
+            real_claude.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            stdout = io.StringIO()
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                setup_adapter("claude-code", repo_root, install_wrapper=True)
+                os.environ["PATH"] = (
+                    str(repo_root / ".ait" / "bin") + os.pathsep + str(bin_dir) + os.pathsep + old_path
+                )
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "status", "claude-code", "--format", "json"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+            finally:
+                os.environ["PATH"] = old_path
+
+        payload = json.loads(stdout.getvalue())
+        bypass = payload["bypass_detection"]
+
+        self.assertEqual(0, exit_code)
+        self.assertTrue(payload["path_wrapper_active"])
+        self.assertEqual("wrapped", bypass["status"])
+        self.assertTrue(bypass["will_use_ait"])
+        self.assertIn("will enter AIT", bypass["message"])
 
     def test_status_all_json_reports_every_fixed_binary_adapter(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

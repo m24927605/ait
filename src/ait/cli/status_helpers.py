@@ -64,12 +64,18 @@ def _status_payload(
     daemon: dict[str, object] | None = None,
 ) -> dict[str, object]:
     checks = {check.name: check.ok for check in result.checks}
+    check_details = {check.name: check.detail for check in result.checks}
     payload = {
         "adapter": result.adapter.name,
         "ok": result.ok,
         "git_repo": checks.get("git_repo", False),
         "wrapper_installed": checks.get("wrapper_file", False),
         "path_wrapper_active": checks.get("path_wrapper_active", False),
+        "wrapper_path": check_details.get("wrapper_file"),
+        "active_binary": _active_binary_detail(
+            check_details.get("path_wrapper_active"),
+            result.adapter.command_name,
+        ),
         "real_claude_binary": checks.get("real_claude_binary", False),
         "real_agent_binary": checks.get("real_agent_binary", checks.get("real_claude_binary", False)),
         "direnv_available": checks.get("direnv_binary", False),
@@ -83,7 +89,74 @@ def _status_payload(
         payload["installation"] = installation
     payload["agent_cli_ready"] = payload["ok"]
     payload["agent_cli_message"] = _agent_cli_message(payload)
+    payload["bypass_detection"] = _bypass_detection_payload(payload, result)
     return payload
+
+def _active_binary_detail(detail: str | None, command_name: str) -> str | None:
+    if not detail or detail == f"{command_name} not found on PATH":
+        return None
+    return str(Path(detail).resolve())
+
+def _bypass_detection_payload(payload: dict[str, object], result) -> dict[str, object]:
+    adapter = str(payload["adapter"])
+    command = _agent_command_name(adapter)
+    wrapper_path = str(payload.get("wrapper_path") or "")
+    wrapper_dir = str(Path(wrapper_path).parent) if wrapper_path else None
+    active_binary = payload.get("active_binary")
+    next_steps = [str(item) for item in payload.get("next_steps", []) if str(item)]
+    base = {
+        "adapter": adapter,
+        "command": command,
+        "will_use_ait": False,
+        "status": "unknown",
+        "message": "",
+        "wrapper_path": wrapper_path or None,
+        "wrapper_dir": wrapper_dir,
+        "active_binary": active_binary,
+        "next_steps": next_steps,
+    }
+    if adapter == "shell":
+        return {
+            **base,
+            "status": "unavailable",
+            "message": "shell adapter has no fixed agent command to guard",
+        }
+    if not payload.get("git_repo"):
+        return {
+            **base,
+            "status": "not_initialized",
+            "message": "AIT cannot detect wrapper bypass outside a Git repository",
+        }
+    if not payload.get("wrapper_installed"):
+        return {
+            **base,
+            "status": "not_configured",
+            "message": f"{command} is not routed through AIT yet; install the repo-local wrapper",
+        }
+    if payload.get("path_wrapper_active"):
+        return {
+            **base,
+            "will_use_ait": True,
+            "status": "wrapped",
+            "message": f"running `{command}` in this shell will enter AIT",
+        }
+    if active_binary:
+        return {
+            **base,
+            "status": "bypass_risk",
+            "message": (
+                f"running `{command}` in this shell will bypass AIT and call "
+                f"{active_binary}; put {wrapper_dir or '.ait/bin'} first on PATH"
+            ),
+        }
+    return {
+        **base,
+        "status": "wrapper_not_on_path",
+        "message": (
+            f"{command} is not on PATH in this shell; put {wrapper_dir or '.ait/bin'} "
+            "first on PATH before running the agent"
+        ),
+    }
 
 def _status_payload_with_recovery(payload: dict[str, object], repo_root: str | Path) -> dict[str, object]:
     updated = dict(payload)
@@ -250,6 +323,12 @@ def _format_status(payload: dict[str, object], *, debug: bool = False) -> str:
         f"Agent CLI ready: {payload['agent_cli_ready']}",
         f"Agent CLI detail: {payload['agent_cli_message']}",
     ])
+    bypass = payload.get("bypass_detection")
+    if isinstance(bypass, dict):
+        lines.append(f"Bypass detection: {bypass.get('status', 'unknown')}")
+        message = bypass.get("message")
+        if message:
+            lines.append(f"Bypass detail: {message}")
     if isinstance(installation, dict):
         lines.extend(_format_installation_lines(installation, include_next_steps=False))
     daemon = payload.get("daemon", {})
@@ -445,6 +524,7 @@ def _format_status_all(payload: list[dict[str, object]], *, debug: bool = False)
             f"adapter={item['adapter']} "
             f"wrapper={item['wrapper_installed']} "
             f"path={item['path_wrapper_active']} "
+            f"bypass={item.get('bypass_detection', {}).get('status', 'unknown') if isinstance(item.get('bypass_detection'), dict) else 'unknown'} "
             f"real_binary={item['real_agent_binary']} "
             f"memory={item.get('memory', {}).get('initialized', False) if isinstance(item.get('memory'), dict) else False} "
             f"memory_health={item.get('memory', {}).get('health', 'unknown') if isinstance(item.get('memory'), dict) else 'unknown'} "
