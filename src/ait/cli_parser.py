@@ -318,6 +318,18 @@ def build_parser() -> argparse.ArgumentParser:
     memory_lint.add_argument("--fix", action="store_true")
     memory_lint.add_argument("--max-chars", type=int, default=6000)
     memory_lint.add_argument("--format", choices=("text", "json"), default="text")
+    memory_backfill = memory_subparsers.add_parser(
+        "backfill",
+        help="preview or import agent memory with a zero-write dry run",
+    )
+    memory_backfill.add_argument("--source", default="auto", help="agent memory source name")
+    memory_backfill.add_argument("--path", action="append", dest="import_paths", help="explicit memory file or directory")
+    memory_backfill.add_argument("--topic", default="agent-memory")
+    memory_backfill.add_argument("--max-chars", type=int, default=6000)
+    memory_backfill.add_argument("--dry-run", action="store_true", help="preview only; write nothing")
+    memory_backfill.add_argument("--import", action="store_true", dest="import_matches", help="write imported memory under .ait/")
+    memory_backfill.add_argument("--global", action="store_true", dest="global_scope", help="allow explicitly provided paths outside the repo")
+    memory_backfill.add_argument("--format", choices=("text", "json"), default="text")
     memory_import = memory_subparsers.add_parser("import")
     memory_import.add_argument("--source", default="auto")
     memory_import.add_argument("--path", action="append", dest="import_paths")

@@ -59,6 +59,27 @@ def _format_memory_import(result) -> str:
             lines.append(f"- {item.get('path')}: {item.get('reason')} ({item.get('source')})")
     return "\n".join(lines)
 
+def _format_memory_backfill(result) -> str:
+    lines = [f"AIT memory backfill ({result.mode}, {result.scope})"]
+    if result.candidates:
+        lines.append("Candidates:")
+        for candidate in result.candidates:
+            lines.append(
+                f"- {candidate.path}: {candidate.action} "
+                f"source={candidate.note_source} reason={candidate.reason}"
+            )
+    else:
+        lines.append("Candidates: none")
+    if result.imported:
+        lines.append("Imported:")
+        for note in result.imported:
+            lines.append(f"- {note.id} topic={note.topic or 'general'} source={note.source}")
+    if result.writes:
+        lines.append("Writes:")
+        for path in result.writes:
+            lines.append(f"- {path}")
+    return "\n".join(lines)
+
 def _format_memory_facts(facts) -> str:
     lines = ["AIT Memory Facts"]
     if not facts:

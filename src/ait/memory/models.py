@@ -104,6 +104,40 @@ class MemoryImportResult:
         }
 
 @dataclass(frozen=True, slots=True)
+class MemoryBackfillCandidate:
+    source: str
+    path: str
+    action: str
+    reason: str
+    note_source: str
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+@dataclass(frozen=True, slots=True)
+class MemoryBackfillResult:
+    mode: str
+    scope: str
+    source: str
+    repo_root: str
+    candidates: tuple[MemoryBackfillCandidate, ...]
+    imported: tuple[MemoryNote, ...]
+    skipped: tuple[dict[str, str], ...]
+    writes: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "mode": self.mode,
+            "scope": self.scope,
+            "source": self.source,
+            "repo_root": self.repo_root,
+            "candidates": [candidate.to_dict() for candidate in self.candidates],
+            "imported": [asdict(note) for note in self.imported],
+            "skipped": list(self.skipped),
+            "writes": list(self.writes),
+        }
+
+@dataclass(frozen=True, slots=True)
 class AgentMemoryStatus:
     initialized: bool
     imported_sources: tuple[str, ...]

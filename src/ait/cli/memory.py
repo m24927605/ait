@@ -224,6 +224,29 @@ def handle(args, repo_root: Path, parser=None) -> int:
             else:
                 print(render_memory_lint_result(result), end="")
             return 0 if not result.issues else 2
+        if args.memory_command == "backfill":
+            if args.global_scope and not args.import_paths:
+                print(
+                    "error: global memory backfill requires an explicit --path",
+                    file=sys.stderr,
+                )
+                return 2
+            dry_run = args.dry_run or not args.import_matches
+            result = backfill_agent_memory(
+                repo_root,
+                source=args.source,
+                paths=tuple(args.import_paths) if args.import_paths else (),
+                topic=args.topic,
+                max_chars=args.max_chars,
+                dry_run=dry_run,
+                import_matches=args.import_matches,
+                include_global=args.global_scope,
+            )
+            if args.format == "json":
+                print(json.dumps(result.to_dict(), indent=2))
+            else:
+                print(_format_memory_backfill(result))
+            return 0
         if args.memory_command == "import":
             result = import_agent_memory(
                 repo_root,

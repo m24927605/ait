@@ -59,6 +59,7 @@ from ait.db import (
 from ait.memory import (
     add_memory_note,
     agent_memory_status,
+    backfill_agent_memory,
     build_relevant_memory_recall,
     build_repo_memory,
     ensure_agent_memory_imported,
@@ -120,6 +121,7 @@ from ait.cli.init_helpers import (
 )
 from ait.cli.memory_helpers import (
     _format_memory_facts,
+    _format_memory_backfill,
     _format_memory_import,
     _format_memory_retrievals,
     _memory_eval_next_steps,

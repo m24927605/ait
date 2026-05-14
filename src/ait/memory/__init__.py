@@ -16,6 +16,7 @@ from .eval import (
 from .importers import (
     AGENT_MEMORY_CANDIDATES,
     agent_memory_status,
+    backfill_agent_memory,
     ensure_agent_memory_imported,
     import_agent_memory,
 )
@@ -26,6 +27,8 @@ from .lint import (
 )
 from .models import (
     AgentMemoryStatus,
+    MemoryBackfillCandidate,
+    MemoryBackfillResult,
     MemoryAttempt,
     MemoryCandidate,
     MemoryHealth,
@@ -57,6 +60,8 @@ from .temporal import _normalize_recall_ranker_scores, _temporal_ranked_result
 __all__ = [
     "AGENT_MEMORY_CANDIDATES",
     "AgentMemoryStatus",
+    "MemoryBackfillCandidate",
+    "MemoryBackfillResult",
     "MemoryAttempt",
     "MemoryCandidate",
     "MemoryEvalEvent",
@@ -79,6 +84,7 @@ __all__ = [
     "build_relevant_memory_recall",
     "build_repo_memory",
     "build_repo_memory_with_connection",
+    "backfill_agent_memory",
     "ensure_agent_memory_imported",
     "evaluate_memory_retrieval_event_records",
     "evaluate_memory_retrievals",

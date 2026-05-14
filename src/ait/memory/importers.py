@@ -29,6 +29,8 @@ from ait.workspace import commit_message
 
 from .models import (
     AgentMemoryStatus,
+    MemoryBackfillCandidate,
+    MemoryBackfillResult,
     MemoryAttempt,
     MemoryCandidate,
     MemoryHealth,
@@ -121,6 +123,69 @@ def import_agent_memory(
                 skipped=skipped,
             )
     return MemoryImportResult(imported=tuple(imported), skipped=tuple(skipped))
+
+def backfill_agent_memory(
+    repo_root: str | Path,
+    *,
+    source: str = "auto",
+    paths: tuple[str, ...] = (),
+    topic: str = "agent-memory",
+    max_chars: int = 6000,
+    dry_run: bool = True,
+    import_matches: bool = False,
+    include_global: bool = False,
+) -> MemoryBackfillResult:
+    root = resolve_repo_root(repo_root)
+    source_names = tuple(AGENT_MEMORY_CANDIDATES) if source == "auto" else (source,)
+    if source != "auto" and source not in AGENT_MEMORY_CANDIDATES:
+        source_names = (source,)
+    candidates = _backfill_candidates(
+        root,
+        source_names=source_names,
+        paths=paths,
+        include_global=include_global,
+    )
+    imported: tuple[MemoryNote, ...] = ()
+    skipped: tuple[dict[str, str], ...] = ()
+    writes: tuple[str, ...] = ()
+    if import_matches and not dry_run:
+        outside_repo = tuple(
+            candidate
+            for candidate in candidates
+            if candidate.reason.startswith("outside repo;")
+        )
+        would_import = tuple(candidate for candidate in candidates if candidate.action == "would_import")
+        if outside_repo:
+            skipped = tuple(
+                {
+                    "path": candidate.path,
+                    "source": candidate.source,
+                    "reason": candidate.reason,
+                }
+                for candidate in outside_repo
+            )
+        elif would_import:
+            result = import_agent_memory(
+                root,
+                source=source,
+                paths=paths,
+                topic=topic,
+                max_chars=max_chars,
+            )
+            imported = result.imported
+            skipped = result.skipped
+            if imported:
+                writes = (".ait/",)
+    return MemoryBackfillResult(
+        mode="dry-run" if dry_run or not import_matches else "import",
+        scope="global" if include_global else "repo",
+        source=source,
+        repo_root=str(root),
+        candidates=candidates,
+        imported=imported,
+        skipped=skipped,
+        writes=writes,
+    )
 
 def ensure_agent_memory_imported(repo_root: str | Path) -> MemoryImportResult:
     root = resolve_repo_root(repo_root)
@@ -252,6 +317,135 @@ def _agent_memory_candidates(
             path = root / pattern
             candidates.append((source_name, pattern, path))
     return tuple(candidates)
+
+def _backfill_candidates(
+    root: Path,
+    *,
+    source_names: tuple[str, ...],
+    paths: tuple[str, ...],
+    include_global: bool,
+) -> tuple[MemoryBackfillCandidate, ...]:
+    policy = load_memory_policy(root)
+    imported_sources = _existing_agent_memory_sources_readonly(root)
+    candidates: list[MemoryBackfillCandidate] = []
+    for source_name, relative_path, path in _agent_memory_candidates(
+        root,
+        source_names=source_names,
+        paths=paths,
+    ):
+        if not include_global and path.is_absolute() and not _is_relative_to(path, root):
+            candidates.append(
+                MemoryBackfillCandidate(
+                    source=source_name,
+                    path=path.as_posix(),
+                    action="skip",
+                    reason="outside repo; rerun with --global to inspect explicit global paths",
+                    note_source=f"agent-memory:{source_name}:{path.as_posix()}",
+                )
+            )
+            continue
+        if path.is_dir():
+            for child in sorted(item for item in path.rglob("*") if item.is_file()):
+                child_relative = _relative_to_root(child, root)
+                candidates.append(
+                    _backfill_candidate(
+                        root=root,
+                        source_name=source_name,
+                        relative_path=child_relative,
+                        path=child,
+                        policy=policy,
+                        imported_sources=imported_sources,
+                    )
+                )
+            continue
+        if not path.exists():
+            continue
+        candidates.append(
+            _backfill_candidate(
+                root=root,
+                source_name=source_name,
+                relative_path=relative_path,
+                path=path,
+                policy=policy,
+                imported_sources=imported_sources,
+            )
+        )
+    return tuple(candidates)
+
+def _backfill_candidate(
+    *,
+    root: Path,
+    source_name: str,
+    relative_path: str,
+    path: Path,
+    policy: MemoryPolicy,
+    imported_sources: set[str],
+) -> MemoryBackfillCandidate:
+    note_source = f"agent-memory:{source_name}:{relative_path}"
+    if path_excluded(relative_path, policy):
+        return MemoryBackfillCandidate(
+            source=source_name,
+            path=relative_path,
+            action="skip",
+            reason="excluded by memory policy",
+            note_source=note_source,
+        )
+    if not _looks_like_memory_text_file(path):
+        return MemoryBackfillCandidate(
+            source=source_name,
+            path=relative_path,
+            action="skip",
+            reason="unsupported file type",
+            note_source=note_source,
+        )
+    if note_source in imported_sources:
+        return MemoryBackfillCandidate(
+            source=source_name,
+            path=relative_path,
+            action="skip",
+            reason="already imported",
+            note_source=note_source,
+        )
+    return MemoryBackfillCandidate(
+        source=source_name,
+        path=relative_path,
+        action="would_import",
+        reason=(
+            "explicit agent memory path; advisory until imported"
+            if path.is_absolute() and not _is_relative_to(path, root)
+            else "repo-local agent memory; advisory until imported"
+        ),
+        note_source=note_source,
+    )
+
+def _existing_agent_memory_sources_readonly(root: Path) -> set[str]:
+    db_path = root / ".ait" / "state.sqlite3"
+    if not db_path.exists():
+        return set()
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return set()
+    try:
+        rows = conn.execute(
+            """
+            SELECT source
+            FROM memory_notes
+            WHERE active = 1 AND topic = 'agent-memory' AND source LIKE 'agent-memory:%'
+            """
+        ).fetchall()
+    except sqlite3.Error:
+        return set()
+    finally:
+        conn.close()
+    return {str(row[0]) for row in rows}
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
 
 def _import_one_agent_memory_file(
     repo: MemoryRepository,

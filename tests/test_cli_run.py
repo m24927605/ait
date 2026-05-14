@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -747,6 +748,122 @@ class CliRunTests(unittest.TestCase):
         self.assertIn("AIT memory import", stdout.getvalue())
         self.assertIn("Imported:", stdout.getvalue())
         self.assertIn("agent-memory:custom:.cursorrules", stdout.getvalue())
+
+    def test_memory_backfill_dry_run_is_zero_write(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            (repo_root / "CLAUDE.md").write_text("Use ait repair if wrappers drift.\n", encoding="utf-8")
+            before = _snapshot_non_internal_files(repo_root)
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "memory", "backfill", "--dry-run", "--format", "json"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(0, exit_code)
+            self.assertEqual("dry-run", payload["mode"])
+            self.assertEqual("repo", payload["scope"])
+            self.assertEqual([], payload["imported"])
+            self.assertEqual([], payload["writes"])
+            self.assertFalse((repo_root / ".ait").exists())
+            self.assertEqual(before, _snapshot_non_internal_files(repo_root))
+            self.assertEqual(
+                [("CLAUDE.md", "would_import")],
+                [(item["path"], item["action"]) for item in payload["candidates"]],
+            )
+
+    def test_memory_backfill_import_writes_only_ait(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            (repo_root / "CLAUDE.md").write_text("Use ait repair if wrappers drift.\n", encoding="utf-8")
+            before = _snapshot_non_internal_files(repo_root)
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "memory", "backfill", "--import", "--format", "json"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(0, exit_code)
+            self.assertEqual("import", payload["mode"])
+            self.assertEqual([".ait/"], payload["writes"])
+            self.assertEqual(1, len(payload["imported"]))
+            self.assertEqual("agent-memory:claude:CLAUDE.md", payload["imported"][0]["source"])
+            self.assertTrue((repo_root / ".ait").exists())
+            self.assertEqual(before, _snapshot_non_internal_files(repo_root))
+
+    def test_memory_backfill_does_not_scan_global_memory_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            home = Path(tmp) / "home"
+            repo_root.mkdir()
+            (home / ".claude").mkdir(parents=True)
+            _init_git_repo(repo_root)
+            (home / ".claude" / "memory.md").write_text("GLOBAL_ONLY_MEMORY\n", encoding="utf-8")
+            stdout = io.StringIO()
+
+            with patch.dict(os.environ, {"HOME": str(home)}):
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "memory", "backfill", "--dry-run", "--format", "json"]):
+                        with redirect_stdout(stdout):
+                            exit_code = cli.main()
+
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(0, exit_code)
+            self.assertEqual([], payload["candidates"])
+            self.assertEqual([], payload["writes"])
+            self.assertFalse((repo_root / ".ait").exists())
+            self.assertNotIn("GLOBAL_ONLY_MEMORY", stdout.getvalue())
+
+    def test_memory_backfill_global_requires_explicit_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            stderr = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "memory", "backfill", "--global", "--dry-run"]):
+                    with redirect_stderr(stderr):
+                        exit_code = cli.main()
+
+            self.assertEqual(2, exit_code)
+            self.assertIn("requires an explicit --path", stderr.getvalue())
+            self.assertFalse((repo_root / ".ait").exists())
+
+    def test_memory_backfill_import_refuses_outside_repo_path_without_global(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            outside = Path(tmp) / "outside" / "memory.md"
+            repo_root.mkdir()
+            outside.parent.mkdir()
+            _init_git_repo(repo_root)
+            outside.write_text("External agent memory.\n", encoding="utf-8")
+            before_repo = _snapshot_non_internal_files(repo_root)
+            before_outside = (outside.read_bytes(), outside.stat().st_mtime_ns)
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    ["ait", "memory", "backfill", "--import", "--path", str(outside), "--format", "json"],
+                ):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(0, exit_code)
+            self.assertEqual([], payload["imported"])
+            self.assertEqual([], payload["writes"])
+            self.assertEqual("skip", payload["candidates"][0]["action"])
+            self.assertIn("outside repo", payload["candidates"][0]["reason"])
+            self.assertFalse((repo_root / ".ait").exists())
+            self.assertEqual(before_repo, _snapshot_non_internal_files(repo_root))
+            self.assertEqual(before_outside, (outside.read_bytes(), outside.stat().st_mtime_ns))
 
     def test_memory_graph_cli_builds_shows_and_queries_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1597,6 +1714,17 @@ def _init_ait_and_commit_gitignore(repo_root: Path) -> None:
     if gitignore.exists() and _git_stdout(repo_root, "status", "--short", "--", ".gitignore"):
         _git(repo_root, "add", ".gitignore")
         _git(repo_root, "commit", "-m", "ignore ait state")
+
+
+def _snapshot_non_internal_files(repo_root: Path) -> dict[str, tuple[bytes, int]]:
+    snapshot: dict[str, tuple[bytes, int]] = {}
+    for path in sorted(item for item in repo_root.rglob("*") if item.is_file()):
+        relative = path.relative_to(repo_root).as_posix()
+        if relative.startswith(".git/") or relative.startswith(".ait/"):
+            continue
+        stat = path.stat()
+        snapshot[relative] = (path.read_bytes(), stat.st_mtime_ns)
+    return snapshot
 
 
 def _git_stdout(repo_root: Path, *args: str) -> str:
