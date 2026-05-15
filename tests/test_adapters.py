@@ -6,6 +6,7 @@ from dataclasses import asdict
 import json
 import os
 from pathlib import Path
+import select
 import subprocess
 import sys
 import tempfile
@@ -404,6 +405,121 @@ class AdapterTests(unittest.TestCase):
             self.assertIn(f"real={fresh_claude.resolve()}", completed.stdout)
             self.assertIn(f"-- {fresh_claude.resolve()} --version", completed.stdout)
 
+    def test_codex_app_server_passthrough_preserves_jsonl_stdio(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = _init_git_repo(Path(tmp) / "repo")
+            bin_dir = Path(tmp) / "bin"
+            fake_ait_dir = Path(tmp) / "fake-ait"
+            bin_dir.mkdir()
+            fake_ait_dir.mkdir()
+            real_codex = bin_dir / "codex"
+            fake_ait = fake_ait_dir / "ait"
+            real_codex.write_text(
+                "#!/bin/sh\n"
+                'if [ "${1:-}" = "app-server" ]; then\n'
+                "  IFS= read -r _ait_initialize_request || exit 1\n"
+                "  printf '%s\\n' '{\"type\":\"initialize_response\",\"via\":\"real-codex\"}'\n"
+                "  exit 0\n"
+                "fi\n"
+                'printf "real codex one-shot: %s\\n" "$*"\n',
+                encoding="utf-8",
+            )
+            real_codex.chmod(0o755)
+            fake_ait.write_text(
+                "#!/bin/sh\n"
+                'printf "WRAPPED %s\\n" "$*"\n',
+                encoding="utf-8",
+            )
+            fake_ait.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                setup_adapter("codex", repo_root, install_wrapper=True)
+            finally:
+                os.environ["PATH"] = old_path
+
+            wrapper_path = repo_root / ".ait" / "bin" / "codex"
+            _replace_wrapper_ait_command(wrapper_path, fake_ait)
+            process = subprocess.Popen(
+                [str(wrapper_path), "app-server"],
+                cwd=repo_root,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            try:
+                assert process.stdin is not None
+                assert process.stdout is not None
+                process.stdin.write('{"type":"initialize"}\n')
+                process.stdin.flush()
+                readable, _, _ = select.select([process.stdout], [], [], 2.0)
+                self.assertTrue(readable, "codex app-server passthrough did not produce initialize response")
+                line = process.stdout.readline()
+                self.assertEqual('{"type":"initialize_response","via":"real-codex"}\n', line)
+                self.assertNotIn("WRAPPED", line)
+            finally:
+                if process.poll() is None:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=1)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait(timeout=1)
+
+    def test_codex_one_shot_still_wraps_and_bypass_env_passthroughs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = _init_git_repo(Path(tmp) / "repo")
+            bin_dir = Path(tmp) / "bin"
+            fake_ait_dir = Path(tmp) / "fake-ait"
+            bin_dir.mkdir()
+            fake_ait_dir.mkdir()
+            real_codex = bin_dir / "codex"
+            fake_ait = fake_ait_dir / "ait"
+            real_codex.write_text(
+                "#!/bin/sh\n"
+                'printf "REAL %s\\n" "$*"\n',
+                encoding="utf-8",
+            )
+            real_codex.chmod(0o755)
+            fake_ait.write_text(
+                "#!/bin/sh\n"
+                'printf "WRAPPED %s\\n" "$*"\n',
+                encoding="utf-8",
+            )
+            fake_ait.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                setup_adapter("codex", repo_root, install_wrapper=True)
+            finally:
+                os.environ["PATH"] = old_path
+
+            wrapper_path = repo_root / ".ait" / "bin" / "codex"
+            _replace_wrapper_ait_command(wrapper_path, fake_ait)
+            wrapped = subprocess.run(
+                [str(wrapper_path), "--version"],
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            bypass_env = {**os.environ, "AIT_WRAPPER_BYPASS": "1"}
+            bypassed = subprocess.run(
+                [str(wrapper_path), "--version"],
+                cwd=repo_root,
+                env=bypass_env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(0, wrapped.returncode)
+            self.assertIn("WRAPPED run --adapter codex", wrapped.stdout)
+            self.assertIn(f"-- {real_codex.resolve()} --version", wrapped.stdout)
+            self.assertEqual(0, bypassed.returncode)
+            self.assertEqual("REAL --version\n", bypassed.stdout)
+
     def test_wrapper_reports_recursion_with_init_next_step(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = _init_git_repo(Path(tmp) / "repo")
@@ -502,6 +618,16 @@ def _init_git_repo(repo_root: Path) -> Path:
     repo_root.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init"], cwd=repo_root, check=True, capture_output=True)
     return repo_root
+
+
+def _replace_wrapper_ait_command(wrapper_path: Path, fake_ait: Path) -> None:
+    updated_lines = []
+    for line in wrapper_path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("AIT_WRAPPER_AIT_COMMAND="):
+            updated_lines.append(f"AIT_WRAPPER_AIT_COMMAND={fake_ait}")
+        else:
+            updated_lines.append(line)
+    wrapper_path.write_text("\n".join(updated_lines) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

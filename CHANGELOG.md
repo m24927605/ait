@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.55.60 - 2026-05-15
+
+### Fixed
+
+- Pass `codex app-server` through to the real Codex CLI so Codex companion
+  integrations keep their long-lived JSONL stdio session instead of being
+  wrapped as one-shot AIT attempts.
+- Add `AIT_WRAPPER_BYPASS=1` / `true` as a per-invocation wrapper bypass for
+  direct execution of the real agent binary.
+
 ## 0.55.59 - 2026-05-14
 
 ### Added

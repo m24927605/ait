@@ -25,6 +25,11 @@ ait doctor --fix
 `Bypass detection: bypass_risk` 代表指令解析到真正的 agent binary，會繞過
 attempt capture。
 
+Wrapper 會 passthrough 已知的 long-lived stdio modes，因為這些不是 one-shot
+AIT attempt。目前包含 `codex app-server`，它需要保留原始 JSONL stdin/stdout
+給 Codex companion integrations。單次呼叫若要強制直接執行 real binary，可設
+`AIT_WRAPPER_BYPASS=1`。
+
 ## Adapter
 
 ```bash

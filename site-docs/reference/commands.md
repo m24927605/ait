@@ -25,6 +25,11 @@ that this shell will enter AIT. `Bypass detection: wrapped` means the command
 resolves to the repo-local wrapper. `Bypass detection: bypass_risk` means the
 command resolves to the real agent binary and will bypass attempt capture.
 
+Wrappers pass through known long-lived stdio modes that are not one-shot AIT
+attempts. Today that includes `codex app-server`, which must keep raw JSONL
+stdin/stdout for Codex companion integrations. Set `AIT_WRAPPER_BYPASS=1` to
+force direct execution of the real binary for a specific invocation.
+
 ## Adapters
 
 ```bash

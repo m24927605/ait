@@ -155,6 +155,21 @@ def _adapter_wrapper_script(adapter: AgentAdapter, real_binary: str) -> str:
         '  printf "%s\\n" "next: run ait init --adapter ${AIT_WRAPPER_ADAPTER} --shell" >&2\n'
         "  exit 126\n"
         "fi\n"
+        'ait_wrapper_should_passthrough() {\n'
+        '  if [ "${AIT_WRAPPER_BYPASS:-}" = "1" ] || [ "${AIT_WRAPPER_BYPASS:-}" = "true" ]; then\n'
+        "    return 0\n"
+        "  fi\n"
+        '  ait_wrapper_first_arg="${1:-}"\n'
+        '  case "${AIT_WRAPPER_ADAPTER}:${ait_wrapper_first_arg}" in\n'
+        "    codex:app-server)\n"
+        "      return 0\n"
+        "      ;;\n"
+        "  esac\n"
+        "  return 1\n"
+        "}\n"
+        'if ait_wrapper_should_passthrough "$@"; then\n'
+        '  exec "$AIT_WRAPPER_REAL_BINARY" "$@"\n'
+        "fi\n"
         f': "${{AIT_INTENT:={intent}}}"\n'
         f': "${{AIT_COMMIT_MESSAGE:={commit_message}}}"\n'
         'if [ -t 0 ] && [ -t 1 ]; then\n'
