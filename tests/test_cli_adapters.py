@@ -366,7 +366,7 @@ class CliAdapterTests(unittest.TestCase):
             self.assertTrue((repo_root / ".ait" / "bin" / "codex").exists())
             self.assertFalse((repo_root / ".ait" / "bin" / "claude").exists())
 
-    def test_init_imports_detected_agent_memory_files(self) -> None:
+    def test_init_does_not_import_detected_agent_memory_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp) / "repo"
             repo_root.mkdir()
@@ -388,13 +388,10 @@ class CliAdapterTests(unittest.TestCase):
             notes = list_memory_notes(repo_root, topic="agent-memory")
 
             self.assertEqual(0, exit_code)
-            self.assertEqual(["agent-memory:claude:CLAUDE.md"], [
-                item["source"] for item in payload["memory_import"]["imported"]
-            ])
-            self.assertEqual(1, len(notes))
-            self.assertIn("Run repair before release.", notes[0].body)
+            self.assertNotIn("memory_import", payload)
+            self.assertEqual(0, len(notes))
 
-    def test_path_claude_invocation_hits_wrapper_and_self_repairs_memory(self) -> None:
+    def test_path_claude_invocation_hits_wrapper_without_importing_agent_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp) / "repo"
             repo_root.mkdir()
@@ -457,10 +454,10 @@ class CliAdapterTests(unittest.TestCase):
             self.assertTrue(Path(wrapper_payload["workspace_ref"], "path-claude-output.txt").exists())
             self.assertTrue(wrapper_payload["attempt"]["commits"])
             sources = {note.source for note in notes}
-            self.assertIn("agent-memory:claude:CLAUDE.md", sources)
+            self.assertNotIn("agent-memory:claude:CLAUDE.md", sources)
             self.assertTrue(any(source.startswith("attempt-memory:") for source in sources))
 
-    def test_path_fixed_binary_invocations_hit_wrappers_and_self_repair_memory(self) -> None:
+    def test_path_fixed_binary_invocations_hit_wrappers_without_importing_agent_memory(self) -> None:
         for adapter_name, command_name in (
             ("codex", "codex"),
             ("aider", "aider"),
@@ -530,7 +527,7 @@ class CliAdapterTests(unittest.TestCase):
                     self.assertTrue(Path(wrapper_payload["workspace_ref"], f"path-{command_name}-output.txt").exists())
                     self.assertTrue(wrapper_payload["attempt"]["commits"])
                     sources = {note.source for note in notes}
-                    self.assertIn("agent-memory:codex:AGENTS.md", sources)
+                    self.assertNotIn("agent-memory:codex:AGENTS.md", sources)
                     self.assertTrue(any(source.startswith("attempt-memory:") for source in sources))
 
     def test_init_shell_outputs_eval_safe_snippet(self) -> None:
@@ -800,7 +797,7 @@ class CliAdapterTests(unittest.TestCase):
                 _git_stdout(repo_root, "log", "-1", "--format=%s"),
             )
 
-    def test_doctor_fix_json_initializes_memory_policy_and_imports_agent_memory(self) -> None:
+    def test_doctor_fix_json_initializes_memory_policy_without_importing_agent_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp) / "repo"
             repo_root.mkdir()
@@ -829,10 +826,8 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertEqual(["claude-code"], payload["installed_adapters"])
             self.assertTrue(payload["memory_policy"]["created"])
-            self.assertEqual(["agent-memory:claude:CLAUDE.md"], [
-                item["source"] for item in payload["memory_import"]["imported"]
-            ])
-            self.assertEqual(1, len(notes))
+            self.assertNotIn("memory_import", payload)
+            self.assertEqual(0, len(notes))
             self.assertTrue((repo_root / ".ait" / "memory-policy.json").exists())
 
     def test_doctor_fix_named_adapter_limits_enable_scope(self) -> None:
@@ -1527,8 +1522,8 @@ class CliAdapterTests(unittest.TestCase):
             self.assertIn("- aider", text)
             self.assertIn("Status changes:", text)
             self.assertIn("wrapper_installed: False -> True", text)
-            self.assertIn("Imported memory:", text)
-            self.assertIn("agent-memory:codex:AGENTS.md", text)
+            self.assertNotIn("Imported memory:", text)
+            self.assertNotIn("agent-memory:codex:AGENTS.md", text)
             self.assertIn("Current shell:", text)
             self.assertTrue((repo_root / ".ait" / "bin" / "aider").exists())
 
@@ -1555,10 +1550,7 @@ class CliAdapterTests(unittest.TestCase):
             self.assertEqual(2, exit_code)
             self.assertEqual([], payload["installed_adapters"])
             self.assertEqual(["codex"], [item["name"] for item in payload["skipped_adapters"]])
-            self.assertEqual(
-                ["agent-memory:claude:CLAUDE.md"],
-                [item["source"] for item in payload["memory_import"]["imported"]],
-            )
+            self.assertNotIn("memory_import", payload)
             self.assertFalse((repo_root / ".ait" / "bin" / "codex").exists())
             self.assertFalse((repo_root / ".envrc").exists())
 

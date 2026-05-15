@@ -15,7 +15,7 @@ from ait.db.core import utc_now
 from ait.events import process_event
 from ait.harness import AitHarness, HarnessError
 from ait.ids import new_ulid
-from ait.memory import add_attempt_memory_note, ensure_agent_memory_imported
+from ait.memory import add_attempt_memory_note
 from ait.memory_policy import init_memory_policy
 from ait.prompt_capture import record_command_prompt
 from ait.run_report import refresh_run_reports
@@ -44,9 +44,10 @@ class RunResult:
 
 
 class _LocalRunHarness:
-    def __init__(self, repo_root: Path, attempt_id: str) -> None:
+    def __init__(self, repo_root: Path, attempt_id: str, ownership_token: str) -> None:
         self._repo_root = repo_root
         self._attempt_id = attempt_id
+        self._ownership_token = ownership_token
 
     def __enter__(self) -> _LocalRunHarness:
         return self
@@ -55,7 +56,22 @@ class _LocalRunHarness:
         return False
 
     def record_tool(self, **kwargs: object) -> None:
-        del kwargs
+        conn = connect_db(self._repo_root / ".ait" / "state.sqlite3")
+        try:
+            process_event(
+                conn,
+                {
+                    "schema_version": 1,
+                    "event_id": f"ait-run-local-tool:{self._attempt_id}:{new_ulid()}",
+                    "event_type": "tool_event",
+                    "sent_at": utc_now(),
+                    "attempt_id": self._attempt_id,
+                    "ownership_token": self._ownership_token,
+                    "payload": dict(kwargs),
+                },
+            )
+        finally:
+            conn.close()
 
     def finish(self, *, exit_code: int, raw_trace_ref: str | None = None) -> None:
         _finish_attempt_locally(
@@ -79,6 +95,7 @@ def run_agent_command(
     auto_commit: bool = True,
     with_context: bool = False,
     capture_command_output: bool = False,
+    refresh_reports: bool = True,
 ) -> RunResult:
     if not intent_title.strip():
         raise ValueError("intent title must not be empty")
@@ -90,7 +107,6 @@ def run_agent_command(
     resolved_with_context = with_context or adapter.default_with_context
     root = Path(repo_root).resolve()
     init_memory_policy(root)
-    ensure_agent_memory_imported(root)
     daemon = start_daemon(root)
     local_only = False
     if not daemon.running:
@@ -152,7 +168,7 @@ def run_agent_command(
     raw_trace_text: str = ""
     postprocess_interrupted = False
     harness_context = (
-        _LocalRunHarness(root, attempt.attempt_id)
+        _LocalRunHarness(root, attempt.attempt_id, attempt.ownership_token)
         if local_only
         else AitHarness.open(
             attempt_id=attempt.attempt_id,
@@ -290,10 +306,11 @@ def run_agent_command(
         effective_exit_code = 130
         shown = verify_attempt(root, attempt_id=attempt.attempt_id)
         _add_attempt_memory_note_with_warning(root, shown)
-    try:
-        refresh_run_reports(root, latest_attempt_id=attempt.attempt_id)
-    except Exception:
-        pass
+    if refresh_reports:
+        try:
+            refresh_run_reports(root, latest_attempt_id=attempt.attempt_id)
+        except Exception:
+            pass
     update_workspace_lease(
         attempt.workspace_ref,
         state=_lease_state_for_run_result(shown.attempt.get("verified_status"), effective_exit_code),

@@ -16,6 +16,7 @@ from ait.db import (
     list_memory_facts,
 )
 from ait.memory_policy import load_memory_policy, path_excluded, transcript_excluded
+from ait.memory import discover_live_memory_sources, read_live_memory_source
 from ait.review_policy import RiskAssessment, risk_reason_payload
 
 if TYPE_CHECKING:
@@ -45,6 +46,7 @@ def create_review_baseline_snapshot(
     policy = load_memory_policy(repo_root)
     policy_payload = policy.to_dict()
     baseline_policy_hash = _stable_hash(policy_payload)
+    live_context = _live_memory_context(repo_root)
     payload = {
         "schema_version": 1,
         "review_id": review_id,
@@ -52,8 +54,9 @@ def create_review_baseline_snapshot(
         "policy_hash": baseline_policy_hash,
         "baseline_policy_hash": baseline_policy_hash,
         "trusted_sources": [],
-        "advisory_sources": _advisory_sources(target),
-        "excluded_sources_summary": [],
+        "advisory_sources": _advisory_sources(target) + live_context["advisory_sources"],
+        "excluded_sources_summary": live_context["excluded_sources_summary"],
+        "live_memory_context_manifest": live_context["source_manifest"],
         "selected_facts": [],
         "changed_diff_excerpts": _changed_diff_excerpts(repo_root, conn, target),
         "prior_failed_attempts": _prior_failed_attempts(conn, target),
@@ -84,7 +87,7 @@ def create_review_baseline_snapshot(
     payload["trusted_sources"] = [
         {"kind": "memory_fact", "id": fact["id"]} for fact in selected_facts
     ]
-    payload["excluded_sources_summary"] = excluded
+    payload["excluded_sources_summary"] = list(payload["excluded_sources_summary"]) + excluded
 
     baseline_ref = _baseline_ref(review_id)
     _write_json(repo_root / baseline_ref, payload)
@@ -246,6 +249,50 @@ def _advisory_sources(target: ReviewTarget) -> list[dict[str, object]]:
             }
         )
     return sources
+
+
+def _live_memory_context(repo_root: Path) -> dict[str, list[dict[str, object]]]:
+    source_manifest: list[dict[str, object]] = []
+    advisory_sources: list[dict[str, object]] = []
+    excluded: list[dict[str, object]] = []
+    for source in discover_live_memory_sources(repo_root):
+        item = source.to_dict()
+        if not source.allowed_by_policy or not source.exists:
+            source_manifest.append(item)
+            if source.skip_reason:
+                excluded.append(
+                    {
+                        "id": source.source_id,
+                        "path": source.path,
+                        "reason": source.skip_reason,
+                    }
+                )
+            continue
+        excerpt, redacted, bytes_used = read_live_memory_source(source, max_chars=1600)
+        item["bytes_used"] = bytes_used
+        item["redacted"] = redacted
+        item["selected"] = True
+        source_manifest.append(item)
+        advisory_sources.append(
+            {
+                "kind": "live_external_memory",
+                "source_id": source.source_id,
+                "path": source.path,
+                "hash": source.sha256,
+                "mtime": source.mtime,
+                "bytes_used": bytes_used,
+                "policy_status": source.policy_status,
+                "trust": "advisory",
+                "authority": "live_external_source_of_truth",
+                "excerpt": _truncate_text(excerpt, 800),
+                "redacted": redacted,
+            }
+        )
+    return {
+        "source_manifest": source_manifest,
+        "advisory_sources": advisory_sources,
+        "excluded_sources_summary": excluded,
+    }
 
 
 def _prior_failed_attempts(conn: sqlite3.Connection, target: ReviewTarget) -> list[dict[str, object]]:
@@ -427,12 +474,26 @@ def _advisory_source_lines(payload: dict[str, object]) -> list[str]:
     sources = [item for item in payload.get("advisory_sources", []) if isinstance(item, dict)]
     if not sources:
         return ["- none"]
-    return [
-        "- "
-        f"{source.get('kind')}: {source.get('ref')} "
-        "(advisory evidence; not trusted baseline)"
-        for source in sources
-    ]
+    lines: list[str] = []
+    for source in sources:
+        if source.get("kind") == "live_external_memory":
+            lines.append(
+                "- "
+                f"live_external_memory: {source.get('path')} "
+                f"source_id={source.get('source_id')} hash={source.get('hash')} "
+                f"bytes={source.get('bytes_used')} "
+                "(advisory evidence; source of truth remains external)"
+            )
+            excerpt = str(source.get("excerpt") or "")
+            if excerpt:
+                lines.append(f"  excerpt: {excerpt}")
+            continue
+        lines.append(
+            "- "
+            f"{source.get('kind')}: {source.get('ref')} "
+            "(advisory evidence; not trusted baseline)"
+        )
+    return lines
 
 
 def _excluded_source_lines(payload: dict[str, object]) -> list[str]:

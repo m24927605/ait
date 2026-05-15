@@ -78,6 +78,33 @@ Use these commands from Codex, Claude Code, or another coding agent. They
 provide stable JSON state, legal next actions, dry-run merge operations, and
 review evidence without interactive prompts.
 
+## Local multi-agent sessions
+
+```bash
+ait session start "Refactor auth" --agents fake:one,fake:two
+ait session ask latest "Compare the risks"
+ait session run latest --mode panel
+ait session attach latest
+ait session attach latest --format json
+ait session panes latest --format json
+ait session send latest --to fake:one "follow up"
+ait session send latest --all "list remaining risks"
+ait session kill latest --agent fake:one
+ait session replay latest --turn latest
+```
+
+`ait session attach latest --format json` returns an attach plan only; it does
+not start PTYs. Foreground attach starts one local PTY per active participant,
+records `.ait/sessions/<session-id>/streams/events.jsonl`, and writes raw plus
+redacted terminal transcript refs per response. Input routing is explicit with
+`/to <agent-or-participant-id> <text>`, `/all <text>`, `/kill <agent>`, and
+`/detach`.
+
+The current terminal implementation is foreground-owned. `send` and resumable
+`kill` report machine-readable blocking reasons until daemon-owned PTY
+detach/resume is enabled. Session terminal commands do not apply changes;
+`ait apply <attempt-id>` remains the apply gate.
+
 ## Review
 
 ```bash
@@ -122,6 +149,9 @@ ait attempt discard <attempt-id>
 
 ```bash
 ait memory
+ait memory sources
+ait memory sources --format json
+ait memory sources --source claude
 ait memory search "auth adapter"
 ait memory recall "billing retry"
 ait memory backfill --dry-run
@@ -130,13 +160,18 @@ ait memory lint
 ait memory lint --fix
 ```
 
-Memory is repo-local under `.ait/`. It combines prior attempts, commits,
-curated notes, imported agent memory files, and accepted memory facts, then
-recalls only policy-allowed context for future runs.
+Memory is a live federated repo view. AIT-owned memory under `.ait/` includes
+prior attempts, commits, curated notes, accepted memory facts, and prior
+findings. Live external sources such as `CLAUDE.md`, `AGENTS.md`, and
+`.cursor/rules` are read at recall/run/review time and remain their own source
+of truth.
 
-`ait memory backfill --dry-run` previews repo-local agent memory files without
-writing. `--import` adds advisory memory under `.ait/`. Global or out-of-repo
-memory requires an explicit `--global --path ...`.
+`ait memory sources` and default `ait memory recall` are zero-touch reads:
+they do not create `.ait/` and do not mutate source files. `ait memory backfill
+--dry-run` previews repo-local agent memory files without writing. `backfill
+--import` is an explicit mutation/deprecated path that adds advisory memory
+under `.ait/`. Global or out-of-repo memory requires an explicit
+`--global --path ...`.
 
 ## Graph
 

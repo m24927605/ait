@@ -39,8 +39,8 @@ _`ait graph --html` 產生的本機 HTML 報告：attempts、evidence、memory�
 | Worktree 隔離 | 每次執行都有自己的內部 Git worktree，失敗或高風險 attempt 不會污染目前 workspace。 |
 | Attempt provenance | prompt、intent、adapter、output、changed files、commits、trace references、status、outcome 會串成一筆紀錄。 |
 | Wrapper bypass 偵測 | `ait status <adapter>` 會告訴你目前 shell 會進 AIT wrapper，還是會 silent 地直接呼叫真正的 agent binary。 |
-| 跨 agent 共同記憶 | Claude Code、Codex、Aider、Gemini、Cursor 與 shell agents 可以共用同一份 repo-local context。 |
-| 長期 repo memory | attempts、commits、notes、匯入的 `CLAUDE.md` / `AGENTS.md`、accepted facts、prior findings 可以跨 session 保留。 |
+| Live federated memory | Claude Code、Codex、Aider、Gemini、Cursor 與 shell agents 可以共用同一份即時 repo memory：AIT-owned history 加上目前的 `CLAUDE.md`、`AGENTS.md` 與 Cursor rules。 |
+| 長期 repo memory | attempts、commits、notes、accepted facts、prior findings，以及明確 adopt 的 memory 可以跨 session 保留。 |
 | 跨 agent handoff | 一個 agent 的調查或決策，可以透過 AIT 傳給後續另一個 agent。 |
 | 平行 agent attempts | 多個 agents 可以同時試不同做法，不會在同一個 checkout 裡互相覆蓋。 |
 | 明確 apply/recover 流程 | Agent 產出的結果在 apply 前只是提案；held 或 failed work 仍可 recover。 |
@@ -58,7 +58,7 @@ _`ait graph --html` 產生的本機 HTML 報告：attempts、evidence、memory�
 | 換一個 agent 接手，又從頭調查同一件事 | 共同 repo-local memory 會把過去 attempts、commits、notes、accepted facts 餵給後續執行 | [`04-memory-reuse`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/04-memory-reuse) |
 | Claude 和 Codex 同時跑會互相覆蓋 | 每個 attempt 都有自己的 worktree，可以平行跑多個 agent 再比較結果 | [`05-parallel-agents`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/05-parallel-agents) |
 | Agent 說「修好了」，但你不確定該不該採用 | `ait apply latest` 是明確動作；沒有 apply 前，agent 的成果只是提案 | [`06-explicit-promotion`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/06-explicit-promotion) |
-| 跨 agent hand-off 會弄丟之前所有的決策 | 長期記憶可保存 `CLAUDE.md`、`AGENTS.md`、過往 attempts、notes 與已接受決策 | [`07-cross-agent-handoff`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/07-cross-agent-handoff) |
+| 跨 agent hand-off 會弄丟之前所有的決策 | Live repo memory 會把目前的 agent memory files、過往 attempts、notes 與已接受決策組成同一份 context | [`07-cross-agent-handoff`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/07-cross-agent-handoff) |
 | provenance 工具要求把原始碼送到 SaaS | metadata 留在 repo 內的 `.ait/`；daemon 只走本機 Unix socket，沒有 telemetry | [`08-local-only-provenance`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/08-local-only-provenance) |
 | 實作 agent 自己審自己，容易放過盲點 | 可交給另一個 reviewer agent 做對抗式審查，高風險 finding 可以擋下 apply | [`09-verification-evidence`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/09-verification-evidence)、[`09-1-codex-reviewer`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/09-1-codex-reviewer) |
 | 想找上個月那段 prompt，只能 grep shell history | 用結構化 DSL 查 attempts、intents、commits、agent、狀態與變更檔案 | [`10-prompt-search`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/10-prompt-search) |
@@ -94,15 +94,15 @@ ait review attempt latest-reviewable --mode adversarial --review-adapter claude-
 環境移除 `ANTHROPIC_API_KEY`。AIT 不會 silent fallback 到 provider API
 credits；你的機器上必須已安裝 Claude Code 並完成本機登入。
 
-Repo-local memory 只在同一個 repository 的 `.ait/` 內共享。AIT 會記錄
-attempts、commits、notes、匯入的 agent memory files、accepted memory facts
-以及 prior findings，之後只把 policy 允許的 context 召回給未來執行。
-這是可檢查的專案記憶，不是某個聊天視窗裡的隱藏上下文。
+Repo-local memory 是同一個 repository 內的 live federated view。AIT 會在
+`.ait/` 記錄 attempts、commits、notes、accepted memory facts 與 prior findings，
+並在 recall/run/review 當下即時讀取目前的 `CLAUDE.md`、`AGENTS.md`、
+`.cursor/rules`。這是可檢查的專案記憶，不是某個聊天視窗裡的隱藏上下文。
 
-既有專案中途導入 AIT 時，先跑 `ait memory backfill --dry-run`。它只預覽
-repo-local agent memory，例如 `CLAUDE.md`、`AGENTS.md`、`.cursor/rules`，
-不會寫入任何檔案。只有加上 `--import` 時，AIT 才會把 advisory memory
-放進 `.ait/`。
+既有專案中途導入 AIT 時，先跑 `ait memory sources` 或 `ait memory recall`。
+兩者預設都是 zero-touch read：不建立 `.ait/`，也不改來源檔。
+`ait memory backfill --dry-run` 仍是 zero-write preview。只有明確加上
+`backfill --import` 時，AIT 才會把 advisory memory 寫進 `.ait/`。
 
 對抗式審查的細節請看 [對抗式 code review](reference/adversarial-code-review.md)：reviewer adapter、findings、report，以及 review-gated apply。
 

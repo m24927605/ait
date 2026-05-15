@@ -792,6 +792,7 @@ class CliRunTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertEqual("import", payload["mode"])
             self.assertEqual([".ait/"], payload["writes"])
+            self.assertIn("not zero-touch", payload["mutation_warning"])
             self.assertEqual(1, len(payload["imported"]))
             self.assertEqual("agent-memory:claude:CLAUDE.md", payload["imported"][0]["source"])
             self.assertTrue((repo_root / ".ait").exists())
@@ -1680,6 +1681,7 @@ class CliRunTests(unittest.TestCase):
                 "manual:*",
                 "attempt-memory:*",
                 "agent-memory:*",
+                "live-memory:*",
                 "durable-memory:*",
                 "transcript-summary:*",
             ],

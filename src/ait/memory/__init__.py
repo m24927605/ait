@@ -25,8 +25,16 @@ from .lint import (
     memory_health_from_lint,
     render_memory_lint_result,
 )
+from .live_sources import (
+    discover_live_memory_sources,
+    read_live_memory_source,
+    search_live_memory_sources,
+    write_context_manifest,
+    write_recall_record,
+)
 from .models import (
     AgentMemoryStatus,
+    LiveMemorySource,
     MemoryBackfillCandidate,
     MemoryBackfillResult,
     MemoryAttempt,
@@ -60,6 +68,7 @@ from .temporal import _normalize_recall_ranker_scores, _temporal_ranked_result
 __all__ = [
     "AGENT_MEMORY_CANDIDATES",
     "AgentMemoryStatus",
+    "LiveMemorySource",
     "MemoryBackfillCandidate",
     "MemoryBackfillResult",
     "MemoryAttempt",
@@ -85,6 +94,7 @@ __all__ = [
     "build_repo_memory",
     "build_repo_memory_with_connection",
     "backfill_agent_memory",
+    "discover_live_memory_sources",
     "ensure_agent_memory_imported",
     "evaluate_memory_retrieval_event_records",
     "evaluate_memory_retrievals",
@@ -94,6 +104,7 @@ __all__ = [
     "list_memory_notes",
     "memory_health_from_lint",
     "remove_memory_note",
+    "read_live_memory_source",
     "render_memory_lint_result",
     "render_memory_eval_report",
     "render_memory_search_results",
@@ -101,6 +112,9 @@ __all__ = [
     "render_repo_memory_text",
     "search_repo_memory",
     "search_repo_memory_with_connection",
+    "search_live_memory_sources",
+    "write_context_manifest",
+    "write_recall_record",
     "_normalize_recall_ranker_scores",
     "_temporal_ranked_result",
 ]

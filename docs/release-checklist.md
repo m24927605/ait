@@ -1,5 +1,30 @@
 # Release Checklist
 
+## Test Runtime Tiers
+
+Pytest markers are registered in `pyproject.toml` and assigned in
+`tests/conftest.py` so local development can skip the measured slow/release
+families without changing the full release gate.
+
+Fast local loop:
+
+```bash
+PYTHONPATH=src .venv/bin/pytest -m "not slow and not release" -q
+```
+
+Full release gate:
+
+```bash
+PYTHONPATH=src .venv/bin/pytest -q
+```
+
+Optional parallel smoke, when `pytest-xdist` is installed:
+
+```bash
+PYTHONPATH=src .venv/bin/pytest -m "not serial" -n auto --dist=loadscope -q
+PYTHONPATH=src .venv/bin/pytest -m serial -q
+```
+
 ## SEO Drift Audit
 
 Before any release that touches user-facing copy, verify the canonical

@@ -28,9 +28,13 @@ from ait.runner import (
     _run_command_with_pty_transcript,
     _stage_all_changes,
     _strip_terminal_control,
-    run_agent_command,
+    run_agent_command as _run_agent_command,
 )
 from ait.workspace import WorkspaceError
+
+
+def run_agent_command(*args, refresh_reports: bool = False, **kwargs):
+    return _run_agent_command(*args, refresh_reports=refresh_reports, **kwargs)
 
 
 class RunnerTests(unittest.TestCase):
@@ -45,6 +49,12 @@ class RunnerTests(unittest.TestCase):
         self.addCleanup(self._stop_started_daemons)
 
     def _start_daemon_for_test(self, repo_root: str | Path):
+        return SimpleNamespace(
+            running=False,
+            socket_path=Path(repo_root) / ".ait" / "daemon.sock",
+        )
+
+    def _start_real_daemon_for_test(self, repo_root: str | Path):
         status = _real_start_daemon(repo_root)
         if status.running and status.pid is not None:
             self._started_daemon_pids.add(status.pid)
@@ -67,6 +77,7 @@ class RunnerTests(unittest.TestCase):
                     "-c",
                     "from pathlib import Path; Path('agent.txt').write_text('ok\\n')",
                 ],
+                refresh_reports=True,
             )
 
             self.assertEqual(0, result.exit_code)
@@ -174,7 +185,7 @@ class RunnerTests(unittest.TestCase):
             self.assertIn("done.txt", stored)
             self.assertIn(sys.executable, stored)
 
-    def test_run_agent_command_self_repairs_memory_policy_and_imports_agent_memory(self) -> None:
+    def test_run_agent_command_self_repairs_memory_policy_without_auto_import(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
             _init_git_repo(repo_root)
@@ -191,8 +202,7 @@ class RunnerTests(unittest.TestCase):
 
             self.assertEqual(0, result.exit_code)
             self.assertTrue((repo_root / ".ait" / "memory-policy.json").exists())
-            self.assertEqual(1, len(notes))
-            self.assertEqual("agent-memory:claude:CLAUDE.md", notes[0].source)
+            self.assertEqual(0, len(notes))
 
     def test_run_agent_command_returns_process_exit_code(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -204,6 +214,7 @@ class RunnerTests(unittest.TestCase):
                 intent_title="Fail command",
                 agent_id="shell:test",
                 command=[sys.executable, "-c", "raise SystemExit(7)"],
+                refresh_reports=True,
             )
 
             self.assertEqual(7, result.exit_code)
@@ -349,7 +360,10 @@ class RunnerTests(unittest.TestCase):
                 harness._finish_attempted = True
                 raise KeyboardInterrupt
 
-            with patch("ait.runner.AitHarness.finish", interrupt_finish):
+            with (
+                patch("ait.runner.start_daemon", side_effect=self._start_real_daemon_for_test),
+                patch("ait.runner.AitHarness.finish", interrupt_finish),
+            ):
                 result = run_agent_command(
                     repo_root,
                     intent_title="Interrupted finish",
@@ -369,6 +383,7 @@ class RunnerTests(unittest.TestCase):
             _init_git_repo(repo_root)
 
             with (
+                patch("ait.runner.start_daemon", side_effect=self._start_real_daemon_for_test),
                 patch("ait.runner.AitHarness.record_tool", side_effect=HarnessError("socket gone")),
                 patch("ait.runner.AitHarness.finish", side_effect=AssertionError("finish retried")),
             ):
@@ -395,7 +410,10 @@ class RunnerTests(unittest.TestCase):
                 harness._finish_attempted = True
                 raise KeyboardInterrupt
 
-            with patch("ait.runner.AitHarness.finish", interrupt_finish):
+            with (
+                patch("ait.runner.start_daemon", side_effect=self._start_real_daemon_for_test),
+                patch("ait.runner.AitHarness.finish", interrupt_finish),
+            ):
                 result = run_agent_command(
                     repo_root,
                     intent_title="Repeated local finish",
@@ -557,7 +575,7 @@ class RunnerTests(unittest.TestCase):
             self.assertTrue(events[0].selected_fact_ids)
             self.assertIn("release 必須先跑 pytest", copied)
 
-    def test_run_agent_command_auto_imports_agent_memory_before_context(self) -> None:
+    def test_run_agent_command_reads_live_agent_memory_before_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
             _init_git_repo(repo_root)
@@ -582,11 +600,17 @@ class RunnerTests(unittest.TestCase):
 
             copied = Path(result.workspace_ref) / "context-copy.txt"
             notes = list_memory_notes(repo_root, topic="agent-memory")
+            manifests = list((repo_root / ".ait" / "context").glob("attempt-*.json"))
 
             self.assertEqual(0, result.exit_code)
-            self.assertEqual(1, len(notes))
-            self.assertIn("Use repair before release.", notes[0].body)
+            self.assertEqual(0, len(notes))
             self.assertIn("Use repair before release.", copied.read_text(encoding="utf-8"))
+            self.assertEqual(1, len(manifests))
+            manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
+            self.assertEqual("attempt", manifest["owner_kind"])
+            self.assertTrue(
+                any(item["source_id"] == "live:claude:CLAUDE.md" for item in manifest["source_manifest"])
+            )
 
     def test_run_agent_command_adds_attempt_memory_note(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

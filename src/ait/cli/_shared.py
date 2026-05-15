@@ -62,6 +62,7 @@ from ait.memory import (
     backfill_agent_memory,
     build_relevant_memory_recall,
     build_repo_memory,
+    discover_live_memory_sources,
     ensure_agent_memory_imported,
     import_agent_memory,
     lint_memory_notes,
@@ -73,6 +74,7 @@ from ait.memory import (
     render_memory_search_results,
     render_memory_lint_result,
     search_repo_memory,
+    write_recall_record,
 )
 from ait.memory.eval import evaluate_memory_retrievals, render_memory_eval_report
 from ait.memory_policy import init_memory_policy, load_memory_policy

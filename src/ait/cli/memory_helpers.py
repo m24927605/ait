@@ -61,6 +61,10 @@ def _format_memory_import(result) -> str:
 
 def _format_memory_backfill(result) -> str:
     lines = [f"AIT memory backfill ({result.mode}, {result.scope})"]
+    if result.mode == "import":
+        lines.append(
+            "Warning: --import is a mutation/deprecated path; live memory is read without importing."
+        )
     if result.candidates:
         lines.append("Candidates:")
         for candidate in result.candidates:
@@ -79,6 +83,28 @@ def _format_memory_backfill(result) -> str:
         for path in result.writes:
             lines.append(f"- {path}")
     return "\n".join(lines)
+
+def _format_live_memory_sources(sources) -> str:
+    lines = ["AIT Live Memory Sources"]
+    if not sources:
+        lines.append("- none")
+        return "\n".join(lines) + "\n"
+    for source in sources:
+        item = source.to_dict() if hasattr(source, "to_dict") else dict(source)
+        status = item.get("policy_status") or ("allowed" if item.get("allowed_by_policy") else "blocked")
+        reason = item.get("skip_reason") or item.get("policy_reason") or ""
+        lines.append(
+            f"- {item.get('source_id')} path={item.get('path')} "
+            f"kind={item.get('kind')} scope={item.get('scope')} policy={status}"
+        )
+        lines.append(
+            "  "
+            f"sha256={item.get('sha256') or ''} mtime={item.get('mtime') or ''} "
+            f"size={item.get('size_bytes') if item.get('size_bytes') is not None else ''}"
+        )
+        if reason and reason != "allowed":
+            lines.append(f"  reason: {reason}")
+    return "\n".join(lines) + "\n"
 
 def _format_memory_facts(facts) -> str:
     lines = ["AIT Memory Facts"]

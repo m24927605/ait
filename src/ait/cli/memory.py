@@ -181,7 +181,32 @@ def handle(args, repo_root: Path, parser=None) -> int:
             else:
                 print(render_memory_search_results(results), end="")
             return 0
+        if args.memory_command == "sources":
+            if args.global_scope and not args.source_paths:
+                print(
+                    "error: global memory sources require an explicit --path",
+                    file=sys.stderr,
+                )
+                return 2
+            sources = discover_live_memory_sources(
+                repo_root,
+                source=args.source,
+                paths=tuple(args.source_paths) if args.source_paths else (),
+                include_docs=args.include_docs,
+                include_global=args.global_scope,
+            )
+            if args.format == "json":
+                print(json.dumps([source.to_dict() for source in sources], indent=2))
+            else:
+                print(_format_live_memory_sources(sources), end="")
+            return 0
         if args.memory_command == "recall":
+            if args.global_scope and not args.source_paths:
+                print(
+                    "error: global memory recall requires an explicit --path",
+                    file=sys.stderr,
+                )
+                return 2
             if args.auto:
                 auto_query = build_auto_briefing_query(
                     repo_root,
@@ -205,6 +230,11 @@ def handle(args, repo_root: Path, parser=None) -> int:
                 limit=args.limit,
                 budget_chars=args.budget_chars,
                 include_unhealthy=args.include_unhealthy,
+                live_paths=tuple(args.source_paths) if args.source_paths else (),
+                include_global=args.global_scope,
+                include_docs=args.include_docs,
+                record=args.record,
+                query_sources=sources,
             )
             payload = recall.to_dict()
             payload["query_sources"] = sources
@@ -212,6 +242,10 @@ def handle(args, repo_root: Path, parser=None) -> int:
                 print(json.dumps(payload, indent=2))
             else:
                 print(render_relevant_memory_recall(recall), end="")
+                if args.include_sources:
+                    print(_format_live_memory_sources(recall.source_manifest), end="")
+                if recall.record_ref:
+                    print(f"Recorded recall evidence: {recall.record_ref}")
             return 0
         if args.memory_command == "lint":
             result = lint_memory_notes(
@@ -243,7 +277,13 @@ def handle(args, repo_root: Path, parser=None) -> int:
                 include_global=args.global_scope,
             )
             if args.format == "json":
-                print(json.dumps(result.to_dict(), indent=2))
+                payload = result.to_dict()
+                if args.import_matches:
+                    payload["mutation_warning"] = (
+                        "--import writes advisory memory under .ait/ and is not zero-touch; "
+                        "prefer live recall/sources for current external memory."
+                    )
+                print(json.dumps(payload, indent=2))
             else:
                 print(_format_memory_backfill(result))
             return 0

@@ -21,7 +21,6 @@ def handle(args, repo_root: Path, parser=None) -> int:
                 return 0
             print("error: no supported agent binaries found on PATH", file=sys.stderr)
             return 2
-        memory_import = ensure_agent_memory_imported(result.repo_root)
         memory_policy = init_memory_policy(result.repo_root)
         statuses = tuple(
             doctor_automation(item.adapter.name, result.repo_root)
@@ -35,7 +34,7 @@ def handle(args, repo_root: Path, parser=None) -> int:
             result,
             automation,
             statuses,
-            memory_import,
+            None,
             memory_policy,
             shell_install=shell_install_result,
         )
@@ -73,7 +72,6 @@ def handle(args, repo_root: Path, parser=None) -> int:
                     init_result.repo_root,
                     names=(args.name,) if args.name else None,
                 )
-                memory_import = ensure_agent_memory_imported(init_result.repo_root)
                 memory_policy = init_memory_policy(init_result.repo_root)
             except ValueError as exc:
                 if args.format == "json":
@@ -101,7 +99,7 @@ def handle(args, repo_root: Path, parser=None) -> int:
                 for item in result.installed
             )
             if args.format == "json":
-                payload = _init_payload(init_result, result, statuses, memory_import, memory_policy)
+                payload = _init_payload(init_result, result, statuses, None, memory_policy)
                 print(json.dumps(payload, indent=2))
                 return 0 if result.installed else 2
             if result.shell_snippet:
@@ -181,14 +179,13 @@ def handle(args, repo_root: Path, parser=None) -> int:
         try:
             init_result = init_repo(repo_root, auto_git_init=True)
             result = enable_available_adapters(init_result.repo_root, names=names)
-            memory_import = ensure_agent_memory_imported(init_result.repo_root)
             memory_lint = lint_memory_notes(init_result.repo_root, fix=True)
             memory_health_lint = lint_memory_notes(init_result.repo_root)
         except AdapterError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
         after = tuple(doctor_automation(name, init_result.repo_root) for name in names)
-        payload = _repair_payload(before, result, after, memory_import, memory_lint, memory_health_lint)
+        payload = _repair_payload(before, result, after, None, memory_lint, memory_health_lint)
         if args.format == "json":
             print(json.dumps(payload, indent=2))
         else:

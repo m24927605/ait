@@ -67,8 +67,8 @@ The package is named `ait-vcs` on PyPI and npm. The installed command is
 | Worktree isolation | Every run gets an internal isolated Git worktree, so failed or risky attempts do not pollute your current workspace. |
 | Attempt provenance | Prompt, intent, adapter, output, changed files, commits, trace references, status, and outcome stay linked in one attempt record. |
 | Wrapper bypass detection | `ait status <adapter>` shows whether this shell will enter AIT or silently call the real agent binary. |
-| Shared cross-agent memory | Claude Code, Codex, Aider, Gemini, Cursor, and shell agents can all read from the same repo-local context instead of starting from scratch. |
-| Long-term repo memory | Useful attempts, commits, notes, imported `CLAUDE.md` / `AGENTS.md`, accepted facts, and prior findings can survive across terminals, sessions, and weeks. |
+| Live federated memory | Claude Code, Codex, Aider, Gemini, Cursor, and shell agents can read the same live repo memory: AIT-owned history plus current `CLAUDE.md`, `AGENTS.md`, and Cursor rules. |
+| Long-term repo memory | Useful attempts, commits, notes, accepted facts, prior findings, and explicit adopted memory can survive across terminals, sessions, and weeks. |
 | Cross-agent handoff | One agent can record an investigation or decision, and another agent can receive that context later through AIT rather than hidden chat state. |
 | Parallel agent attempts | Multiple agents can try different approaches at the same time without racing inside the same checkout. |
 | Explicit apply/recover flow | Agent output remains a proposal until you apply it; held or failed work remains recoverable instead of becoming working-copy debris. |
@@ -86,7 +86,7 @@ The package is named `ait-vcs` on PyPI and npm. The installed command is
 | The next agent repeats investigation you already paid tokens for | Shared repo-local memory feeds prior attempts, commits, notes, and accepted facts to the next run | [`04-memory-reuse`](examples/pain-point-demos/04-memory-reuse/) |
 | Two agents on the same task stomp each other | Each attempt has its own worktree — run N agents in parallel | [`05-parallel-agents`](examples/pain-point-demos/05-parallel-agents/) |
 | Did the agent really fix it, or just claim it did? | Explicit `ait apply latest` keeps speculative changes out of main until you decide | [`06-explicit-promotion`](examples/pain-point-demos/06-explicit-promotion/) |
-| Cross-agent hand-offs lose every previous decision | Shared long-term memory can preserve `CLAUDE.md`, `AGENTS.md`, prior attempts, notes, and accepted decisions | [`07-cross-agent-handoff`](examples/pain-point-demos/07-cross-agent-handoff/) |
+| Cross-agent hand-offs lose every previous decision | Live repo memory combines current agent memory files with prior attempts, notes, and accepted decisions | [`07-cross-agent-handoff`](examples/pain-point-demos/07-cross-agent-handoff/) |
 | Provenance tooling wants to ship your code to a SaaS | Metadata stays in `.ait/` next to `.git/` — harness daemon is local-only (Unix socket, no network), no telemetry | [`08-local-only-provenance`](examples/pain-point-demos/08-local-only-provenance/) |
 | The same agent that wrote the code rubber-stamps its own work | Run adversarial review with another reviewer agent; high-risk findings can block apply | [`09-verification-evidence`](examples/pain-point-demos/09-verification-evidence/), [`09-1-codex-reviewer`](examples/pain-point-demos/09-1-codex-reviewer/) |
 | "Where's that prompt I wrote last month?" -> grep shell history | Query attempts, intents, and commits with a structured DSL | [`10-prompt-search`](examples/pain-point-demos/10-prompt-search/) |
@@ -106,9 +106,11 @@ attempts from different agents, inspect what each changed, keep failed runs for
 recovery, and decide which result should land in your checkout.
 
 Memory in AIT is repo-local, inspectable project memory, not a hidden
-chat-window transcript. AIT can recall policy-allowed context from prior
-attempts, commits, notes, accepted facts, imported `CLAUDE.md` / `AGENTS.md`,
-and review findings across terminals and future sessions.
+chat-window transcript. AIT recalls policy-allowed context from prior attempts,
+commits, notes, accepted facts, and review findings, then federates that
+AIT-owned memory with live external sources such as `CLAUDE.md`, `AGENTS.md`,
+and `.cursor/rules` at recall/run/review time. Those files remain their own
+source of truth; AIT does not auto-import them.
 
 ## What It Feels Like
 
@@ -180,8 +182,8 @@ pending, and reviewable attempts by default.
 | Agent wrappers | Repo-local `claude`, `codex`, `aider`, `gemini`, and `cursor` wrappers |
 | Auto commit capture | Successful changes become attempt-linked commits, without duplicating existing commits |
 | Cleanup dry-run | Inspect and reclaim safe terminal attempt workspaces without touching reviewable work |
-| Shared memory | Claude Code, Codex, and other agents can reuse the same repo-local context |
-| Long-term memory | Prior attempts, commits, notes, imported agent memory, accepted facts, and findings survive across sessions |
+| Shared memory | Claude Code, Codex, and other agents can reuse the same live repo-local context |
+| Long-term memory | Prior attempts, commits, notes, accepted facts, findings, and explicit adopted memory survive across sessions |
 | Adversarial review | Ask a separate reviewer agent to challenge an attempt and persist blocking findings |
 | Review flow | Apply, recover, inspect, and query attempts without managing worktrees by hand |
 
@@ -210,16 +212,19 @@ Use repo-local memory:
 
 ```bash
 ait memory
+ait memory sources
 ait memory search "auth adapter"
 ait memory recall "billing retry"
 ait memory backfill --dry-run
 ait memory backfill --import
 ```
 
-`ait memory backfill --dry-run` previews existing repo-local agent memory files
-such as `CLAUDE.md`, `AGENTS.md`, and `.cursor/rules` without writing anything.
-Use `--import` only when you want AIT to add advisory memory under `.ait/`.
-Global or out-of-repo memory requires an explicit `--global --path ...`.
+`ait memory sources` and default `ait memory recall` are zero-touch reads:
+they do not create `.ait/`, do not mutate source files, and read current
+repo-local agent memory live. `ait memory backfill --dry-run` is also
+zero-write preview. Use `backfill --import` only as an explicit mutation when
+you want AIT to add advisory memory under `.ait/`; it is not required for live
+recall. Global or out-of-repo memory requires an explicit `--global --path ...`.
 
 Run adversarial review before apply:
 
@@ -351,8 +356,10 @@ AIT_CONTEXT_FILE   # when context is enabled
 ```
 
 `AIT_CONTEXT_FILE` contains a compact repo-local handoff selected from
-previous attempts, commits, curated notes, and imported agent memory
-files such as `CLAUDE.md` and `AGENTS.md`.
+previous attempts, commits, curated notes, accepted facts, and live external
+memory files such as `CLAUDE.md`, `AGENTS.md`, and `.cursor/rules`. AIT records
+a context manifest with source path, hash, mtime, bytes used, and policy status
+without claiming those external files as captured AIT provenance.
 
 ## Install
 
@@ -418,6 +425,7 @@ ait intent show <intent-id>
 ait context <intent-id>
 
 ait memory
+ait memory sources
 ait memory search "auth adapter"
 ait memory recall "billing retry"
 ait memory backfill --dry-run

@@ -64,8 +64,8 @@ PyPI 與 npm 上的套件名稱是 `ait-vcs`，安裝後的指令是 `ait`。
 | Worktree 隔離 | 每次執行都有自己的內部 Git worktree，失敗或高風險 attempt 不會污染目前工作目錄。 |
 | Attempt provenance | prompt、intent、adapter、output、changed files、commits、trace references、status、outcome 會串成一筆紀錄。 |
 | Wrapper bypass 偵測 | `ait status <adapter>` 會告訴你目前 shell 會進 AIT wrapper，還是會 silent 地直接呼叫真正的 agent binary。 |
-| 跨 agent 共同記憶 | Claude Code、Codex、Aider、Gemini、Cursor 與 shell agents 可以讀同一份 repo-local context，不必各自從零開始。 |
-| 長期 repo memory | 有價值的 attempts、commits、notes、匯入的 `CLAUDE.md` / `AGENTS.md`、accepted facts、prior findings 可以跨 terminal、跨 session、跨週期保留下來。 |
+| Live federated memory | Claude Code、Codex、Aider、Gemini、Cursor 與 shell agents 可以讀同一份即時 repo memory：AIT-owned history 加上目前的 `CLAUDE.md`、`AGENTS.md` 與 Cursor rules。 |
+| 長期 repo memory | 有價值的 attempts、commits、notes、accepted facts、prior findings，以及明確 adopt 的 memory 可以跨 terminal、跨 session、跨週期保留下來。 |
 | 跨 agent handoff | 一個 agent 做過的調查或決策，可以透過 AIT 傳給後續另一個 agent，而不是藏在某個聊天視窗裡。 |
 | 平行 agent attempts | 多個 agents 可以同時試不同做法，不會在同一個 checkout 裡互相覆蓋。 |
 | 明確 apply/recover 流程 | Agent 產出的結果在 apply 前只是提案；held 或 failed work 仍可 recover，不會變成 working-copy 爛攤子。 |
@@ -83,7 +83,7 @@ PyPI 與 npm 上的套件名稱是 `ait-vcs`，安裝後的指令是 `ait`。
 | 換一個 agent 接手，又從頭調查同一件事 | 共同 repo-local memory 會把過去 attempts、commits、notes、accepted facts 餵給後續執行 | [`04-memory-reuse`](examples/pain-point-demos/04-memory-reuse/) |
 | Claude 和 Codex 同時跑會互相覆蓋 | 每個 attempt 都有自己的 worktree，可以平行跑多個 agent 再比較結果 | [`05-parallel-agents`](examples/pain-point-demos/05-parallel-agents/) |
 | Agent 說「修好了」，但你不確定該不該採用 | `ait apply latest` 是明確動作；沒有 apply 前，agent 的成果只是提案 | [`06-explicit-promotion`](examples/pain-point-demos/06-explicit-promotion/) |
-| 跨 agent hand-off 會弄丟決策與脈絡 | 長期記憶可保存 `CLAUDE.md`、`AGENTS.md`、過往 attempts、notes 與已接受決策 | [`07-cross-agent-handoff`](examples/pain-point-demos/07-cross-agent-handoff/) |
+| 跨 agent hand-off 會弄丟決策與脈絡 | Live repo memory 會把目前的 agent memory files、過往 attempts、notes 與已接受決策組成同一份 context | [`07-cross-agent-handoff`](examples/pain-point-demos/07-cross-agent-handoff/) |
 | provenance 工具要求把原始碼送到 SaaS | metadata 留在 repo 內的 `.ait/`；daemon 只走本機 Unix socket，沒有 telemetry | [`08-local-only-provenance`](examples/pain-point-demos/08-local-only-provenance/) |
 | 寫程式的 agent 自己審自己，容易放過盲點 | 可交給另一個 reviewer agent 做對抗式審查，高風險 finding 可以擋下 apply | [`09-verification-evidence`](examples/pain-point-demos/09-verification-evidence/)、[`09-1-codex-reviewer`](examples/pain-point-demos/09-1-codex-reviewer/) |
 | 想找上個月那段 prompt，只能 grep shell history | 用結構化 DSL 查 attempts、intents、commits、agent、狀態與變更檔案 | [`10-prompt-search`](examples/pain-point-demos/10-prompt-search/) |
@@ -102,9 +102,10 @@ attempts、查看它們改了哪些檔案、保留失敗結果作為 recovery �
 哪一個要套用到目前 checkout。
 
 AIT 的 memory 是 repo-local、可檢查的專案記憶，不是某個聊天視窗裡的隱藏
-上下文。它可以依 policy 召回過去 attempts、commits、notes、accepted facts、
-匯入的 `CLAUDE.md` / `AGENTS.md`，以及 prior findings，讓不同 terminal、
-不同 session、不同 agent 都能接續同一份脈絡。
+上下文。它會依 policy 召回過去 attempts、commits、notes、accepted facts
+與 prior findings，再於 recall/run/review 當下即時 federate `CLAUDE.md`、
+`AGENTS.md`、`.cursor/rules` 等 live external sources。這些檔案仍是自己的
+source of truth；AIT 不會自動匯入。
 
 ## 使用起來像這樣
 
@@ -163,8 +164,8 @@ ait apply latest
 | Attempt provenance | command、status、output、changed files、commits 會被串成一筆紀錄 |
 | Agent wrappers | repo-local 的 `claude`、`codex`、`aider`、`gemini`、`cursor` wrappers |
 | Auto commit capture | 成功的修改會成為 attempt-linked commits；若 agent 已 commit，AIT 不會重複 commit |
-| 共同記憶 | Claude Code、Codex 與其他 agents 可以共用同一份 repo-local context |
-| 長期記憶 | 過去 attempts、commits、notes、imported agent memory、accepted facts 與 findings 可以跨 session 保留 |
+| 共同記憶 | Claude Code、Codex 與其他 agents 可以共用同一份即時 repo-local context |
+| 長期記憶 | 過去 attempts、commits、notes、accepted facts、findings 與明確 adopt 的 memory 可以跨 session 保留 |
 | Adversarial review | 讓另一個 reviewer agent 主動挑戰 attempt，並保存 blocking findings |
 | Review flow | 用 `apply`、`recover`、inspect、query 管理日常 attempt flow |
 
@@ -193,16 +194,18 @@ ait run --adapter shell --intent "Regenerate fixtures" -- \
 
 ```bash
 ait memory
+ait memory sources
 ait memory search "auth adapter"
 ait memory recall "billing retry"
 ait memory backfill --dry-run
 ait memory backfill --import
 ```
 
-`ait memory backfill --dry-run` 只掃描既有 repo-local agent memory，例如
-`CLAUDE.md`、`AGENTS.md`、`.cursor/rules`，不會寫入任何檔案。只有加上
-`--import` 時，AIT 才會把 advisory memory 放進 `.ait/`。Global 或 repo
-外部 memory 必須明確指定 `--global --path ...`。
+`ait memory sources` 與預設的 `ait memory recall` 都是 zero-touch read：
+不建立 `.ait/`、不改來源檔，並即時讀取目前 repo-local agent memory。
+`ait memory backfill --dry-run` 也是 zero-write preview。只有明確加上
+`backfill --import` 時，AIT 才會把 advisory memory 寫進 `.ait/`；live recall
+不需要 import。Global 或 repo 外部 memory 必須明確指定 `--global --path ...`。
 
 Apply 前先跑對抗式審查：
 
@@ -321,8 +324,10 @@ AIT_CONTEXT_FILE   # 啟用 context 時
 ```
 
 `AIT_CONTEXT_FILE` 是一份精簡的 repo-local handoff，內容來自過去 attempts、
-commits、curated notes，以及匯入的 agent memory files，例如 `CLAUDE.md`
-和 `AGENTS.md`。
+commits、curated notes、accepted facts，以及即時讀取的 `CLAUDE.md`、
+`AGENTS.md`、`.cursor/rules`。AIT 會記錄 context manifest，包含 source
+path、hash、mtime、bytes used 與 policy status，但不會把外部檔案偽裝成
+AIT captured provenance。
 
 ## 安裝
 
@@ -388,6 +393,7 @@ ait intent show <intent-id>
 ait context <intent-id>
 
 ait memory
+ait memory sources
 ait memory search "auth adapter"
 ait memory recall "billing retry"
 ait memory backfill --dry-run

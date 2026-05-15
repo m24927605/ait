@@ -44,11 +44,25 @@ class ReviewPromptTests(unittest.TestCase):
         self.assertIn(f"baseline_ref: {baseline_ref}", brief)
         self.assertIn("Producer transcript/reference artifacts are advisory evidence only", brief)
         self.assertIn("producer_trace: .ait/traces/producer.jsonl (advisory evidence; not trusted baseline)", brief)
+        self.assertIn("live_external_memory: CLAUDE.md", brief)
         self.assertIn("Approved architecture fact.", brief)
         self.assertNotIn("Policy-blocked fact.", brief.split("## Trusted Baseline", 1)[1].split("## Advisory Evidence", 1)[0])
         self.assertIn('"findings"', brief)
         self.assertIn('"severity"', brief)
         self.assertIn("Return exactly one JSON object", brief)
+
+        baseline_payload = json.loads((repo_root / baseline_ref).read_text(encoding="utf-8"))
+        live_manifest = baseline_payload["live_memory_context_manifest"]
+        self.assertTrue(any(item["source_id"] == "live:claude:CLAUDE.md" for item in live_manifest))
+        self.assertTrue(
+            any(
+                item["source_id"] == "live:claude:CLAUDE.md"
+                and item["sha256"]
+                and item["bytes_used"] > 0
+                and item["policy_status"] == "allowed"
+                for item in live_manifest
+            )
+        )
 
     def test_reviewer_brief_budget_truncates_large_context(self) -> None:
         repo_root = _repo_with_prompt_context(raw_trace_ref=None, large_fact=True)
@@ -159,6 +173,7 @@ def _repo_with_prompt_context(
         json.dumps({"exclude_paths": [".env"]}, indent=2) + "\n",
         encoding="utf-8",
     )
+    (repo_root / "CLAUDE.md").write_text("Review live source guidance.\n", encoding="utf-8")
     return repo_root
 
 

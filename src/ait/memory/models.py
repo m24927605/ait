@@ -34,6 +34,30 @@ class MemorySearchResult:
     metadata: dict[str, object]
 
 @dataclass(frozen=True, slots=True)
+class LiveMemorySource:
+    source_id: str
+    source: str
+    kind: str
+    scope: str
+    path: str
+    absolute_path: str
+    exists: bool
+    allowed_by_policy: bool
+    policy_status: str
+    policy_reason: str
+    skip_reason: str
+    sha256: str | None
+    mtime: float | None
+    size_bytes: int | None
+    bytes_used: int = 0
+    redacted: bool = False
+    authority: str = "live_external"
+    source_of_truth: bool = True
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+@dataclass(frozen=True, slots=True)
 class MemoryCandidate:
     kind: str
     topic: str
@@ -64,6 +88,9 @@ class RelevantMemoryRecall:
     budget_chars: int
     rendered_chars: int
     compacted: bool
+    source_manifest: tuple[dict[str, object], ...] = ()
+    write_mode: str = "read_only"
+    record_ref: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -73,6 +100,9 @@ class RelevantMemoryRecall:
             "budget_chars": self.budget_chars,
             "rendered_chars": self.rendered_chars,
             "compacted": self.compacted,
+            "source_manifest": list(self.source_manifest),
+            "write_mode": self.write_mode,
+            "record_ref": self.record_ref,
         }
 
 @dataclass(frozen=True, slots=True)

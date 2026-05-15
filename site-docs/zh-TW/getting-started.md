@@ -94,21 +94,29 @@ Apply 之前 root checkout 完全不變。若 run 失敗或無法安全套用，
 `ait recover latest`。如果 agent session 被關掉、你想回到保留的 worktree
 續修，使用 `ait resume latest`。
 
-## 把既有 agent memory 納入視野
+## 即時讀取既有 agent memory
 
-既有專案如果已經有 agent memory files，先預覽 AIT 看得到什麼：
+既有專案如果已經有 agent memory files，先確認 AIT 可以 zero-touch 讀到什麼：
+
+```bash
+ait memory sources
+ait memory recall "project policy"
+```
+
+若要預覽舊的 materialization path，再執行：
 
 ```bash
 ait memory backfill --dry-run
 ```
 
-Dry-run 不會寫入任何東西。要把 repo-local advisory memory 匯入 `.ait/`，
-再執行：
+Dry-run 不會寫入任何東西。若要明確把 repo-local advisory memory 寫進
+`.ait/`，再執行：
 
 ```bash
 ait memory backfill --import
 ```
 
+`backfill --import` 是 mutation/deprecated path，live recall 不需要 import。
 Global 或 repo 外部 memory 會被忽略，除非你明確指定 `--global --path ...`。
 
 ## 接下來

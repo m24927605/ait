@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ait.daemon import daemon_status, stop_daemon
 from ait.db import connect_db, get_evidence_summary
+from support import init_git_repo as _init_git_repo
 
 
 SRC_ROOT = Path(__file__).resolve().parents[1] / "src"
@@ -96,19 +97,6 @@ def _start_cli_run(
         stderr=subprocess.PIPE,
         text=True,
     )
-
-
-def _init_git_repo(repo_root: Path) -> None:
-    subprocess.run(["git", "init", "-q"], cwd=repo_root, check=True)
-    subprocess.run(
-        ["git", "config", "user.email", "test@example.com"],
-        cwd=repo_root,
-        check=True,
-    )
-    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo_root, check=True)
-    (repo_root / "README.md").write_text("test\n", encoding="utf-8")
-    subprocess.run(["git", "add", "README.md"], cwd=repo_root, check=True)
-    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo_root, check=True)
 
 
 if __name__ == "__main__":

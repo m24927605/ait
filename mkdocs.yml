@@ -81,6 +81,7 @@ plugins:
             Commands: 指令
             Review modes: 審查模式
             Adversarial code review: 對抗式 code review
+            Live federated memory: Live federated memory
 
 markdown_extensions:
   - admonition
@@ -121,6 +122,7 @@ nav:
       - "ait vs naked git-worktree": compare/git-worktree-naked-vs-ait.md
   - Reference:
       - Commands: reference/commands.md
+      - Live federated memory: reference/live-federated-memory.md
       - Review modes: reference/review-modes.md
       - Adversarial code review: reference/adversarial-code-review.md
   - Facts: facts.md

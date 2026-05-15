@@ -76,6 +76,33 @@ ait merge --to main --mode auto --dry-run --json
 JSON 狀態、合法下一步、dry-run merge operations，以及不需要互動 prompt
 的 review evidence。
 
+## 本機 multi-agent sessions
+
+```bash
+ait session start "重構 auth" --agents fake:one,fake:two
+ait session ask latest "比較風險"
+ait session run latest --mode panel
+ait session attach latest
+ait session attach latest --format json
+ait session panes latest --format json
+ait session send latest --to fake:one "追問"
+ait session send latest --all "列出剩餘風險"
+ait session kill latest --agent fake:one
+ait session replay latest --turn latest
+```
+
+`ait session attach latest --format json` 只回傳 attach plan，不會啟動 PTY。
+foreground attach 會替每個 active participant 建立一個本機 PTY，寫入
+`.ait/sessions/<session-id>/streams/events.jsonl`，並為每個 response 保存
+raw 與 redacted terminal transcript refs。互動輸入必須明確 routing：
+`/to <agent-or-participant-id> <text>`、`/all <text>`、`/kill <agent>`、
+`/detach`。
+
+目前 terminal 實作是 foreground-owned。daemon-owned PTY detach/resume 尚未
+啟用前，`send` 與可恢復的 `kill` 會用 machine-readable JSON 回報 blocking
+reasons。Session terminal commands 不會 apply changes；`ait apply
+<attempt-id>` 仍是唯一 apply gate。
+
 ## Review
 
 ```bash
@@ -117,6 +144,9 @@ ait attempt discard <attempt-id>
 
 ```bash
 ait memory
+ait memory sources
+ait memory sources --format json
+ait memory sources --source claude
 ait memory search "auth adapter"
 ait memory recall "billing retry"
 ait memory backfill --dry-run
@@ -125,12 +155,15 @@ ait memory lint
 ait memory lint --fix
 ```
 
-Memory 是 repo-local，存在 `.ait/`。它整合 prior attempts、commits、
-curated notes、匯入的 agent memory files，以及 accepted memory facts，
-之後只召回 policy 允許的 context 給未來執行。
+Memory 是 live federated repo view。AIT-owned memory 存在 `.ait/`，包含
+prior attempts、commits、curated notes、accepted memory facts 與 prior findings。
+`CLAUDE.md`、`AGENTS.md`、`.cursor/rules` 等 live external sources 會在
+recall/run/review 當下即時讀取，並維持自己的 source of truth。
 
-`ait memory backfill --dry-run` 只預覽 repo-local agent memory，不會寫入。
-`--import` 才會把 advisory memory 加到 `.ait/`。Global 或 repo 外部
+`ait memory sources` 與預設 `ait memory recall` 都是 zero-touch read：
+不建立 `.ait/`，也不修改來源檔。`ait memory backfill --dry-run` 只預覽
+repo-local agent memory，不會寫入。`backfill --import` 是明確 mutation /
+deprecated path，會把 advisory memory 加到 `.ait/`。Global 或 repo 外部
 memory 必須明確指定 `--global --path ...`。
 
 ## Graph

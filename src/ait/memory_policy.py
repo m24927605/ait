@@ -27,6 +27,15 @@ DEFAULT_RECALL_SOURCE_ALLOW = (
     "manual:*",
     "attempt-memory:*",
     "agent-memory:*",
+    "live-memory:*",
+    "durable-memory:*",
+    "transcript-summary:*",
+)
+LEGACY_DEFAULT_RECALL_SOURCE_ALLOW = (
+    "manual",
+    "manual:*",
+    "attempt-memory:*",
+    "agent-memory:*",
     "durable-memory:*",
     "transcript-summary:*",
 )
@@ -189,6 +198,8 @@ def _policy_from_mapping(data: dict[str, Any], *, path: Path) -> MemoryPolicy:
         data.get("recall_source_allow", DEFAULT_RECALL_SOURCE_ALLOW),
         path=path,
     )
+    if recall_source_allow == LEGACY_DEFAULT_RECALL_SOURCE_ALLOW:
+        recall_source_allow = DEFAULT_RECALL_SOURCE_ALLOW
     recall_source_block = _string_tuple(
         data.get("recall_source_block", DEFAULT_RECALL_SOURCE_BLOCK),
         path=path,

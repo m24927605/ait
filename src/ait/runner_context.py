@@ -14,6 +14,7 @@ from ait.memory import (
     build_repo_memory,
     render_relevant_memory_recall,
     render_repo_memory_text,
+    write_context_manifest,
 )
 
 
@@ -51,6 +52,7 @@ def _write_context_file(
         auto_query.query,
         budget_chars=4000,
         attempt_id=attempt_id,
+        include_all_live_sources=True,
     )
     relevant_memory = render_relevant_memory_recall(recall)
     path = workspace / ".ait-context.md"
@@ -68,6 +70,13 @@ def _write_context_file(
         + render_repo_brain_briefing(briefing, budget_chars=5000)
     )
     path.write_text(_fit_context_budget(context_text), encoding="utf-8")
+    write_context_manifest(
+        repo_root,
+        owner_kind="attempt",
+        owner_id=attempt_id,
+        context_ref=str(path),
+        recall=recall,
+    )
     return path
 
 

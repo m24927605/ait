@@ -142,12 +142,13 @@ stray files. See [Why ait](why-ait.md).
 
 **A:** Each wrapped run receives `AIT_CONTEXT_FILE` — a compact
 repo-local handoff file. ait builds it from prior attempts, prior
-commits, curated notes, and imported agent memory files (`CLAUDE.md`,
-`AGENTS.md`) under local memory policy. Approved or accepted facts can
-be trusted baseline context; candidate, stale, superseded, or
-policy-blocked memory remains advisory or excluded. When Claude Code
-finishes one attempt and Codex starts the next, Codex sees the context
-that policy allows.
+commits, curated notes, accepted facts, and live agent memory files
+(`CLAUDE.md`, `AGENTS.md`, `.cursor/rules`) under local memory policy.
+The external files remain their own source of truth; AIT reads them live
+instead of auto-importing them. Approved or accepted facts can be trusted
+baseline context; candidate, stale, superseded, or policy-blocked memory
+remains advisory or excluded. When Claude Code finishes one attempt and Codex
+starts the next, Codex sees the context that policy allows.
 
 ### Q: What does `ait init` actually do to my repo?
 
@@ -192,7 +193,7 @@ documented in the [MVP spec](https://github.com/m24927605/ait/blob/main/docs/ai-
     {"@type":"Question","name":"How do I install ait?","acceptedAnswer":{"@type":"Answer","text":"Either pipx install ait-vcs (recommended) or npm install -g ait-vcs. The package is ait-vcs on both registries; the installed command is ait. Requires Python 3.14+ and Git."}},
     {"@type":"Question","name":"What is an attempt in ait terminology?","acceptedAnswer":{"@type":"Answer","text":"An attempt is one wrapped agent run. It has an ID, a parent intent, a Git worktree, a recorded prompt, a status such as succeeded, applied/promoted, or failed, a set of edited files, and zero or more resulting Git commits."}},
     {"@type":"Question","name":"How do I undo a failed AI agent run with ait?","acceptedAnswer":{"@type":"Answer","text":"Run ait attempt discard <id>. The attempt's worktree and metadata are removed; your root checkout is unaffected because the bad changes never touched it."}},
-    {"@type":"Question","name":"How does ait pass context between different AI agents?","acceptedAnswer":{"@type":"Answer","text":"Each wrapped run receives AIT_CONTEXT_FILE, a compact repo-local handoff file built from prior attempts, prior commits, curated notes, and imported agent memory files like CLAUDE.md and AGENTS.md under local memory policy. Approved or accepted facts can be trusted baseline context; candidate, stale, superseded, or policy-blocked memory remains advisory or excluded."}},
+    {"@type":"Question","name":"How does ait pass context between different AI agents?","acceptedAnswer":{"@type":"Answer","text":"Each wrapped run receives AIT_CONTEXT_FILE, a compact repo-local handoff file built from prior attempts, prior commits, curated notes, accepted facts, and live agent memory files like CLAUDE.md, AGENTS.md, and .cursor/rules under local memory policy. External files remain their own source of truth and are read live, not auto-imported. Approved or accepted facts can be trusted baseline context; candidate, stale, superseded, or policy-blocked memory remains advisory or excluded."}},
     {"@type":"Question","name":"What does ait init do to my repo?","acceptedAnswer":{"@type":"Answer","text":"It creates .ait/ (config, database, worktrees root, agent wrappers), installs an envrc for direnv if present, and merges hooks into agent config files it detects (.claude/settings.json, .codex/hooks.json, .gemini/settings.json). It does not modify Git history."}},
     {"@type":"Question","name":"Is ait stable or production-ready?","acceptedAnswer":{"@type":"Answer","text":"ait is alpha. The current release is 0.55.x and is intended for local dogfooding and early users comfortable with Git workflows. Public API and CLI surface are stabilizing but not frozen."}},
     {"@type":"Question","name":"How do I find a prompt I wrote last month?","acceptedAnswer":{"@type":"Answer","text":"ait attempt list --query searches attempts by intent text, status, agent, time range, files touched, and commits, using a structured DSL. ait memory search also surfaces matching prior attempts and notes."}}

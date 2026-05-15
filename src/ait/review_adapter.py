@@ -30,7 +30,7 @@ class ReviewAdapterResult:
     returncode: int
     stdout: str
     stderr: str
-    timeout_seconds: int | None
+    timeout_seconds: int | float | None
     resolved_binary_path: str | None
     blocked_env: dict[str, bool]
 

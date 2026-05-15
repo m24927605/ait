@@ -1,5 +1,14 @@
 # Zero-Interference Attempt Provenance And Memory Backfill Spec
 
+> Memory supersession note: the memory backfill/import portions of this
+> document are superseded by
+> [`live-federated-memory-design-zh.md`](live-federated-memory-design-zh.md).
+> Writing imported metadata under `.ait/` is an AIT-local mutation, not
+> zero-touch behavior. The current product direction is live federation:
+> read external agent memory sources at recall/run/review time, keep those
+> sources as source of truth, and reserve `.ait/` writes for AIT-native
+> evidence or explicit adopt/materialize commands.
+
 Status: design and acceptance standard
 Owner: AIT Staff Engineering Team
 Scope: prompt capture, failure evidence, bypass detection, live inspection,

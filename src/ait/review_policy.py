@@ -60,7 +60,7 @@ class ReviewBaselinePolicy:
 class ReviewAdapterPolicy:
     command: str
     args: tuple[str, ...] = ()
-    timeout_seconds: int = 300
+    timeout_seconds: int | float = 300
     env_allowlist: tuple[str, ...] = ()
     cwd: str | None = None
     output: str = "json"
@@ -683,13 +683,13 @@ def _adapter_policies(value: object) -> dict[str, ReviewAdapterPolicy] | None:
             continue
         args = raw_config.get("args")
         env_allowlist = raw_config.get("env_allowlist")
-        timeout = raw_config.get("timeout_seconds", 300)
+        timeout = _positive_timeout(raw_config.get("timeout_seconds", 300))
         cwd = raw_config.get("cwd")
         output = str(raw_config.get("output", "json")).strip().lower() or "json"
         result[str(name)] = ReviewAdapterPolicy(
             command=command,
             args=tuple(str(item) for item in args) if isinstance(args, list) else (),
-            timeout_seconds=timeout if isinstance(timeout, int) and timeout > 0 else 300,
+            timeout_seconds=timeout,
             env_allowlist=tuple(str(item) for item in env_allowlist)
             if isinstance(env_allowlist, list)
             else (),
@@ -697,6 +697,16 @@ def _adapter_policies(value: object) -> dict[str, ReviewAdapterPolicy] | None:
             output=output,
         )
     return result
+
+
+def _positive_timeout(value: object) -> int | float:
+    if isinstance(value, bool):
+        return 300
+    if isinstance(value, int) and value > 0:
+        return value
+    if isinstance(value, float) and value > 0:
+        return value
+    return 300
 
 
 def _profile_tuple(value: object) -> tuple[str, ...]:

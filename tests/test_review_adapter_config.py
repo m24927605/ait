@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import shlex
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -21,6 +20,7 @@ from ait.db import (
     run_migrations,
 )
 from ait.review import create_command_reviewer_review
+from support import init_git_repo
 
 
 class ReviewAdapterConfigTests(unittest.TestCase):
@@ -142,11 +142,11 @@ class ReviewAdapterConfigTests(unittest.TestCase):
     def test_policy_adapter_timeout_fails_closed(self) -> None:
         repo_root = _repo_with_reviewable_attempt()
         script = repo_root / "slow_reviewer.py"
-        script.write_text("import time\ntime.sleep(2)\n", encoding="utf-8")
+        script.write_text("import time\ntime.sleep(60)\n", encoding="utf-8")
         _write_review_adapter_config(
             repo_root,
             command=f"{shlex.quote(sys.executable)} {shlex.quote(str(script))}",
-            timeout_seconds=1,
+            timeout_seconds=0.05,
         )
 
         result = create_command_reviewer_review(
@@ -163,7 +163,7 @@ def _write_review_adapter_config(
     repo_root: Path,
     *,
     command: str,
-    timeout_seconds: int = 300,
+    timeout_seconds: int | float = 300,
     cwd: str = ".ait/reviewer-runs",
     env_allowlist: list[str] | None = None,
 ) -> None:
@@ -207,7 +207,7 @@ def _repo_with_reviewable_attempt() -> Path:
     tmp = tempfile.TemporaryDirectory()
     repo_root = Path(tmp.name)
     _TEMP_DIRS.append(tmp)
-    _git(repo_root, "init")
+    init_git_repo(repo_root)
     init_result = init_repo(repo_root)
     conn = connect_db(init_result.db_path)
     try:
@@ -248,12 +248,6 @@ def _repo_with_reviewable_attempt() -> Path:
     finally:
         conn.close()
     return repo_root
-
-
-def _git(repo_root: Path, *args: str) -> None:
-    result = subprocess.run(["git", *args], cwd=repo_root, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise AssertionError(result.stderr.strip() or result.stdout.strip())
 
 
 _TEMP_DIRS: list[tempfile.TemporaryDirectory[str]] = []

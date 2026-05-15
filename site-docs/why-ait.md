@@ -58,9 +58,10 @@ Runnable example: [`03-failed-run-isolation`](https://github.com/m24927605/ait/t
 **Pain.** Last week Claude already traced why the auth retry fails. This
 week Codex starts the investigation from scratch. Same tokens, twice.
 
-**ait.** Repo-local memory summarizes previous attempts, commits, agent
-memory files (`CLAUDE.md`, `AGENTS.md`), and curated notes into a compact
-context handoff (`AIT_CONTEXT_FILE`) for the next run.
+**ait.** Repo-local memory combines previous attempts, commits, curated notes,
+accepted facts, and live agent memory files (`CLAUDE.md`, `AGENTS.md`,
+`.cursor/rules`) into a compact context handoff (`AIT_CONTEXT_FILE`) for the
+next run.
 
 Runnable example: [`04-memory-reuse`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/04-memory-reuse)
 
@@ -91,9 +92,10 @@ Runnable example: [`06-explicit-promotion`](https://github.com/m24927605/ait/tre
 **Pain.** Claude ran three rounds, then Aider takes over and knows
 nothing about the decisions, dead ends, or partial fixes from before.
 
-**ait.** The memory layer auto-imports `CLAUDE.md`, `AGENTS.md`, and
-prior attempts so the next agent — same or different — picks up with the
-shared history.
+**ait.** The memory layer reads `CLAUDE.md`, `AGENTS.md`, Cursor rules, and
+AIT-owned attempt history live at handoff time, so the next agent — same or
+different — picks up with the shared repo context without auto-importing those
+external files.
 
 Runnable example: [`07-cross-agent-handoff`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/07-cross-agent-handoff)
 

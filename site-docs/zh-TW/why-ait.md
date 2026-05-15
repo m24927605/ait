@@ -52,9 +52,9 @@ output、產生的 commits 串成一筆可查的紀錄。`ait attempt show <id>`
 **痛點：** 上週 Claude 已經查過 auth retry 為什麼失敗。這週 Codex 又
 從零開始查。一樣的 token 花兩遍。
 
-**解法：** Repo-local memory 把過去 attempts、commits、agent memory 檔
-（`CLAUDE.md`、`AGENTS.md`）摘要成一份 `AIT_CONTEXT_FILE` 餵給下一次
-執行。
+**解法：** Repo-local memory 把過去 attempts、commits、curated notes、
+accepted facts，以及即時讀取的 agent memory 檔（`CLAUDE.md`、`AGENTS.md`、
+`.cursor/rules`）組成一份 `AIT_CONTEXT_FILE` 餵給下一次執行。
 
 可執行範例：[`04-memory-reuse`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/04-memory-reuse)
 
@@ -84,8 +84,9 @@ output、產生的 commits 串成一筆可查的紀錄。`ait attempt show <id>`
 **痛點：** Claude 跑了三輪，換 Aider 接手，前面的決策、死路、半套修補
 全都不見。
 
-**解法：** Memory layer 自動匯入 `CLAUDE.md`、`AGENTS.md` 與過去 attempts，
-下一個 agent — 同一個或不同 — 接續共同的歷史。
+**解法：** Memory layer 在 handoff 當下即時讀 `CLAUDE.md`、`AGENTS.md`、
+Cursor rules 與 AIT-owned attempt history，下一個 agent — 同一個或不同 —
+接續共同 repo context，不需要自動匯入外部檔案。
 
 可執行範例：[`07-cross-agent-handoff`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/07-cross-agent-handoff)
 

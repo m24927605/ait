@@ -16,6 +16,7 @@ from ait.repo import resolve_repo_root
 
 from .common import _attempt_memory_note_advisory
 from .lint import lint_memory_notes
+from .live_sources import search_live_memory_sources, write_recall_record
 from .models import (
     MemorySearchResult,
     RelevantMemoryItem,
@@ -39,17 +40,41 @@ def build_relevant_memory_recall(
     budget_chars: int = 4000,
     include_unhealthy: bool = False,
     attempt_id: str | None = None,
+    include_live_sources: bool = True,
+    live_paths: tuple[str, ...] = (),
+    include_global: bool = False,
+    include_docs: bool = False,
+    include_all_live_sources: bool = False,
+    record: bool = False,
+    query_sources: object = None,
 ) -> RelevantMemoryRecall:
     root = resolve_repo_root(repo_root)
     policy = load_memory_policy(root)
-    candidates = search_repo_memory(root, query, limit=max(limit * 3, 12), policy=policy)
+    candidates: tuple[MemorySearchResult, ...] = ()
+    state_db_path = root / ".ait" / "state.sqlite3"
+    if state_db_path.exists():
+        candidates = search_repo_memory(root, query, limit=max(limit * 3, 12), policy=policy)
+    live_manifest: tuple[dict[str, object], ...] = ()
+    live_skipped: tuple[dict[str, object], ...] = ()
+    if include_live_sources:
+        live_results, live_manifest, live_skipped = search_live_memory_sources(
+            root,
+            query,
+            paths=live_paths,
+            include_global=include_global,
+            include_docs=include_docs,
+            limit=max(limit * 3, 12),
+            policy=policy,
+            include_unmatched=include_all_live_sources,
+        )
+        candidates = tuple(candidates) + tuple(live_results)
     blocked_notes = (
         _lint_note_codes_by_severity(root, severities=policy.recall_lint_block_severities)
-        if not include_unhealthy
+        if state_db_path.exists() and not include_unhealthy
         else {}
     )
     eligible: list[MemorySearchResult] = []
-    skipped: list[dict[str, object]] = []
+    skipped: list[dict[str, object]] = list(live_skipped)
     for result in candidates:
         source = str(result.metadata.get("source", ""))
         if result.kind == "fact":
@@ -72,6 +97,27 @@ def build_relevant_memory_recall(
                         "id": result.id,
                         "source": source,
                         "reason": blocked_reason,
+                    }
+                )
+                continue
+        elif result.kind == "live_source":
+            if result.metadata.get("policy_status") != "allowed":
+                skipped.append(
+                    {
+                        "kind": result.kind,
+                        "id": result.id,
+                        "source": source,
+                        "reason": str(result.metadata.get("policy_reason") or "blocked by memory policy"),
+                    }
+                )
+                continue
+            if not bool(result.metadata.get("source_of_truth", False)):
+                skipped.append(
+                    {
+                        "kind": result.kind,
+                        "id": result.id,
+                        "source": source,
+                        "reason": "live source missing source-of-truth marker",
                     }
                 )
                 continue
@@ -127,6 +173,12 @@ def build_relevant_memory_recall(
         eligible.append(result)
     ranked = _apply_temporal_recall_ranking(_normalize_recall_ranker_scores(eligible))
     selected_results = ranked[:limit]
+    selected_result_ids = {result.id for result in selected_results if result.kind == "live_source"}
+    if live_manifest:
+        live_manifest = tuple(
+            {**item, "selected": item.get("source_id") in selected_result_ids}
+            for item in live_manifest
+        )
     for result in ranked[limit:]:
         skipped.append(
             {
@@ -162,14 +214,30 @@ def build_relevant_memory_recall(
             selected=tuple(selected),
             budget_chars=budget_chars,
         )
-    return RelevantMemoryRecall(
+    recall = RelevantMemoryRecall(
         query=query,
         selected=tuple(selected),
         skipped=tuple(skipped),
         budget_chars=budget_chars,
         rendered_chars=len(rendered),
         compacted=compacted,
+        source_manifest=live_manifest,
+        write_mode="attempt_context" if attempt_id else ("recorded" if record else "read_only"),
     )
+    if record and not attempt_id:
+        record_ref = write_recall_record(root, recall, query_sources=query_sources)
+        recall = RelevantMemoryRecall(
+            query=recall.query,
+            selected=recall.selected,
+            skipped=recall.skipped,
+            budget_chars=recall.budget_chars,
+            rendered_chars=recall.rendered_chars,
+            compacted=recall.compacted,
+            source_manifest=recall.source_manifest,
+            write_mode="recorded",
+            record_ref=record_ref,
+        )
+    return recall
 
 
 def _fact_recall_blocked_reason(metadata: dict[str, object], policy: MemoryPolicy) -> str:

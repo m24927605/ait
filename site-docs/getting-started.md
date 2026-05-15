@@ -95,22 +95,31 @@ Until apply, your root checkout stays unchanged. If a run fails or cannot
 be applied safely, use `ait recover latest`. If your agent session was closed
 and you want to continue editing the kept worktree, run `ait resume latest`.
 
-## Bring existing agent memory into view
+## Read existing agent memory live
 
-For a project that already has agent memory files, preview what AIT can see:
+For a project that already has agent memory files, inspect what AIT can read
+without creating `.ait/` or mutating source files:
+
+```bash
+ait memory sources
+ait memory recall "project policy"
+```
+
+To preview the older materialization path, run:
 
 ```bash
 ait memory backfill --dry-run
 ```
 
-Dry-run mode writes nothing. To import repo-local advisory memory into `.ait/`,
-run:
+Dry-run mode writes nothing. To explicitly materialize repo-local advisory
+memory into `.ait/`, run:
 
 ```bash
 ait memory backfill --import
 ```
 
-Global or out-of-repo memory is ignored unless you explicitly pass
+`backfill --import` is a mutation/deprecated path and is not required for live
+recall. Global or out-of-repo memory is ignored unless you explicitly pass
 `--global --path ...`.
 
 ## Next steps

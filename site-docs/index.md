@@ -40,8 +40,8 @@ _Static HTML from `ait graph --html`: attempts, evidence, memory, hot files, and
 | Worktree isolation | Every run gets an internal isolated Git worktree, so failed or risky attempts do not pollute your workspace. |
 | Attempt provenance | Prompt, intent, adapter, output, changed files, commits, trace references, status, and outcome stay linked. |
 | Wrapper bypass detection | `ait status <adapter>` shows whether this shell will enter AIT or silently call the real agent binary. |
-| Shared cross-agent memory | Claude Code, Codex, Aider, Gemini, Cursor, and shell agents can reuse the same repo-local context. |
-| Long-term repo memory | Attempts, commits, notes, imported `CLAUDE.md` / `AGENTS.md`, accepted facts, and prior findings can survive across sessions. |
+| Live federated memory | Claude Code, Codex, Aider, Gemini, Cursor, and shell agents can reuse the same live repo memory: AIT-owned history plus current `CLAUDE.md`, `AGENTS.md`, and Cursor rules. |
+| Long-term repo memory | Attempts, commits, notes, accepted facts, prior findings, and explicit adopted memory can survive across sessions. |
 | Cross-agent handoff | One agent can record an investigation or decision, and another agent can receive it later through AIT. |
 | Parallel agent attempts | Multiple agents can try different approaches at the same time without racing inside the same checkout. |
 | Explicit apply/recover flow | Agent output stays a proposal until apply; held or failed work remains recoverable. |
@@ -59,7 +59,7 @@ _Static HTML from `ait graph --html`: attempts, evidence, memory, hot files, and
 | The next agent repeats investigation you already paid tokens for | Shared repo-local memory feeds prior attempts, commits, notes, and accepted facts to the next run | [`04-memory-reuse`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/04-memory-reuse) |
 | Two agents on the same task stomp each other | Each attempt has its own worktree — run N agents in parallel | [`05-parallel-agents`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/05-parallel-agents) |
 | Did the agent really fix it, or just claim it did? | Explicit `ait apply latest` keeps speculative changes out of main until you decide | [`06-explicit-promotion`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/06-explicit-promotion) |
-| Cross-agent hand-offs lose every previous decision | Long-term memory can preserve `CLAUDE.md`, `AGENTS.md`, prior attempts, notes, and accepted decisions | [`07-cross-agent-handoff`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/07-cross-agent-handoff) |
+| Cross-agent hand-offs lose every previous decision | Live repo memory combines current agent memory files with prior attempts, notes, and accepted decisions | [`07-cross-agent-handoff`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/07-cross-agent-handoff) |
 | Provenance tooling wants to ship your code to a SaaS | Metadata stays in `.ait/` next to `.git/` — harness daemon is local-only (Unix socket, no network), no telemetry | [`08-local-only-provenance`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/08-local-only-provenance) |
 | The implementing agent rubber-stamps its own answer | Adversarial review lets a separate reviewer agent challenge the attempt; high-risk findings can block apply | [`09-verification-evidence`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/09-verification-evidence), [`09-1-codex-reviewer`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/09-1-codex-reviewer) |
 | "Where's that prompt I wrote last month?" → grep shell history | Query attempts, intents, and commits with a structured DSL | [`10-prompt-search`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/10-prompt-search) |
@@ -99,15 +99,17 @@ removes `ANTHROPIC_API_KEY` from that child process environment. AIT does not
 silently fall back to provider API credits; Claude Code must be installed and
 locally authenticated on your machine.
 
-Repo-local memory is shared through `.ait/` inside one repository. AIT records
-attempts, commits, notes, imported agent memory files, accepted memory facts,
-and prior findings, then recalls only policy-allowed context for future runs.
-This is inspectable project memory, not hidden chat-window memory.
+Repo-local memory is a live federated view inside one repository. AIT records
+attempts, commits, notes, accepted memory facts, and prior findings under
+`.ait/`, then reads current repo-local agent memory files such as `CLAUDE.md`,
+`AGENTS.md`, and `.cursor/rules` live at recall/run/review time. This is
+inspectable project memory, not hidden chat-window memory.
 
 When you introduce AIT to an existing repository, start with
-`ait memory backfill --dry-run`. It previews repo-local agent memory files such
-as `CLAUDE.md`, `AGENTS.md`, and `.cursor/rules` without writing anything. Use
-`--import` only when you want AIT to add advisory memory under `.ait/`.
+`ait memory sources` or `ait memory recall`. Both are zero-touch reads by
+default: no `.ait/` creation and no source mutation. `ait memory backfill
+--dry-run` remains a zero-write preview. Use `backfill --import` only when you
+explicitly want AIT to add advisory memory under `.ait/`.
 
 See [Adversarial code review](reference/adversarial-code-review.md) for details
 on reviewer adapters, findings, reports, and review-gated apply.

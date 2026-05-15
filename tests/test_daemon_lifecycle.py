@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import json
 import signal
-import subprocess
 import sys
 import tempfile
 import time
@@ -25,6 +24,7 @@ from ait.daemon import (
 )
 from ait.daemon_transport import bind_unix_socket
 from ait.db import NewAttempt, NewIntent, connect_db, get_attempt, insert_attempt, insert_intent, run_migrations
+from support import init_git_repo as _init_git_repo
 
 
 class DaemonLifecycleTests(unittest.TestCase):
@@ -185,7 +185,7 @@ class DaemonLifecycleTests(unittest.TestCase):
             assert started.pid is not None
             os.kill(started.pid, signal.SIGKILL)
             _wait_for_daemon_to_stop(repo_root)
-            time.sleep(2.1)
+            _set_attempt_heartbeat(repo_root, attempt.attempt_id, "2000-01-01T00:00:00Z")
             restarted = start_daemon(repo_root)
 
             try:
@@ -203,15 +203,6 @@ class DaemonLifecycleTests(unittest.TestCase):
                 stop_daemon(repo_root)
 
 
-def _init_git_repo(repo_root: Path) -> None:
-    subprocess.run(["git", "init", "-q"], cwd=repo_root, check=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_root, check=True)
-    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo_root, check=True)
-    (repo_root / "README.md").write_text("test\n", encoding="utf-8")
-    subprocess.run(["git", "add", "README.md"], cwd=repo_root, check=True)
-    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo_root, check=True)
-
-
 def _wait_for_daemon_to_stop(repo_root: Path) -> None:
     deadline = time.monotonic() + 5.0
     while time.monotonic() < deadline:
@@ -219,6 +210,22 @@ def _wait_for_daemon_to_stop(repo_root: Path) -> None:
             return
         time.sleep(0.05)
     raise AssertionError("daemon did not stop")
+
+
+def _set_attempt_heartbeat(repo_root: Path, attempt_id: str, heartbeat_at: str) -> None:
+    conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+    try:
+        conn.execute(
+            """
+            UPDATE attempts
+            SET heartbeat_at = ?
+            WHERE id = ?
+            """,
+            (heartbeat_at, attempt_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _pid_has_exited(pid: int) -> bool:
