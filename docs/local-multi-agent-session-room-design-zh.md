@@ -27,11 +27,10 @@ Implementation note:
 - `ait session run --mode role` can now invoke real local implementer adapters
   inside isolated attempt workspaces, using the same consented session
   permission policy and per-role `AIT_CONTEXT_FILE` handoff. Fake implementers
-  remain deterministic for tests. Real reviewer adapter invocation for Role
-  Mode is still a P0 gap tracked in
-  [`multi-agent-session-ux-optimization-plan-zh.md`](multi-agent-session-ux-optimization-plan-zh.md);
-  use `ait review attempt --mode adversarial --review-adapter ...` for real
-  reviewer adapters until the role reviewer path lands.
+  remain deterministic for tests. Role reviewers now run the adversarial review
+  substrate against the implementer attempt: `claude-code` uses local
+  `claude -p`, `codex` uses local `codex exec --sandbox read-only -`, and
+  fake reviewers remain deterministic for tests.
 - `ait session attempt --from <response-id>` turns an advisory response into a
   new isolated attempt without applying it.
 - `ait session decision --accept <response-id> --promote-memory` promotes an

@@ -108,10 +108,11 @@ commands. Responses are advisory session artifacts, not applied changes.
 
 Role mode can invoke real local implementer adapters inside isolated attempt
 workspaces, with per-role `AIT_CONTEXT_FILE` handoff and command provenance.
-Current limitation: session role reviewers still use the deterministic review
-path. Use `ait review attempt --mode adversarial --review-adapter ...` for real
-reviewer adapters against completed attempts until real role reviewer
-invocation lands.
+Role reviewers run the adversarial review substrate against the implementer
+attempt: `claude-code` uses local `claude -p`, `codex` uses local
+`codex exec --sandbox read-only -`, and fake reviewers remain deterministic for
+tests. Role outputs remain reviewable session artifacts; applying changes still
+requires an explicit `ait apply`.
 
 Choose the consented permission policy at session start. AIT stores that policy
 on the session and reuses it for later panel/council invocations:

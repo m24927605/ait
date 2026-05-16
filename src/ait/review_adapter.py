@@ -16,6 +16,7 @@ class ReviewAdapterError(RuntimeError):
 
 _LOCAL_CLI_REVIEW_ADAPTERS: dict[str, tuple[str, ...]] = {
     "claude-code": ("claude", "-p"),
+    "codex": ("codex", "exec", "--sandbox", "read-only", "-"),
 }
 
 _REVIEW_ADAPTER_ENV_BLOCKLIST: dict[str, tuple[str, ...]] = {

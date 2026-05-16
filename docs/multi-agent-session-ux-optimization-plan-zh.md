@@ -40,8 +40,9 @@ session role invocation。
   `codex` 等已知 adapter 會被真實呼叫；`fake:*` implementer 仍保留
   deterministic fixture path。
 - `src/ait/session_room.py::_run_reviewer()` 目前使用 deterministic review
-  substrate，不會依 `--reviewer codex` 或 `--reviewer claude-code` 呼叫對應
-  reviewer adapter。
+  substrate；這個 P0 缺口已修正：`--reviewer codex` / `--reviewer
+  claude-code` 會走 adversarial reviewer adapter，`fake:*` reviewers 仍保留
+  deterministic test path。
 - `src/ait/session_room.py::_invoke_real_panel_agent()` 已經有 panel/council
   真實 adapter invocation 路徑，會使用 session start 時記錄的 permission
   policy。
@@ -137,6 +138,16 @@ Acceptance tests：
 
 目標：`--reviewer codex` 或 `--reviewer claude-code` 必須真的跑 reviewer
 adapter，不只是 deterministic review。
+
+Implementation status:
+
+- Landed after this plan: Role Mode reviewers now call the adversarial review
+  substrate for non-fake reviewers and link the resulting review id/artifacts to
+  the session reviewer response. `claude-code` uses local `claude -p`; `codex`
+  uses local `codex exec --sandbox read-only -`; fake reviewers keep the
+  deterministic path.
+- Remaining: expose reviewer budget/policy controls directly on
+  `ait session run --mode role` if users need per-session review depth tuning.
 
 實作方向：
 

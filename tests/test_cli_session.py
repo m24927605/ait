@@ -443,6 +443,116 @@ class CliSessionTests(unittest.TestCase):
             self.assertFalse((repo / "src" / "backend.txt").exists())
             self.assertEqual("", _git_stdout(repo, "status", "--short"))
 
+    def test_role_mode_invokes_real_reviewer_adapter_against_attempt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            _init_git_repo(repo)
+            with tempfile.TemporaryDirectory() as bin_tmp:
+                bin_dir = Path(bin_tmp)
+                fake_codex = bin_dir / "codex"
+                fake_codex.write_text(
+                    f"#!{sys.executable}\n"
+                    "import json, os, pathlib, sys\n"
+                    "brief = sys.stdin.read()\n"
+                    "pathlib.Path('reviewer-side.txt').write_text('reviewed', encoding='utf-8')\n"
+                    "print(json.dumps({"
+                    "'summary': 'codex role reviewer args=' + ' '.join(sys.argv[1:])"
+                    " + ' brief=' + str(bool(brief)).lower()"
+                    " + ' cwd=' + os.getcwd(),"
+                    "'findings': []"
+                    "}))\n",
+                    encoding="utf-8",
+                )
+                fake_codex.chmod(0o755)
+                _run_cli_json(
+                    repo,
+                    "session",
+                    "start",
+                    "Role review",
+                    "--agents",
+                    "fake:impl,codex",
+                    "--format",
+                    "json",
+                )
+                _run_cli_json(repo, "session", "ask", "latest", "Implement then review", "--format", "json")
+
+                with patch.dict(os.environ, {"PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"}):
+                    payload = _run_cli_json(
+                        repo,
+                        "session",
+                        "run",
+                        "latest",
+                        "--mode",
+                        "role",
+                        "--implementer",
+                        "fake:impl",
+                        "--reviewer",
+                        "codex",
+                        "--package",
+                        "backend=src/backend.txt",
+                        "--format",
+                        "json",
+                    )
+
+            review_response = payload["review_responses"][0]
+            artifact = json.loads((repo / review_response["provenance"]["artifact_ref"]).read_text(encoding="utf-8"))
+            adapter_invocation = artifact["adapter_invocation"]
+            reviewer_cwd = Path(adapter_invocation["cwd"])
+
+            self.assertEqual("codex", review_response["adapter_name"])
+            self.assertEqual("real_adapter", review_response["metadata_json"]["role_command_kind"])
+            self.assertEqual("adversarial", artifact["mode"])
+            self.assertEqual("codex", artifact["reviewer_adapter"])
+            self.assertEqual(["codex", "exec", "--sandbox", "read-only", "-"], adapter_invocation["command"])
+            self.assertIn("codex role reviewer args=exec --sandbox read-only -", adapter_invocation["stdout"])
+            self.assertIn("brief=true", adapter_invocation["stdout"])
+            self.assertTrue((reviewer_cwd / "reviewer-side.txt").exists())
+            self.assertFalse((repo / "reviewer-side.txt").exists())
+            self.assertFalse((repo / "src" / "backend.txt").exists())
+            self.assertEqual("", _git_stdout(repo, "status", "--short"))
+
+    def test_role_mode_failed_reviewer_marks_turn_partial(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            _init_git_repo(repo)
+            _run_cli_json(repo, "session", "start", "Role failed review", "--agents", "fake:impl,fake:malformed", "--format", "json")
+            _run_cli_json(repo, "session", "ask", "latest", "Implement then fail review", "--format", "json")
+
+            payload = _run_cli_json(
+                repo,
+                "session",
+                "run",
+                "latest",
+                "--mode",
+                "role",
+                "--implementer",
+                "fake:impl",
+                "--reviewer",
+                "fake:malformed",
+                "--package",
+                "backend=src/backend.txt",
+                "--format",
+                "json",
+            )
+
+            review_response = payload["review_responses"][0]
+            turn = json.loads(
+                (
+                    repo
+                    / ".ait"
+                    / "sessions"
+                    / payload["session_id"]
+                    / "turns"
+                    / f"{payload['current_turn_id']}-turn.json"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual("role", payload["mode"])
+            self.assertEqual("partial", turn["state"])
+            self.assertEqual("failed", review_response["state"])
+            self.assertTrue(any("review failed: fake:malformed" in reason for reason in payload["blocking_reasons"]))
+            self.assertTrue(any(item["agent_id"] == "fake:malformed" for item in payload["partial_failures"]))
+            self.assertEqual("", _git_stdout(repo, "status", "--short"))
+
     def test_split_implementation_disjoint_and_overlap_behaviors(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)

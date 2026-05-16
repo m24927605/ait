@@ -10,8 +10,11 @@
 - Make `ait session run --mode role --implementer <adapter>` invoke the real
   local implementer adapter inside an isolated attempt workspace for configured
   adapters such as Codex and Claude Code. Fake implementers remain
-  deterministic for tests, and session role reviewers still use the existing
-  deterministic review path until real reviewer role invocation lands.
+  deterministic for tests.
+- Make `ait session run --mode role --reviewer <adapter>` run real adversarial
+  reviewer adapters against the implementer attempt. `claude-code` uses local
+  `claude -p`; `codex` uses local `codex exec --sandbox read-only -`; fake
+  reviewers remain deterministic for tests.
 
 ## 0.55.64 - 2026-05-16
 

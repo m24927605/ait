@@ -24,7 +24,7 @@ from ait.memory import discover_live_memory_sources, read_live_memory_source
 from ait.redaction import redact_text
 from ait.repo import resolve_repo_root
 from ait.runner import run_agent_command
-from ait.review import create_deterministic_review
+from ait.review import create_command_reviewer_review, create_deterministic_review, create_fake_reviewer_review
 
 
 SESSION_SCHEMA_VERSION = 1
@@ -616,10 +616,15 @@ class SessionStore:
                 response_ids.append(str(review_response["id"]))
                 review_responses.append(review_response)
         integration = self._write_integration_plan(session, attempts)
+        failed_review_reasons = [
+            f"review failed: {item.get('agent_id')} -> {item.get('review_id')}"
+            for item in review_responses
+            if item.get("state") == "failed"
+        ]
         turn["mode"] = "role"
         turn["response_ids"] = response_ids
-        turn["state"] = "partial" if integration.get("status") == "blocked" else "completed"
-        turn["blocking_reasons"] = list(integration.get("blocking_reasons", []))
+        turn["state"] = "partial" if integration.get("status") == "blocked" or failed_review_reasons else "completed"
+        turn["blocking_reasons"] = [*list(integration.get("blocking_reasons", [])), *failed_review_reasons]
         turn["completed_at"] = utc_now()
         self._write_json_ref(self._turn_ref(str(session["id"]), str(turn["id"])), turn)
         session["state"] = "awaiting_decision"
@@ -971,13 +976,25 @@ class SessionStore:
         reviewer: str,
         target_attempt_id: str,
     ) -> dict[str, object]:
-        result = create_deterministic_review(self.repo_root, target_attempt_id)
-        response_id = f"rsp_{new_ulid()}"
-        body = (
-            f"Review target: {target_attempt_id}\n"
-            f"Review: {result.review.id}\n"
-            f"Risk: {result.assessment.risk_level} ({result.assessment.risk_score})\n"
+        result, adapter_name, command_kind = _role_reviewer_review(
+            self.repo_root,
+            reviewer=reviewer,
+            target_attempt_id=target_attempt_id,
         )
+        response_id = f"rsp_{new_ulid()}"
+        body_lines = [
+            f"Review target: {target_attempt_id}",
+            f"Review: {result.review.id}",
+            f"Mode: {result.review.mode}",
+            f"Status: {result.review.status}",
+            f"Reviewer adapter: {result.review.reviewer_adapter or 'deterministic'}",
+            f"Risk: {result.assessment.risk_level} ({result.assessment.risk_score})",
+            f"Findings: {len(result.findings)}",
+        ]
+        if result.error:
+            body_lines.append(f"Error: {result.error}")
+        body = "\n".join(body_lines) + "\n"
+        failed = result.review.status == "failed"
         response = {
             "schema_version": SESSION_SCHEMA_VERSION,
             "id": response_id,
@@ -985,9 +1002,9 @@ class SessionStore:
             "turn_id": turn["id"],
             "participant_id": _participant_for_agent(session, reviewer),
             "agent_id": reviewer,
-            "adapter_name": "review",
+            "adapter_name": adapter_name,
             "role": "reviewer",
-            "state": "completed",
+            "state": "failed" if failed else "completed",
             "invocation_id": f"inv_{new_ulid()}",
             "command_ref": None,
             "context_manifest_ref": None,
@@ -995,7 +1012,7 @@ class SessionStore:
             "stderr_ref": None,
             "raw_trace_ref": None,
             "redacted_response_ref": None,
-            "exit_code": 0,
+            "exit_code": 1 if failed else 0,
             "started_at": utc_now(),
             "ended_at": utc_now(),
             "timeout_seconds": None,
@@ -1005,12 +1022,21 @@ class SessionStore:
                 "target_attempt_id": target_attempt_id,
                 "artifact_ref": result.review.artifact_ref,
                 "baseline_ref": result.review.baseline_ref,
+                "reviewer_adapter": result.review.reviewer_adapter,
+                "review_status": result.review.status,
+                "finding_count": len(result.findings),
+                "command_kind": command_kind,
+                "error": result.error,
             },
             "trust_class": "review_evidence",
             "proposal_ids": [],
             "attempt_id": None,
             "review_id": result.review.id,
-            "metadata_json": {},
+            "metadata_json": {
+                "reviewer_adapter": result.review.reviewer_adapter,
+                "review_status": result.review.status,
+                "role_command_kind": command_kind,
+            },
         }
         response.update(self._persist_response_output(str(session["id"]), response_id, stdout=body, stderr=""))
         self._write_json_ref(self._response_ref(str(session["id"]), response_id), response)
@@ -1591,6 +1617,35 @@ def _role_attempt_agent_id(agent: str, adapter_name: str) -> str:
     if adapter.name != "shell":
         return adapter.default_agent_id
     return f"session:{_slug(agent)}"
+
+
+def _role_reviewer_review(
+    repo_root: Path,
+    *,
+    reviewer: str,
+    target_attempt_id: str,
+):
+    if reviewer.startswith("fake:"):
+        return (
+            create_fake_reviewer_review(repo_root, target_attempt_id, fake_adapter=reviewer),
+            "fake",
+            "fake",
+        )
+    if reviewer in {"deterministic", "review", "ait-review"}:
+        return (
+            create_deterministic_review(repo_root, target_attempt_id),
+            "review",
+            "deterministic",
+        )
+    return (
+        create_command_reviewer_review(
+            repo_root,
+            target_attempt_id,
+            reviewer_adapter=reviewer,
+        ),
+        _adapter_for_agent(reviewer),
+        "real_adapter",
+    )
 
 
 def session_permission_policy(
