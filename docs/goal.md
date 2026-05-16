@@ -22,6 +22,7 @@ AIT 必須高度智能且最低干擾地支援：
 - manual commits、partial failures、dirty worktree、stale workspaces
 - 同時 discard / promote / merge / reconcile
 - long-running sessions 與跨 agent handoff
+- 真實 multi-agent session role invocation，而不是 placeholder orchestration
 - local-only daemon / Unix socket / no network telemetry
 - agent 不靠猜測 CLI，而是靠 machine-readable state contract 決策
 
@@ -81,6 +82,10 @@ AIT 必須高度智能且最低干擾地支援：
   - dry-run before mutation
   - no destructive cleanup by default
 - 若現有實作不足，提出並實作最小可行改善
+- 針對 `ait session run --mode role` 的真實 agent invocation 缺口，依
+  [`multi-agent-session-ux-optimization-plan-zh.md`](multi-agent-session-ux-optimization-plan-zh.md)
+  落地：implementer/reviewer 必須真的呼叫本機 agent adapter，且不能再以
+  placeholder attempt 冒充完成。
 
 ### 4. Acceptance Tests
 

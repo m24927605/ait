@@ -106,6 +106,12 @@ registered adapters fall back to their real CLI command when present on `PATH`;
 explicit `--agent-command agent=command` remains available for custom local
 commands. Responses are advisory session artifacts, not applied changes.
 
+Current limitation: `ait session run --mode role` has isolated attempt/review
+linkage scaffold, but it is not yet real external implementer/reviewer
+invocation. Use `panel|council|sequential` for real advisory local adapter
+fan-out today, and use `ait review attempt --mode adversarial --review-adapter
+...` for real reviewer adapters against completed attempts.
+
 Choose the consented permission policy at session start. AIT stores that policy
 on the session and reuses it for later panel/council invocations:
 

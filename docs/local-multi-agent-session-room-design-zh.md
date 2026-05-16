@@ -24,9 +24,13 @@ Implementation note:
 - Real adapter invocation uses the session's consented permission policy:
   `--claude-permission-mode`, `--codex-sandbox`, and `--codex-approval` are
   captured at `ait session start` and reused for later panel/council turns.
-- `ait session run --mode role` can create isolated implementer attempts through
-  the existing `ait run` substrate and attach deterministic review evidence
-  through the existing review substrate.
+- `ait session run --mode role` currently has isolated attempt/review linkage
+  scaffold, but the implementer path still uses a deterministic shell fixture
+  instead of invoking the requested external agent. Real implementer/reviewer
+  adapter invocation for Role Mode is a P0 gap tracked in
+  [`multi-agent-session-ux-optimization-plan-zh.md`](multi-agent-session-ux-optimization-plan-zh.md).
+  Do not present Role Mode as production-ready Claude/Codex role invocation
+  until that plan lands.
 - `ait session attempt --from <response-id>` turns an advisory response into a
   new isolated attempt without applying it.
 - `ait session decision --accept <response-id> --promote-memory` promotes an
