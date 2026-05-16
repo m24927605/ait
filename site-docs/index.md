@@ -1,23 +1,40 @@
 ---
-title: ait — Reviewable attempts for AI coding agents
+title: ait — Shared memory and adversarial review for AI coding agents
 description: >-
-  ait turns Claude Code, Codex, Aider, Gemini CLI, and Cursor runs into
-  isolated, reviewable attempts with provenance, shared repo-local memory,
-  agent-to-agent communication, adversarial review, and explicit apply/recover
-  flow. Open-source, dependency-free, no SaaS, no telemetry.
+  ait gives Claude Code, Codex, Aider, Gemini CLI, and Cursor shared repo-local
+  memory, long-term memory, agent-to-agent communication, adversarial review,
+  and reviewable attempts with explicit apply/recover. Open-source,
+  dependency-free, no SaaS, no telemetry.
 ---
 
 # ait
 
-**AI coding agents should work in attempts, share context, then earn apply.**
+**Shared memory, long-term memory, communication, and adversarial review for AI coding agents.**
 
 `ait` wraps the agent CLIs you already use — Claude Code, Codex, Aider,
 Gemini CLI, Cursor — and turns each run into a **reviewable attempt**.
-The agent edits an isolated Git worktree, `ait` records what happened, and your
-main checkout stays untouched until you apply the result. It also gives agents
-a shared repo-local handoff channel: Claude can investigate, Codex can
-implement, Aider can patch, Cursor can follow project rules, and a reviewer
-agent can challenge the result before it lands.
+It gives agents a shared repo-local memory, long-term attempt history, an
+inspectable handoff channel, and adversarial review before code lands. The
+agent still edits an isolated Git worktree, `ait` records what happened, and
+your main checkout stays untouched until you apply the result.
+
+```text
+Claude investigates -> AIT records attempt + accepted context
+Codex implements with AIT_CONTEXT_FILE
+Reviewer agent challenges the result
+You run ait apply only when the evidence is good
+```
+
+The four features to notice first:
+
+- **Shared repo memory.** Claude Code, Codex, Aider, Gemini, Cursor, and shell
+  agents can read the same policy-allowed project context.
+- **Long-term memory.** Useful attempts, commits, notes, accepted facts, and
+  findings survive across terminals, sessions, and weeks.
+- **Agent-to-agent communication.** One agent's investigation, decision, failed
+  path, or review finding can reach the next agent through `AIT_CONTEXT_FILE`.
+- **Adversarial review.** A separate reviewer agent can challenge an attempt and
+  leave evidence before you decide whether to apply.
 
 ```bash
 pipx install ait-vcs    # or: npm install -g ait-vcs
@@ -36,16 +53,16 @@ _Static HTML from `ait graph --html`: attempts, evidence, memory, hot files, and
 
 | Capability | What it means |
 | --- | --- |
-| Attempt-first workflow | Wrap the agent CLIs you already use and turn each run into an isolated attempt before anything touches the root checkout. |
-| Worktree isolation | Every run gets an internal isolated Git worktree, so failed or risky attempts do not pollute your workspace. |
-| Attempt provenance | Prompt, intent, adapter, output, changed files, commits, trace references, status, and outcome stay linked. |
-| Wrapper bypass detection | `ait status <adapter>` shows whether this shell will enter AIT or silently call the real agent binary. |
 | Live federated memory | Claude Code, Codex, Aider, Gemini, Cursor, and shell agents can reuse the same live repo memory: AIT-owned history plus current `CLAUDE.md`, `AGENTS.md`, `.claude/`, `.codex/`, and Cursor rules. |
 | Long-term repo memory | Attempts, commits, notes, accepted facts, prior findings, and explicit adopted memory can survive across sessions. |
 | Agent-to-agent communication | One agent can record an investigation, decision, failed path, or review finding, and another agent can receive it later through `AIT_CONTEXT_FILE`. |
+| Adversarial review | A separate reviewer agent can challenge an attempt, record findings, and hold apply on high-risk results. |
+| Attempt-first workflow | Wrap the agent CLIs you already use and turn each run into an isolated attempt before anything touches the root checkout. |
+| Attempt provenance | Prompt, intent, adapter, output, changed files, commits, trace references, status, and outcome stay linked. |
+| Worktree isolation | Every run gets an internal isolated Git worktree, so failed or risky attempts do not pollute your workspace. |
 | Parallel agent attempts | Multiple agents can try different approaches at the same time without racing inside the same checkout. |
 | Explicit apply/recover flow | Agent output stays a proposal until apply; held or failed work remains recoverable. |
-| Adversarial review | A separate reviewer agent can challenge an attempt, record findings, and hold apply on high-risk results. |
+| Wrapper bypass detection | `ait status <adapter>` shows whether this shell will enter AIT or silently call the real agent binary. |
 | Local-first metadata | Metadata lives under `.ait/`; no SaaS dashboard, no telemetry, no required code upload. |
 | Queryable history | Attempts, intents, files, agents, statuses, review results, and old prompts can be found with AIT commands. |
 

@@ -10,11 +10,12 @@ description: >-
 
 # Why ait
 
-AI coding agents are fast. Git history, review discipline, and shared context
-across runs are not. `ait` closes that gap by making every agent run an
-isolated, reviewable attempt before it reaches your working tree. It also gives
-agents a repo-local way to communicate: prior attempts, accepted facts, notes,
-review findings, and live memory files become the next agent's handoff context.
+AI coding agents are fast. Shared memory, long-term memory, review discipline,
+and communication across different agents are not. `ait` closes that gap by
+giving agents a repo-local way to communicate: prior attempts, accepted facts,
+notes, review findings, and live memory files become the next agent's handoff
+context. The same attempt record can then be challenged by a separate reviewer
+agent before it reaches your working tree.
 
 For runnable evidence, see [Pain-point demos](demos/pain-point-demos.md).
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.55.64 - 2026-05-16
+
+### Documentation
+
+- Reposition README and the documentation site around AIT's strongest
+  multi-agent workflow: shared repo memory, long-term memory, agent-to-agent
+  communication through `AIT_CONTEXT_FILE`, and adversarial review before
+  apply.
+- Update English and Traditional Chinese home pages, AI-search facts,
+  `llms.txt`, OpenGraph metadata, and the default social card copy so external
+  summaries emphasize shared memory and reviewer-agent challenge instead of
+  only worktree isolation.
+
 ## 0.55.63 - 2026-05-16
 
 ### Fixed

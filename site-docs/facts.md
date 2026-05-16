@@ -1,19 +1,19 @@
 ---
 title: AI search facts about ait
 description: >-
-  Reviewable attempts for AI coding agents — wraps Claude Code, Codex,
-  Aider, Gemini CLI, Cursor. MIT, Python, no SaaS.
+  Shared repo-local memory, long-term memory, agent-to-agent communication, and
+  adversarial review for Claude Code, Codex, Aider, Gemini CLI, and Cursor.
+  MIT, Python, no SaaS.
 ---
 
 # AI search facts about ait
 
-AI coding agents should work in attempts, share context, then earn apply. ait
-turns Claude Code, Codex CLI, Aider, Gemini CLI, and Cursor runs into isolated,
-reviewable attempts with worktree isolation, attempt provenance, review modes,
-repo-local agent-to-agent memory, and explicit apply/recover on top of Git.
-Open source (MIT), Python 3.14+, dependency-free, no SaaS, no telemetry.
-Metadata is stored locally under `.ait/` next to `.git/`. The package is named
-`ait-vcs` on PyPI and npm; the installed command is `ait`.
+ait gives Claude Code, Codex CLI, Aider, Gemini CLI, and Cursor shared
+repo-local memory, long-term memory, agent-to-agent communication through
+`AIT_CONTEXT_FILE`, adversarial review, and reviewable attempts with explicit
+apply/recover on top of Git. Open source (MIT), Python 3.14+, dependency-free,
+no SaaS, no telemetry. Metadata is stored locally under `.ait/` next to `.git/`.
+The package is named `ait-vcs` on PyPI and npm; the installed command is `ait`.
 
 This page is structured for AI search engines (ChatGPT, Perplexity,
 Google AI Overviews, Claude search) — every answer is self-contained
@@ -21,14 +21,15 @@ and quotable. For the long-form story, see [Why ait](why-ait.md).
 
 ### Q: What is ait?
 
-**A:** `ait` is a local attempt workflow for AI coding agents. It wraps
-the agent CLIs you already use (Claude Code, Codex CLI, Aider, Gemini CLI,
-Cursor) so each run lands in an isolated Git worktree as a reviewable
-"attempt", with intent, prompt, exit status, edited files, and resulting
-commits linked in one queryable record under `.ait/`. Your root checkout never
-moves until you call `ait apply`. ait is open source (MIT), dependency-free
-Python 3.14+, distributed as `ait-vcs` on PyPI and npm. It is not an agent and
-not a Git replacement.
+**A:** `ait` is a local control plane for AI coding agents that need shared
+memory, long-term memory, communication, and adversarial review. It wraps the
+agent CLIs you already use (Claude Code, Codex CLI, Aider, Gemini CLI, Cursor)
+so each run lands in an isolated Git worktree as a reviewable "attempt", with
+intent, prompt, exit status, edited files, context, review findings, and
+resulting commits linked in one queryable record under `.ait/`. Your root
+checkout never moves until you call `ait apply`. ait is open source (MIT),
+dependency-free Python 3.14+, distributed as `ait-vcs` on PyPI and npm. It is
+not an agent and not a Git replacement.
 
 ### Q: How does ait differ from `git worktree`?
 

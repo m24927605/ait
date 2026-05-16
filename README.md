@@ -2,8 +2,8 @@
 
 # ait
 
-### AI coding agents should work in attempts, share context, then earn apply
-**Claude Code · Codex CLI · Aider · Gemini CLI · Cursor**
+### Shared memory, long-term memory, and adversarial review for AI coding agents
+**Claude Code · Codex CLI · Aider · Gemini CLI · Cursor can share memory, hand off context, and challenge each other before apply**
 
 <sub>[English](README.md) · [繁體中文](README.zh-TW.md)</sub>
 
@@ -19,21 +19,37 @@
 
 ---
 
-**`ait` is the local control plane for AI coding agents. It turns Claude Code,
-Codex CLI, Aider, Gemini CLI, and Cursor runs into isolated, reviewable
-attempts, then lets agents communicate through repo-local memory instead of
-fragile chat windows. Provenance, agent-to-agent handoff, adversarial review,
-and explicit apply/recover all sit on top of Git. Your root checkout stays
-untouched until you choose what lands. Open source (MIT), Python 3.14+,
+**`ait` is the local control plane for teams using multiple AI coding agents.
+It gives Claude Code, Codex CLI, Aider, Gemini CLI, and Cursor a shared
+repo-local memory, long-term attempt history, an inspectable handoff channel,
+and adversarial review before code lands. Each run is still isolated as a
+reviewable attempt with provenance and an explicit apply gate, so collaboration
+does not turn into working-tree chaos. Open source (MIT), Python 3.14+,
 dependency-free, no SaaS, no telemetry.**
 
-AI agents are fast enough to refactor real code, but the default workflow still
-lets them use your working tree like a scratchpad and forget what another agent
-already learned. `ait` wraps the agent CLIs you already use — it is not an agent
-and not a Git replacement — and turns each run into an attempt you can inspect,
-compare, review, recover, or apply. A Claude investigation can become context
-for a Codex implementation; a Cursor rule can ride along with Aider; a separate
-reviewer agent can challenge the attempt before it reaches your checkout.
+The hard part of multi-agent coding is not starting another model. It is making
+sure the next agent knows what the previous one learned, preserving useful
+decisions across sessions, and asking a different agent to challenge risky
+work before it reaches your checkout. AIT makes those steps local, queryable,
+and tied to Git state.
+
+```text
+Claude investigates -> AIT records attempt + accepted context
+Codex implements with AIT_CONTEXT_FILE
+Reviewer agent challenges the result
+You run ait apply only when the evidence is good
+```
+
+The four features to notice first:
+
+- **Shared repo memory.** Claude Code, Codex, Aider, Gemini, Cursor, and shell
+  agents can read the same policy-allowed project context.
+- **Long-term memory.** Useful attempts, commits, notes, accepted facts, and
+  findings survive across terminals, sessions, and weeks.
+- **Agent-to-agent communication.** One agent's investigation, decision, failed
+  path, or review finding can reach the next agent through `AIT_CONTEXT_FILE`.
+- **Adversarial review.** A separate reviewer agent can challenge an attempt and
+  leave evidence before you decide whether to apply.
 
 ```bash
 pipx install ait-vcs
@@ -66,16 +82,16 @@ The package is named `ait-vcs` on PyPI and npm. The installed command is
 
 | Capability | What it means |
 | --- | --- |
-| Attempt-first workflow | AIT wraps the agent CLIs you already use and turns each run into an isolated attempt before anything touches your root checkout. |
-| Worktree isolation | Every run gets an internal isolated Git worktree, so failed or risky attempts do not pollute your current workspace. |
-| Attempt provenance | Prompt, intent, adapter, output, changed files, commits, trace references, status, and outcome stay linked in one attempt record. |
-| Wrapper bypass detection | `ait status <adapter>` shows whether this shell will enter AIT or silently call the real agent binary. |
 | Live federated memory | Claude Code, Codex, Aider, Gemini, Cursor, and shell agents can read the same live repo memory: AIT-owned history plus current `CLAUDE.md`, `AGENTS.md`, `.claude/`, `.codex/`, and Cursor rules. |
 | Long-term repo memory | Useful attempts, commits, notes, accepted facts, prior findings, and explicit adopted memory can survive across terminals, sessions, and weeks. |
 | Agent-to-agent communication | One agent can record an investigation, decision, failed path, or review finding, and another agent can receive that context later through `AIT_CONTEXT_FILE` rather than hidden chat state. |
+| Adversarial review | A separate reviewer agent can challenge an attempt; high-risk findings can be recorded and used to hold apply. |
+| Attempt-first workflow | AIT wraps the agent CLIs you already use and turns each run into an isolated attempt before anything touches your root checkout. |
+| Attempt provenance | Prompt, intent, adapter, output, changed files, commits, trace references, status, and outcome stay linked in one attempt record. |
+| Worktree isolation | Every run gets an internal isolated Git worktree, so failed or risky attempts do not pollute your current workspace. |
 | Parallel agent attempts | Multiple agents can try different approaches at the same time without racing inside the same checkout. |
 | Explicit apply/recover flow | Agent output remains a proposal until you apply it; held or failed work remains recoverable instead of becoming working-copy debris. |
-| Adversarial review | A separate reviewer agent can challenge an attempt; high-risk findings can be recorded and used to hold apply. |
+| Wrapper bypass detection | `ait status <adapter>` shows whether this shell will enter AIT or silently call the real agent binary. |
 | Local-first metadata | AIT metadata lives under `.ait/` next to `.git/`; no SaaS dashboard, no telemetry, no required code upload. |
 | Queryable history | Attempts, intents, files, agents, statuses, review results, and old prompts can be found with AIT commands instead of shell history. |
 
@@ -410,7 +426,7 @@ ait --version
 Tagged GitHub release:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.55.63"
+pipx install "git+https://github.com/m24927605/ait.git@v0.55.64"
 ```
 
 Upgrade:
@@ -476,7 +492,7 @@ ait shell uninstall --shell zsh
 
 ## Status
 
-`ait` is currently `0.55.63` and alpha quality. It is intended for local
+`ait` is currently `0.55.64` and alpha quality. It is intended for local
 dogfooding and early users who are comfortable with Git workflows.
 
 Metadata is local to one repository under `.ait/`. It is not

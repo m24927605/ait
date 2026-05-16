@@ -8,9 +8,11 @@ description: >-
 
 # 為什麼用 ait
 
-AI coding agent 跑得快。Git history、審核紀律、跨 session 的共享脈絡
-跟不上。`ait` 先把每次 agent 執行變成隔離、可審核的 attempt，再讓 agents
-透過 repo-local memory 交接資訊，最後由你決定哪些結果可以進 working tree。
+AI coding agent 跑得快，但不同 agents 之間的共同記憶、長期記憶、溝通交接
+與審核紀律通常跟不上。`ait` 讓 agents 透過 repo-local memory 交接資訊：
+prior attempts、accepted facts、notes、review findings 與 live memory files
+會變成下一個 agent 的 handoff context。同一筆 attempt 也可以先被另一個
+reviewer agent 對抗式審查，再由你決定哪些結果可以進 working tree。
 下面是 ait 解決的每個問題的長版本，以及對應的解法。
 
 想看可重跑證據，請看 [痛點 demo](demos/pain-point-demos.md)。
