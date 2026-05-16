@@ -221,6 +221,12 @@ ait run --adapter shell --intent "重生 fixtures" -- \
   python scripts/regenerate_fixtures.py
 ```
 
+當 `--adapter` 不是 `shell`，或使用者傳入 `--agent` 時，即使省略
+`--intent`，`ait run` 仍會走 isolated agent-attempt path。AIT 會推斷一個
+intent title，例如 `manual codex run`，並在 JSON output 裡標示
+`intent_inferred`。舊的 no-intent shell path 仍保留給 dev-server commands；
+這類 workflow 建議改用 `ait dev run ...`。
+
 ## 修復
 
 ```bash

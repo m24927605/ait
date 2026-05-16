@@ -19,7 +19,9 @@ def handle(args, repo_root: Path, parser=None) -> int:
         command = args.run_command
         if command and command[0] == "--":
             command = command[1:]
-        if not args.intent:
+        intent_title = args.intent
+        intent_inferred = False
+        if not intent_title and not _has_agent_run_hint(args):
             try:
                 records = start_dev_server(
                     repo_root,
@@ -45,10 +47,13 @@ def handle(args, repo_root: Path, parser=None) -> int:
                         )
                     )
             return 0
+        if not intent_title:
+            intent_title = _inferred_run_intent_title(args)
+            intent_inferred = True
         try:
             result = run_agent_command(
                 repo_root,
-                intent_title=args.intent,
+                intent_title=intent_title,
                 agent_id=args.agent,
                 command=command,
                 adapter_name=args.adapter,
@@ -117,8 +122,13 @@ def handle(args, repo_root: Path, parser=None) -> int:
             payload["review"] = None if review_result is None else _review_result_payload(review_result)
             payload["review_error"] = review_error
             payload["apply"] = None if applied is None else apply_result_payload(applied, debug=True)
+            payload["intent_inferred"] = intent_inferred
+            if intent_inferred:
+                payload["inferred_intent_title"] = intent_title
             print(json.dumps(payload, indent=2))
         else:
+            if intent_inferred:
+                print(f"AIT inferred intent: {intent_title}", file=sys.stderr)
             print(_format_run_result(result, apply_result=applied), file=sys.stderr)
         return result.exit_code
     if args.command == "context":
@@ -197,6 +207,15 @@ def _run_adversarial_review(
         reviewer_adapter=str(adapter),
         budget=budget,
     )
+
+
+def _has_agent_run_hint(args) -> bool:
+    return bool(getattr(args, "agent", None)) or getattr(args, "adapter", "shell") != "shell"
+
+
+def _inferred_run_intent_title(args) -> str:
+    label = getattr(args, "agent", None) or getattr(args, "adapter", None) or "agent"
+    return f"manual {label} run"
 
 
 def _review_result_payload(review_result) -> dict[str, object]:

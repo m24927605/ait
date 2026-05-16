@@ -230,6 +230,12 @@ ait run --adapter shell --intent "Regenerate fixtures" -- \
   python scripts/regenerate_fixtures.py
 ```
 
+When `--adapter` is not `shell`, or when `--agent` is provided, `ait run` stays
+on the isolated agent-attempt path even if `--intent` is omitted. In that case
+AIT infers an intent title such as `manual codex run` and reports
+`intent_inferred` in JSON output. The legacy no-intent shell path remains for
+dev-server commands; prefer `ait dev run ...` for that workflow.
+
 ## Repair
 
 ```bash

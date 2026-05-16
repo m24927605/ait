@@ -172,6 +172,16 @@ Acceptance tests：
 
 目標：agent invocation 不應被 dev server port guard 擋住。
 
+Implementation status:
+
+- Landed after this plan: when `ait run` receives an explicit non-shell
+  `--adapter` or any `--agent`, AIT now stays on the isolated agent-attempt
+  path even if `--intent` is omitted. AIT infers an intent title and marks
+  `intent_inferred` in JSON output.
+- Remaining: optional known-agent-command inference for bare `ait run --
+  <agent-command>` and broader migration of dev-server workflows toward
+  `ait dev run`.
+
 目前問題是 `ait run` 在沒有 `--intent` 時預設進入 dev server path。這讓
 `ait run --adapter claude-code -- claude -p ...` 被誤判為 dev server 啟動。
 

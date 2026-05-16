@@ -91,6 +91,76 @@ class CliRunTests(unittest.TestCase):
         self.assertEqual("agent out\n", payload["command_stdout"])
         self.assertEqual("agent err\n", payload["command_stderr"])
 
+    def test_run_adapter_without_intent_uses_agent_attempt_not_dev_server(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with (
+                    patch(
+                        "sys.argv",
+                        [
+                            "ait",
+                            "run",
+                            "--format",
+                            "json",
+                            "--adapter",
+                            "codex",
+                            "--",
+                            sys.executable,
+                            "-c",
+                            "print('agent run')",
+                        ],
+                    ),
+                    patch("ait.cli.run.start_dev_server", side_effect=AssertionError("dev server path should not run")),
+                ):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(0, exit_code)
+        self.assertTrue(payload["intent_inferred"])
+        self.assertEqual("manual codex run", payload["inferred_intent_title"])
+        self.assertEqual("agent run\n", payload["command_stdout"])
+        self.assertIn(".ait/workspaces", payload["workspace_ref"])
+
+    def test_run_agent_without_intent_uses_agent_attempt_not_dev_server(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with (
+                    patch(
+                        "sys.argv",
+                        [
+                            "ait",
+                            "run",
+                            "--format",
+                            "json",
+                            "--agent",
+                            "claude-code:manual",
+                            "--",
+                            sys.executable,
+                            "-c",
+                            "print('agent run')",
+                        ],
+                    ),
+                    patch("ait.cli.run.start_dev_server", side_effect=AssertionError("dev server path should not run")),
+                ):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(0, exit_code)
+        self.assertTrue(payload["intent_inferred"])
+        self.assertEqual("manual claude-code:manual run", payload["inferred_intent_title"])
+        self.assertEqual("agent run\n", payload["command_stdout"])
+        self.assertIn(".ait/workspaces", payload["workspace_ref"])
+
     def test_run_json_in_unborn_git_repo_creates_baseline_before_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
