@@ -18,8 +18,9 @@ Implementation note:
   command participants for deterministic fan-out, attribution, timeout/cancel
   simulation, retry, redaction, and per-agent context manifests. The default
   real paths use non-interactive advisory commands where AIT knows them
-  (`claude -p --permission-mode plan`, `codex exec --sandbox read-only
-  --ask-for-approval never -`).
+  (`claude -p --permission-mode plan`, `codex exec --sandbox read-only -`).
+  Codex CLI 0.130 removed `--ask-for-approval`, so AIT stores the consented
+  Codex approval policy as session metadata instead of passing a removed flag.
 - Real adapter invocation uses the session's consented permission policy:
   `--claude-permission-mode`, `--codex-sandbox`, and `--codex-approval` are
   captured at `ait session start` and reused for later panel/council turns.

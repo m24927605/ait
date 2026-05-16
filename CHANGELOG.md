@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.55.63 - 2026-05-16
+
+### Fixed
+
+- Keep real Codex panel/council invocation compatible with Codex CLI 0.130 by
+  no longer passing the removed `--ask-for-approval` flag. AIT still records
+  the consented `codex_approval` value in session metadata, while runtime
+  invocation uses Codex's supported `--sandbox` flag.
+
+### Documentation
+
+- Update session command docs to describe Codex 0.130-compatible invocation and
+  clarify that `codex_approval` is currently stored as consent/audit metadata.
+
 ## 0.55.62 - 2026-05-16
 
 ### Added

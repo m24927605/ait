@@ -97,10 +97,12 @@ ait session replay latest --turn latest
 
 `ait session run --mode panel|council|sequential` 會呼叫 active participants。
 對 `claude-code`，AIT 會執行本機 `claude -p --permission-mode plan` CLI。
-對 `codex`，AIT 會執行 `codex exec --sandbox read-only --ask-for-approval
-never -`。其他已註冊 adapter 會在 `PATH` 上存在時 fallback 到真實 CLI；
-自訂 local command 仍可用 `--agent-command agent=command` 指定。這些 response
-是 advisory session artifacts，不會直接 apply changes。
+對 `codex`，AIT 會執行 `codex exec --sandbox read-only -`。AIT 會把
+`--codex-approval` 記錄為 session consent metadata，但 Codex CLI 0.130 已不再
+接受 `--ask-for-approval`，所以 AIT 不會傳入這個已移除的 flag。其他已註冊
+adapter 會在 `PATH` 上存在時 fallback 到真實 CLI；自訂 local command 仍可用
+`--agent-command agent=command` 指定。這些 response 是 advisory session
+artifacts，不會直接 apply changes。
 
 權限 policy 應在 session start 時先由使用者決定。AIT 會把這份設定存在
 session 裡，後續 panel/council invocation 都照這份設定執行：
@@ -113,6 +115,8 @@ ait session start "調查 auth" --agents claude-code,codex \
 ```
 
 保守預設是 `claude=plan`、`codex_sandbox=read-only`、`codex_approval=never`。
+對 Codex CLI 0.130+，`codex_approval` 會保留在 AIT session state 供稽核與未來
+policy mapping 使用；runtime enforcement 目前透過 Codex 支援的 `--sandbox`。
 
 當 `ait session start` 在互動式 terminal 的 text mode 執行，且你沒有傳入
 上述 flags 時，AIT 會在建立 session 前詢問缺少的 policy 值。`--format json`

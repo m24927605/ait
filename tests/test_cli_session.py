@@ -119,7 +119,8 @@ class CliSessionTests(unittest.TestCase):
 
             self.assertEqual("workspace-write", start["permission_policy"]["codex_sandbox"])
             self.assertEqual("on-request", start["permission_policy"]["codex_approval"])
-            self.assertIn("argv=exec --sandbox workspace-write --ask-for-approval on-request -", stdout)
+            self.assertIn("argv=exec --sandbox workspace-write -", stdout)
+            self.assertNotIn("--ask-for-approval", stdout)
             self.assertIn("ctx=", stdout)
             self.assertIn("Use real agent?", stdout)
             self.assertIn("codex", command)

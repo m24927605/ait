@@ -1506,8 +1506,6 @@ def _permission_command_suffix(adapter_name: str, permission_policy: dict[str, s
         return (
             "--sandbox",
             permission_policy["codex_sandbox"],
-            "--ask-for-approval",
-            permission_policy["codex_approval"],
             "-",
         )
     return ()

@@ -99,10 +99,12 @@ ait session replay latest --turn latest
 
 `ait session run --mode panel|council|sequential` invokes active participants.
 For `claude-code`, AIT runs the local `claude -p --permission-mode plan` CLI.
-For `codex`, AIT runs `codex exec --sandbox read-only --ask-for-approval never
--`. Other registered adapters fall back to their real CLI command when present
-on `PATH`; explicit `--agent-command agent=command` remains available for custom
-local commands. Responses are advisory session artifacts, not applied changes.
+For `codex`, AIT runs `codex exec --sandbox read-only -`. AIT records
+`--codex-approval` as session consent metadata, but Codex CLI 0.130 no longer
+accepts `--ask-for-approval`, so AIT does not pass that removed flag. Other
+registered adapters fall back to their real CLI command when present on `PATH`;
+explicit `--agent-command agent=command` remains available for custom local
+commands. Responses are advisory session artifacts, not applied changes.
 
 Choose the consented permission policy at session start. AIT stores that policy
 on the session and reuses it for later panel/council invocations:
@@ -115,7 +117,9 @@ ait session start "Investigate auth" --agents claude-code,codex \
 ```
 
 The conservative defaults are `claude=plan`, `codex_sandbox=read-only`, and
-`codex_approval=never`.
+`codex_approval=never`. For Codex CLI 0.130+, `codex_approval` is preserved in
+AIT session state for auditability and future policy mapping; runtime
+enforcement is through Codex's supported `--sandbox` flag.
 
 When `ait session start` runs in an interactive terminal in text mode and you
 did not pass those flags, AIT asks for the missing policy values before creating
