@@ -820,38 +820,79 @@ class SessionStore:
         scopes: tuple[str, ...],
     ) -> dict[str, object]:
         response_id = f"rsp_{new_ulid()}"
-        target_path = _path_for_scope(scopes[0] if scopes else f"{package_name}.txt")
-        code = (
-            "from pathlib import Path\n"
-            f"path = Path({target_path!r})\n"
-            "path.parent.mkdir(parents=True, exist_ok=True)\n"
-            f"path.write_text('implemented by {agent} for {package_name}\\n', encoding='utf-8')\n"
+        participant = _active_participant_for_agent(session, agent) or {
+            "id": f"part_role_{_slug(agent)}",
+            "agent_id": agent,
+            "adapter_name": _adapter_for_agent(agent),
+            "role": "implementer",
+        }
+        role_assignment = {
+            "role": "implementer",
+            "package_name": package_name,
+            "scope_paths": list(scopes),
+        }
+        context_ref, context_manifest_ref = self._write_context(
+            session,
+            turn,
+            participant,
+            role_assignment=role_assignment,
+        )
+        command, adapter_name, command_kind = _role_implementer_command(
+            agent=agent,
+            repo_root=self.repo_root,
+            participant=participant,
+            package_name=package_name,
+            scopes=scopes,
+            permission_policy=_session_permission_policy(session),
+        )
+        command_ref = self._relative(
+            self._session_dir(str(session["id"])) / "transcripts" / f"{response_id}.command.txt"
+        )
+        self._write_text_ref(command_ref, " ".join(shlex.quote(part) for part in command) + "\n")
+        prompt = self._role_implementer_prompt(
+            session,
+            turn,
+            agent=agent,
+            context_ref=context_ref,
+            package_name=package_name,
+            scopes=scopes,
         )
         result = run_agent_command(
             self.repo_root,
             intent_title=f"{session.get('title')}: {package_name}",
-            command=[sys.executable, "-c", code],
-            agent_id=agent,
-            adapter_name="shell",
+            command=list(command),
+            agent_id=_role_attempt_agent_id(agent, adapter_name),
+            adapter_name=adapter_name,
             kind="session-role-implementer",
             description=f"AIT session {session['id']} package {package_name}",
             auto_commit=True,
-            with_context=True,
+            with_context=False,
             capture_command_output=True,
+            context_file_override=self.repo_root / context_ref,
+            command_stdin=prompt,
+            extra_env={
+                "AIT_SESSION_ID": str(session["id"]),
+                "AIT_RESPONSE_ID": response_id,
+                "AIT_SESSION_MODE": "role",
+                "AIT_ROLE": "implementer",
+                "AIT_PACKAGE_NAME": package_name,
+                "AIT_SCOPE_PATHS": json.dumps(list(scopes)),
+            },
         )
         response = {
             "schema_version": SESSION_SCHEMA_VERSION,
             "id": response_id,
             "session_id": session["id"],
             "turn_id": turn["id"],
-            "participant_id": _participant_for_agent(session, agent),
+            "participant_id": participant.get("id"),
             "agent_id": agent,
-            "adapter_name": "shell",
+            "adapter_name": adapter_name,
             "role": "implementer",
             "state": "completed" if result.exit_code == 0 else "failed",
             "invocation_id": f"inv_{new_ulid()}",
-            "command_ref": None,
-            "context_manifest_ref": None,
+            "command_ref": command_ref,
+            "context_manifest_ref": context_manifest_ref,
+            "context_ref": context_ref,
             "stdout_ref": None,
             "stderr_ref": None,
             "raw_trace_ref": result.attempt.attempt.get("raw_trace_ref"),
@@ -866,6 +907,9 @@ class SessionStore:
                 "workspace_ref": result.workspace_ref,
                 "changed_files": list(result.attempt.files.get("changed", ())),
                 "commits": [item.get("commit_oid") for item in result.attempt.commits],
+                "attempt_raw_trace_ref": result.attempt.attempt.get("raw_trace_ref"),
+                "command_kind": command_kind,
+                "attempt_agent_id": result.attempt.attempt.get("agent_id"),
             },
             "trust_class": "attempt_result",
             "proposal_ids": [],
@@ -873,7 +917,10 @@ class SessionStore:
             "review_id": None,
             "package_name": package_name,
             "scope_paths": list(scopes),
-            "metadata_json": {},
+            "metadata_json": {
+                "permission_policy": _session_permission_policy(session),
+                "role_command_kind": command_kind,
+            },
         }
         response.update(
             self._persist_response_output(
@@ -885,6 +932,36 @@ class SessionStore:
         )
         self._write_json_ref(self._response_ref(str(session["id"]), response_id), response)
         return response
+
+    def _role_implementer_prompt(
+        self,
+        session: dict[str, object],
+        turn: dict[str, object],
+        *,
+        agent: str,
+        context_ref: str,
+        package_name: str,
+        scopes: tuple[str, ...],
+    ) -> str:
+        user_text = _read_ref_text(self.repo_root, str(turn.get("user_input_redacted_ref") or "")).strip()
+        context_path = (self.repo_root / context_ref).resolve()
+        return "\n".join(
+            [
+                f"You are {agent} in AIT session {session.get('id')}.",
+                "This is Role Mode. You are the implementer for an isolated AIT attempt.",
+                "Read AIT_CONTEXT_FILE before making changes.",
+                f"AIT_CONTEXT_FILE: {context_path}",
+                f"Package: {package_name}",
+                "Scope paths:",
+                *[f"- {item}" for item in scopes],
+                "",
+                "User turn:",
+                user_text,
+                "",
+                "Write changes only inside the current working directory. Do not apply changes to the root checkout.",
+                "",
+            ]
+        )
 
     def _run_reviewer(
         self,
@@ -944,6 +1021,8 @@ class SessionStore:
         session: dict[str, object],
         turn: dict[str, object],
         participant: dict[str, object],
+        *,
+        role_assignment: dict[str, object] | None = None,
     ) -> tuple[str, str]:
         session_id = str(session["id"])
         turn_id = str(turn["id"])
@@ -972,17 +1051,30 @@ class SessionStore:
             if response.get("turn_id") != turn_id and response.get("trust_class") == "advisory"
         ]
         accepted_decision_refs = self._accepted_decision_refs(session_id)
-        context_text = "\n".join(
+        context_lines = [
+            f"# AIT session context for {participant.get('agent_id')}",
+            "",
+            "Trust classes:",
+            "- trusted_baseline: accepted AIT evidence and allowed live source text",
+            "- advisory_response: prior agent response, attributed and not fact",
+            "",
+            "User turn:",
+            user_text.strip(),
+            "",
+        ]
+        if role_assignment is not None:
+            context_lines.extend(
+                [
+                    "Role assignment:",
+                    f"- role: {role_assignment.get('role')}",
+                    f"- package: {role_assignment.get('package_name')}",
+                    "- scope paths:",
+                    *[f"  - {item}" for item in role_assignment.get("scope_paths", [])],
+                    "",
+                ]
+            )
+        context_lines.extend(
             [
-                f"# AIT session context for {participant.get('agent_id')}",
-                "",
-                "Trust classes:",
-                "- trusted_baseline: accepted AIT evidence and allowed live source text",
-                "- advisory_response: prior agent response, attributed and not fact",
-                "",
-                "User turn:",
-                user_text.strip(),
-                "",
                 "Live federated memory:",
                 *memory_lines,
                 "",
@@ -994,6 +1086,7 @@ class SessionStore:
                 "",
             ]
         )
+        context_text = "\n".join(context_lines)
         redacted_context, changed = redact_text(context_text)
         context_path.write_text(redacted_context, encoding="utf-8")
         manifest = {
@@ -1016,6 +1109,8 @@ class SessionStore:
             "content_sha256": hashlib.sha256(redacted_context.encode("utf-8")).hexdigest(),
             "write_mode": "session_context_artifact",
         }
+        if role_assignment is not None:
+            manifest["role_assignment"] = role_assignment
         manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         return self._relative(context_path), self._relative(manifest_path)
 
@@ -1436,6 +1531,66 @@ def _adapter_for_agent(agent: str) -> str:
     if agent.startswith("fake:"):
         return "fake"
     return agent.split(":", 1)[0] or "shell"
+
+
+def _active_participant_for_agent(session: dict[str, object], agent: str) -> dict[str, object] | None:
+    for item in session.get("participants", []):
+        if isinstance(item, dict) and item.get("agent_id") == agent and item.get("state") == "active":
+            return dict(item)
+    return None
+
+
+def _role_implementer_command(
+    *,
+    agent: str,
+    repo_root: Path,
+    participant: dict[str, object],
+    package_name: str,
+    scopes: tuple[str, ...],
+    permission_policy: dict[str, str],
+) -> tuple[tuple[str, ...], str, str]:
+    command_template = participant.get("command_template")
+    if isinstance(command_template, str) and command_template.strip():
+        return (("/bin/sh", "-lc", command_template), "shell", "local_command")
+    if agent.startswith("fake:"):
+        return (
+            _fake_role_implementer_command(agent=agent, package_name=package_name, scopes=scopes),
+            "shell",
+            "fake",
+        )
+    adapter_name = _adapter_for_agent(agent)
+    command = _real_panel_command(adapter_name, repo_root, permission_policy)
+    if command is None:
+        raise SessionError(f"real role implementer invocation is not configured for agent {agent}")
+    return (command, adapter_name, "real_adapter")
+
+
+def _fake_role_implementer_command(
+    *,
+    agent: str,
+    package_name: str,
+    scopes: tuple[str, ...],
+) -> tuple[str, ...]:
+    target_path = _path_for_scope(scopes[0] if scopes else f"{package_name}.txt")
+    code = (
+        "from pathlib import Path\n"
+        f"path = Path({target_path!r})\n"
+        "path.parent.mkdir(parents=True, exist_ok=True)\n"
+        f"path.write_text('implemented by {agent} for {package_name}\\n', encoding='utf-8')\n"
+    )
+    return (sys.executable, "-c", code)
+
+
+def _role_attempt_agent_id(agent: str, adapter_name: str) -> str:
+    if agent.count(":") == 1:
+        return agent
+    try:
+        adapter = get_adapter(adapter_name)
+    except AdapterError:
+        return f"session:{_slug(agent)}"
+    if adapter.name != "shell":
+        return adapter.default_agent_id
+    return f"session:{_slug(agent)}"
 
 
 def session_permission_policy(

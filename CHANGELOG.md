@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Keep `ait run --adapter <adapter> -- ...` and `ait run --agent <agent> -- ...`
+  on the isolated agent-attempt path when `--intent` is omitted, instead of
+  falling into the legacy dev-server port preflight path.
+- Make `ait session run --mode role --implementer <adapter>` invoke the real
+  local implementer adapter inside an isolated attempt workspace for configured
+  adapters such as Codex and Claude Code. Fake implementers remain
+  deterministic for tests, and session role reviewers still use the existing
+  deterministic review path until real reviewer role invocation lands.
+
 ## 0.55.64 - 2026-05-16
 
 ### Documentation

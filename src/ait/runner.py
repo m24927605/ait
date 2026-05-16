@@ -96,6 +96,9 @@ def run_agent_command(
     with_context: bool = False,
     capture_command_output: bool = False,
     refresh_reports: bool = True,
+    context_file_override: str | Path | None = None,
+    command_stdin: str | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> RunResult:
     if not intent_title.strip():
         raise ValueError("intent title must not be empty")
@@ -138,16 +141,20 @@ def run_agent_command(
         adapter_name=adapter.name,
     )
     context_file = (
-        _write_context_file(
-            root,
-            workspace,
-            intent.intent_id,
-            attempt_id=attempt.attempt_id,
-            command=tuple(command),
-            agent_id=resolved_agent_id,
+        Path(context_file_override)
+        if context_file_override is not None
+        else (
+            _write_context_file(
+                root,
+                workspace,
+                intent.intent_id,
+                attempt_id=attempt.attempt_id,
+                command=tuple(command),
+                agent_id=resolved_agent_id,
+            )
+            if resolved_with_context
+            else None
         )
-        if resolved_with_context
-        else None
     )
 
     started = time.monotonic()
@@ -158,11 +165,13 @@ def run_agent_command(
         "AIT_WORKSPACE_REF": attempt.workspace_ref,
         **adapter.env,
     }
+    if extra_env:
+        env.update(extra_env)
     if context_file is not None:
         env["AIT_CONTEXT_FILE"] = str(context_file)
     completed: subprocess.CompletedProcess[str] | None = None
     effective_exit_code = 1
-    should_capture_tty = not capture_command_output and adapter.name != "cursor" and _stdio_is_tty()
+    should_capture_tty = command_stdin is None and not capture_command_output and adapter.name != "cursor" and _stdio_is_tty()
     should_capture_output = capture_command_output or adapter.name == "cursor" or not should_capture_tty
     raw_trace_ref: str | None = None
     raw_trace_text: str = ""
@@ -191,6 +200,7 @@ def run_agent_command(
                     command,
                     cwd=workspace,
                     env=env,
+                    input=command_stdin,
                     check=False,
                     text=True,
                     capture_output=should_capture_output,

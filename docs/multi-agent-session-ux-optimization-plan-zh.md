@@ -34,9 +34,11 @@ session role invocation。
 
 - `src/ait/session_room.py::run_role()` 會建立 implementer / reviewer
   response，並把 turn 標成 `mode = "role"`。
-- `src/ait/session_room.py::_run_implementer()` 目前用
+- `src/ait/session_room.py::_run_implementer()` 原本用
   `python -c path.write_text('implemented by ...')` 產生 isolated attempt。
-  它有 attempt/worktree/provenance，但沒有真實外部 agent invocation。
+  這個 placeholder 問題已針對真實 implementer adapters 修正：`claude-code`、
+  `codex` 等已知 adapter 會被真實呼叫；`fake:*` implementer 仍保留
+  deterministic fixture path。
 - `src/ait/session_room.py::_run_reviewer()` 目前使用 deterministic review
   substrate，不會依 `--reviewer codex` 或 `--reviewer claude-code` 呼叫對應
   reviewer adapter。
@@ -87,6 +89,17 @@ ait session run latest --mode role \
 
 目標：`ait session run --mode role --implementer claude-code` 必須真的呼叫
 Claude Code，而不是 shell placeholder。
+
+Implementation status:
+
+- Landed after this plan: Role Mode implementers now resolve real local adapter
+  commands for configured adapters, run them through `run_agent_command()`, pass
+  a per-role session context as `AIT_CONTEXT_FILE`, and record command/context
+  refs on the response. Fake implementers still use deterministic fixture
+  commands for repeatable tests.
+- Remaining: split this logic into a dedicated role runner class if Role Mode
+  grows more lifecycle states; that is an internal cleanup, not a user-facing
+  blocker for real implementer invocation.
 
 實作方向：
 

@@ -373,6 +373,76 @@ class CliSessionTests(unittest.TestCase):
             self.assertFalse((repo / "src" / "backend.txt").exists())
             self.assertEqual("", _git_stdout(repo, "status", "--short"))
 
+    def test_role_mode_invokes_real_implementer_adapter_in_isolated_attempt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            _init_git_repo(repo)
+            with tempfile.TemporaryDirectory() as bin_tmp:
+                bin_dir = Path(bin_tmp)
+                fake_codex = bin_dir / "codex"
+                fake_codex.write_text(
+                    "#!/bin/sh\n"
+                    "printf 'argv=%s\\n' \"$*\"\n"
+                    "printf 'ctx=%s\\n' \"$AIT_CONTEXT_FILE\"\n"
+                    "printf 'session=%s response=%s mode=%s role=%s package=%s\\n' "
+                    "\"$AIT_SESSION_ID\" \"$AIT_RESPONSE_ID\" \"$AIT_SESSION_MODE\" \"$AIT_ROLE\" \"$AIT_PACKAGE_NAME\"\n"
+                    "printf 'stdin-start\\n'\n"
+                    "cat\n"
+                    "mkdir -p src\n"
+                    "printf 'real role implementation\\n' > src/backend.txt\n",
+                    encoding="utf-8",
+                )
+                fake_codex.chmod(0o755)
+                _run_cli_json(
+                    repo,
+                    "session",
+                    "start",
+                    "Role real",
+                    "--agents",
+                    "codex",
+                    "--codex-sandbox",
+                    "workspace-write",
+                    "--format",
+                    "json",
+                )
+                _run_cli_json(repo, "session", "ask", "latest", "Implement with real codex", "--format", "json")
+
+                with patch.dict(os.environ, {"PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"}):
+                    payload = _run_cli_json(
+                        repo,
+                        "session",
+                        "run",
+                        "latest",
+                        "--mode",
+                        "role",
+                        "--implementer",
+                        "codex",
+                        "--package",
+                        "backend=src/backend.txt",
+                        "--format",
+                        "json",
+                    )
+
+            response = payload["attempt_responses"][0]
+            stdout = (repo / response["stdout_ref"]).read_text(encoding="utf-8")
+            command = (repo / response["command_ref"]).read_text(encoding="utf-8")
+            manifest = json.loads((repo / response["context_manifest_ref"]).read_text(encoding="utf-8"))
+            workspace = Path(response["provenance"]["workspace_ref"])
+
+            self.assertEqual("codex", response["adapter_name"])
+            self.assertEqual("real_adapter", response["metadata_json"]["role_command_kind"])
+            self.assertIn("argv=exec --sandbox workspace-write -", stdout)
+            self.assertIn("mode=role role=implementer package=backend", stdout)
+            self.assertIn("This is Role Mode", stdout)
+            self.assertIn("Implement with real codex", stdout)
+            self.assertIn("codex", command)
+            self.assertIn("exec --sandbox workspace-write -", command)
+            self.assertEqual({"role": "implementer", "package_name": "backend", "scope_paths": ["src/backend.txt"]}, manifest["role_assignment"])
+            self.assertEqual(["src/backend.txt"], response["provenance"]["changed_files"])
+            self.assertTrue((workspace / "src" / "backend.txt").exists())
+            self.assertFalse((repo / "src" / "backend.txt").exists())
+            self.assertEqual("", _git_stdout(repo, "status", "--short"))
+
     def test_split_implementation_disjoint_and_overlap_behaviors(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)

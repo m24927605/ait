@@ -104,11 +104,11 @@ adapter 會在 `PATH` 上存在時 fallback 到真實 CLI；自訂 local command
 `--agent-command agent=command` 指定。這些 response 是 advisory session
 artifacts，不會直接 apply changes。
 
-目前限制：`ait session run --mode role` 已有 isolated attempt/review linkage
-scaffold，但還不是真實外部 implementer/reviewer invocation。今天要做真實本機
-adapter advisory fan-out，請使用 `panel|council|sequential`；要讓另一個 agent
-審查已完成 attempt，請使用 `ait review attempt --mode adversarial
---review-adapter ...`。
+Role mode 現在可以在 isolated attempt workspace 裡呼叫真實本機 implementer
+adapter，並提供 per-role `AIT_CONTEXT_FILE` handoff 與 command provenance。目前
+限制是 session role reviewer 仍走 deterministic review path；要讓另一個 agent
+審查已完成 attempt，請先使用 `ait review attempt --mode adversarial
+--review-adapter ...`，直到 real role reviewer invocation 落地。
 
 權限 policy 應在 session start 時先由使用者決定。AIT 會把這份設定存在
 session 裡，後續 panel/council invocation 都照這份設定執行：
