@@ -1,21 +1,31 @@
 ---
-title: ait — AI agent 的共同記憶與對抗式審查
+title: ait — AI coding agents 的本機 control plane
 description: >-
-  ait 讓 Claude Code、Codex、Aider、Gemini CLI、Cursor 共用 repo-local
-  memory、長期記憶、agent-to-agent communication 與對抗式審查，並保留
-  可審核 attempts 與明確 apply/recover 流程。開源、零依賴、no SaaS、
+  ait 是給 Claude Code、Codex、Aider、Gemini CLI、Cursor 使用的本機
+  control plane 與 Git-native attempt ledger：repo-local memory、跨 agent
+  handoff、對抗式審查，以及明確 apply/recover。開源、零依賴、no SaaS、
   no telemetry。
 ---
 
 # ait
 
-**AI agent 的共同記憶、長期記憶、互相溝通與對抗式審查。**
+**AI coding agents 的本機 control plane。Git-native attempt ledger、
+repo-local memory、跨 agent handoff 與 review gate。**
 
 `ait` 包住你已經在用的 agent CLI——Claude Code、Codex、Aider、Gemini
 CLI、Cursor——把每次執行變成一筆**可審核的 attempt**。Agent 編輯獨立
 的 Git worktree，`ait` 紀錄發生過什麼；同時提供共同 repo-local memory、
 長期 attempt history、可檢查的 handoff channel，以及 apply 前的對抗式審查。
 你的 root checkout 在你親手 apply 之前不會被動到。
+
+更硬的產品分類是：**AI coding agents 的本機 control plane**。AIT 不只是
+worktree manager，不只是 memory layer，不只是 review bot，也不是 SaaS
+provenance dashboard。這些都是同一個 local attempt ledger 的不同面向：
+agent 在 attempt 裡工作，memory 來自可追溯 evidence，review finding 可以
+擋住 apply，而 Git 仍是 source of truth。
+若要看類別邊界，請看 AIT 對比
+[GUI-first agent managers、worktree managers、memory layers、review bots 與
+provenance tools](compare/agent-managers-memory-review-vs-ait.md)。
 
 ```text
 Claude 先調查 -> AIT 記錄 attempt 與 accepted context
@@ -52,6 +62,7 @@ _`ait graph --html` 產生的本機 HTML 報告：attempts、evidence、memory�
 
 | 特色 | 說明 |
 | --- | --- |
+| Git-native attempt ledger | 每次 agent run 都會成為可查詢 attempt，串起 intent、prompt、context、output、files、commits、memory 與 review evidence。 |
 | Live federated memory | Claude Code、Codex、Aider、Gemini、Cursor 與 shell agents 可以共用同一份即時 repo memory：AIT-owned history 加上目前的 `CLAUDE.md`、`AGENTS.md`、`.claude/`、`.codex/` 與 Cursor rules。 |
 | 長期 repo memory | attempts、commits、notes、accepted facts、prior findings，以及明確 adopt 的 memory 可以跨 session 保留。 |
 | Agent-to-agent communication | 一個 agent 的調查、決策、失敗路線或 review finding，可以透過 `AIT_CONTEXT_FILE` 傳給後續另一個 agent。 |
@@ -95,8 +106,9 @@ accepted facts、notes、commits、review findings，以及 live memory files
 組出精簡 handoff，例如 `CLAUDE.md`、`AGENTS.md`、`.claude/memory.md`、
 `.codex/memory.md`、`.cursor/rules`。
 
-這不是隱藏聊天紀錄，而是 repo-local project memory：可以檢查、搜尋、審查，
-也能依 Git 狀態決定保留或丟棄。
+這不是隱藏聊天紀錄，不是外部 vector database，也不是 `CLAUDE.md`
+generator；它是 attempt-derived、evidence-backed repo memory：可以檢查、
+搜尋、審查，也能依 Git 狀態決定保留或丟棄。
 
 ## 支援的 agent
 
@@ -138,8 +150,32 @@ Repo-local memory 是同一個 repository 內的 live federated view。AIT 會�
 
 ## 狀態
 
-`ait` 仍屬 alpha quality，適合本機 dogfooding 與熟悉 Git 工作流的早期
-使用者。Metadata 是 repo-local 的（存在 `.ait/`），不會跨機器同步。
+`ait` 仍屬 alpha quality，適合本機 dogfooding、power users，以及熟悉 Git
+workflow、偏 infra-minded 的早期使用者。Metadata 是 repo-local 的（存在
+`.ait/`），不會跨機器同步。
+
+AIT 的視覺模型已開始可用：`ait graph --html` 仍是本機靜態報告，
+`ait console --read-only` 則會用同一份 attempt graph、evidence、memory、
+hot files 與 review results 產生或 loopback-only serve 一個 read-only daily
+console。CLI action dry-run layer 目前可以記錄 apply/recover/discard 的
+preflight 與 append-only journal，但 browser mutation UI 與 action execution
+尚未啟用；真實 apply/recover/discard 仍必須走既有 CLI/domain paths。
+
+Team-readiness hardening 仍是 local-only：`.ait/policy.json` validation 會
+fail closed，且目前已被 apply、review、console action preflight 與 context
+trust filtering 實際使用。Metadata export/import 目前只輸出 dry-run plans。
+仍然沒有 cross-machine sync、SaaS dashboard、telemetry、自動 push 或自動
+merge。
+
+## 產品解法方向
+
+| 目前限制 | 解法 |
+| --- | --- |
+| 類別容易被分散理解成好幾種工具 | 主定位固定為本機 control plane 與 Git-native attempt ledger；memory、review、provenance、apply/recover 都是 ledger 的不同面向。 |
+| CLI-first 體驗會輸給視覺化 agent managers | Console 先維持 read-only；在 browser mutation UI 前，先硬化 apply/recover/discard dry-run preflight 與 journal。 |
+| Alpha quality 限制一般團隊 adoption | 先服務 local power users 與 infra-minded engineers；先提供 dry-run metadata export/import 與 fail-closed policy validation，再談更廣的 sync。 |
+| Memory 容易被誤解成 prompt stuffing | 堅持 attempt-derived、evidence-backed、可檢查、與 Git 狀態綁定的 memory。 |
+| Review gate 效果需要量化 | 10-case benchmark fixture 與修復後的 Claude/Codex dogfood artifacts 已存在。持續發布誠實 repeated runs，直到 recall、false positives、latency、token cost，以及 deterministic review 與 LLM review 的取捨足夠穩定，才能做品質宣稱。 |
 
 ## 專案連結
 

@@ -8,6 +8,10 @@ description: >-
 
 # 為什麼用 ait
 
+AIT 的產品分類是 **AI coding agents 的本機 control plane**。它是包在
+Claude Code、Codex、Aider、Gemini CLI、Cursor 外面的 Git-native attempt
+ledger 與 review gate。
+
 AI coding agent 跑得快，但不同 agents 之間的共同記憶、長期記憶、溝通交接
 與審核紀律通常跟不上。`ait` 讓 agents 透過 repo-local memory 交接資訊：
 prior attempts、accepted facts、notes、review findings 與 live memory files

@@ -1,0 +1,23 @@
+{
+  "schema": "ait.console_action",
+  "schema_version": 1,
+  "top_level_keys": [
+    "action",
+    "action_id",
+    "actor_label",
+    "domain_command",
+    "dry_run",
+    "ended_at",
+    "error",
+    "policy_enforcement",
+    "preflight",
+    "repo_root",
+    "rollback_hint",
+    "schema",
+    "schema_version",
+    "started_at",
+    "status",
+    "target",
+    "will_execute"
+  ]
+}

@@ -9,6 +9,7 @@ from ait.brain import (
     write_repo_brain,
 )
 from ait.context import build_agent_context, render_agent_context_text
+from ait.context_manifest import apply_context_trust_policy, render_context_memory_trust_markdown
 from ait.memory import (
     build_relevant_memory_recall,
     build_repo_memory,
@@ -54,10 +55,13 @@ def _write_context_file(
         attempt_id=attempt_id,
         include_all_live_sources=True,
     )
+    recall = apply_context_trust_policy(repo_root, recall)
     relevant_memory = render_relevant_memory_recall(recall)
     path = workspace / ".ait-context.md"
     context_text = (
         render_agent_context_text(context)
+        + "\n"
+        + render_context_memory_trust_markdown(repo_root, recall)
         + "\n"
         + relevant_memory
         + "\n"
@@ -76,6 +80,7 @@ def _write_context_file(
         owner_id=attempt_id,
         context_ref=str(path),
         recall=recall,
+        context_text=context_text,
     )
     return path
 

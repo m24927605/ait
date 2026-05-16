@@ -68,8 +68,9 @@ clear adversarial job: challenge the implementation, look for missing edge
 cases, weak tests, regressions, security-sensitive paths, and reasons the
 attempt should not be accepted as-is.
 
-When repo policy requires review before apply, a blocked adversarial review can
-hold the result:
+When `.ait/policy.json` sets `apply.require_review_clearance: true`, a missing
+or blocked latest review can hold CLI apply before the attempt touches your
+checkout:
 
 ```bash
 ait apply <attempt-id> --mode current
@@ -136,4 +137,7 @@ Risk scoring is based on the same signals used by `light` mode.
 Review baselines use the same local memory discipline as runs. Trusted
 baseline context comes from approved or accepted local facts. Candidate,
 stale, superseded, or policy-blocked memory remains advisory or excluded
-instead of being treated as trusted context.
+instead of being treated as trusted context. Review briefs now write a
+versioned `ait.context_manifest` sidecar and review artifacts include
+`context_manifest_ref`, so reviewer context can be audited with the same trust
+contract as wrapped run context.

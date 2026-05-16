@@ -23,6 +23,10 @@ from ait.repo import resolve_repo_root
 from ait.report.shared import _short_id
 from ait.review import latest_review_summary
 
+WORK_GRAPH_SCHEMA = "ait.work_graph"
+WORK_GRAPH_SCHEMA_VERSION = 1
+
+
 def build_work_graph(
     repo_root: str | Path,
     *,
@@ -41,6 +45,8 @@ def build_work_graph(
     root = resolve_repo_root(repo_root)
     db_path = root / ".ait" / "state.sqlite3"
     graph: dict[str, object] = {
+        "schema": WORK_GRAPH_SCHEMA,
+        "schema_version": WORK_GRAPH_SCHEMA_VERSION,
         "repo_root": str(root),
         "state_path": str(db_path),
         "generated_at": utc_now(),

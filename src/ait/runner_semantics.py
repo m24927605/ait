@@ -53,10 +53,13 @@ def _has_workspace_changes(workspace: Path, *, context_file: Path | None) -> boo
     )
     if completed.returncode != 0:
         return False
-    ignored = str(context_file.relative_to(workspace)) if context_file is not None else None
+    ignored: set[str] = set()
+    if context_file is not None:
+        ignored.add(str(context_file.relative_to(workspace)))
+        ignored.add(str(context_file.with_name(context_file.name + ".manifest.json").relative_to(workspace)))
     for line in completed.stdout.splitlines():
         path = line[3:].strip()
-        if ignored is not None and path == ignored:
+        if path in ignored:
             continue
         return True
     return False

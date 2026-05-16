@@ -9,14 +9,17 @@ import subprocess
 from typing import TYPE_CHECKING
 
 from ait.db import (
+    utc_now,
     list_attempt_commits,
     list_attempt_review_findings,
     list_attempt_reviews,
     list_attempts,
     list_memory_facts,
 )
+from ait.context_manifest import write_context_manifest
 from ait.memory_policy import load_memory_policy, path_excluded, transcript_excluded
 from ait.memory import discover_live_memory_sources, read_live_memory_source
+from ait.memory.models import RelevantMemoryItem, RelevantMemoryRecall
 from ait.review_policy import RiskAssessment, risk_reason_payload
 
 if TYPE_CHECKING:
@@ -183,11 +186,94 @@ def render_reviewer_brief(
     return _truncate_brief("\n".join(lines).rstrip() + "\n", limit)
 
 
+def write_review_context_manifest(
+    repo_root: str | Path,
+    *,
+    review_id: str,
+    target_attempt_id: str,
+    baseline_ref: str,
+    brief_ref: str,
+    brief_text: str,
+) -> str:
+    root = Path(repo_root).resolve()
+    baseline_payload = _read_json(root / baseline_ref)
+    recall = _recall_from_baseline_payload(review_id, baseline_payload)
+    return write_context_manifest(
+        root,
+        owner_kind="review",
+        owner_id=review_id,
+        context_ref=brief_ref,
+        recall=recall,
+        context_text=brief_text,
+        extra_payload={
+            "context_kind": "review_brief",
+            "review_id": review_id,
+            "target_attempt_id": target_attempt_id,
+            "baseline_ref": baseline_ref,
+            "brief_ref": brief_ref,
+        },
+    )
+
+
+def _recall_from_baseline_payload(review_id: str, payload: dict[str, object]) -> RelevantMemoryRecall:
+    selected: list[RelevantMemoryItem] = []
+    skipped: list[dict[str, object]] = []
+    for fact in payload.get("selected_facts", []):
+        if not isinstance(fact, dict):
+            continue
+        selected.append(
+            RelevantMemoryItem(
+                kind="fact",
+                id=str(fact.get("id") or ""),
+                source="review_baseline",
+                topic=str(fact.get("topic") or ""),
+                score=1.0,
+                text=str(fact.get("summary") or ""),
+                metadata={
+                    "status": "accepted",
+                    "source_attempt_id": fact.get("source_attempt_id"),
+                    "source_file_path": fact.get("source_file_path"),
+                    "confidence": fact.get("confidence"),
+                    "human_review_state": fact.get("human_review_state"),
+                    "provenance": fact.get("provenance"),
+                },
+            )
+        )
+    for item in payload.get("excluded_sources_summary", []):
+        if not isinstance(item, dict):
+            continue
+        skipped.append(
+            {
+                "id": item.get("id") or item.get("source_id"),
+                "kind": item.get("kind") or "memory",
+                "topic": item.get("topic") or "",
+                "reason": item.get("reason") or "excluded",
+                "source": item.get("path") or item.get("ref") or "",
+            }
+        )
+    return RelevantMemoryRecall(
+        query=f"review:{review_id}",
+        selected=tuple(item for item in selected if item.id),
+        skipped=tuple(item for item in skipped if item.get("id")),
+        budget_chars=0,
+        rendered_chars=sum(len(item.text) for item in selected),
+        compacted=False,
+        source_manifest=tuple(
+            item for item in payload.get("live_memory_context_manifest", []) if isinstance(item, dict)
+        ),
+        write_mode="review_context_artifact",
+    )
+
+
 def _fact_excluded_reason(fact, policy) -> str | None:
-    if fact.human_review_state != "approved":
-        return "unapproved_fact"
     if fact.status != "accepted":
         return "not_accepted"
+    if fact.superseded_by:
+        return "superseded_fact"
+    if fact.valid_to and fact.valid_to <= utc_now():
+        return "expired_fact"
+    if fact.human_review_state != "approved":
+        return "unapproved_fact"
     if fact.source_file_path and path_excluded(fact.source_file_path, policy):
         return "excluded_source_path"
     if transcript_excluded(" ".join([fact.body, fact.summary]), policy):

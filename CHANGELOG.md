@@ -1,5 +1,74 @@
 # Changelog
 
+## Unreleased
+
+## 0.55.66 - 2026-05-17
+
+### Documentation
+
+- Reposition README, docs home, AI-search facts, and `llms.txt` around AIT as
+  a local control plane and Git-native attempt ledger for AI coding agents.
+- Clarify that AIT memory is attempt-derived, evidence-backed repo memory, not
+  hidden chat memory, an external vector database, or a `CLAUDE.md` generator.
+- Document current product boundaries around alpha adoption, static graph UI,
+  and the need for benchmark data before making stronger adversarial review
+  quality claims.
+- Add a concrete weakness-response engineering spec that maps positioning, UI,
+  alpha adoption, memory clarity, and review-gate metrics to design,
+  implementation slices, tests, acceptance criteria, release gates, and code
+  review standards.
+- Add an initial review benchmark dogfood report that records current
+  deterministic fake-reviewer baseline metrics and the acceptance targets
+  required before stronger adversarial-review quality claims.
+- Add a category comparison page that distinguishes AIT from GUI-first agent
+  managers, worktree managers, memory layers, review bots, and provenance
+  tools without claiming a finished daily console.
+- Expand live federated memory docs with source/status/trust rules plus
+  false-memory and stale-memory acceptance demo specs.
+- Add ticket-level product maturity hardening work orders for the remaining
+  daily console, review benchmark, memory trust demo, metadata export/import,
+  team policy profile, and UI mutation recovery work.
+- Update public docs for the read-only daily console, 10-case benchmark fixture,
+  and executable memory trust fixtures while keeping mutation and
+  benchmark-proven quality claims out of scope.
+- Add concrete resolution designs for the remaining maturity gaps: console
+  mutation recovery, real Claude/Codex reviewer dogfood, context manifest memory
+  trust UX, and team-readiness metadata export/import plus policy profiles.
+- Update README and website docs for implemented hardening slices: context
+  manifests, explicit real-reviewer dogfood benchmark path, console action
+  dry-run journaling, `.ait/policy.json` validation, and metadata dry-run
+  export/import.
+
+### Added
+
+- Add `schema` and `schema_version` to `ait graph --format json`, with a golden
+  contract fixture for the `ait.work_graph` payload.
+- Add `ait console --read-only`, which renders the versioned work graph as a
+  local read-only daily console. `--serve-local` is loopback-only and the
+  console does not provide mutation actions. The JSON payload has a schema v1
+  golden contract fixture.
+- Expand the review benchmark fixture to 10 cases and add JSON/Markdown
+  benchmark run/report CLI support for deterministic fake reviewers, including
+  a schema v1 golden report contract fixture.
+- Add executable false-memory and stale-memory fixtures/tests covering recall
+  selection and review trusted-baseline behavior.
+- Add versioned `ait.context_manifest` generation for wrapped run context files,
+  separating trusted, advisory, and excluded memory while preventing
+  policy-blocked body leakage.
+- Add explicit real reviewer dogfood support to `ait review benchmark run` via
+  `--reviewer-adapter ... --dogfood`, while keeping deterministic fake reviewers
+  as the CI-safe default.
+- Add `ait console action apply|recover|discard --dry-run` with preflight checks,
+  versioned `ait.console_action` JSON, and an append-only local action journal.
+- Add `ait policy validate/show` for fail-closed `.ait/policy.json` validation.
+- Add `ait metadata export/import --dry-run` for local no-sync metadata planning
+  with versioned bundle/import-plan schemas.
+
+### Fixed
+
+- Exclude superseded or expired accepted memory facts from reviewer trusted
+  baseline snapshots.
+
 ## 0.55.65 - 2026-05-16
 
 ### Fixed

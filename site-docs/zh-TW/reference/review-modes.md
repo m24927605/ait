@@ -67,8 +67,8 @@ blocking findings。
 任務：挑戰實作、找遺漏邊界條件、薄弱測試、regression、安全敏感路徑，以及
 這個 attempt 不應該被直接接受的理由。
 
-當 repo policy 要求 apply 前必須通過 review，blocked adversarial review
-可以 hold 住結果：
+當 `.ait/policy.json` 設定 `apply.require_review_clearance: true`，missing
+或 blocked latest review 可以在 attempt 觸碰 checkout 前 hold 住 CLI apply：
 
 ```bash
 ait apply <attempt-id> --mode current
@@ -134,4 +134,6 @@ Risk scoring 使用和 `light` mode 相同的訊號。
 Review baseline 使用和 run 相同的本機 memory discipline。Trusted baseline
 context 只來自 approved 或 accepted local facts。Candidate、stale、
 superseded 或 policy-blocked memory 只會是 advisory，或被排除；不會被當成
-trusted context。
+trusted context。Review brief 現在會寫入 versioned `ait.context_manifest`
+sidecar，review artifact 也會包含 `context_manifest_ref`，因此 reviewer
+context 可用與 wrapped run context 相同的 trust contract 審核。

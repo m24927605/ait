@@ -1,0 +1,18 @@
+{
+  "schema": "ait.team_policy.enforcement",
+  "schema_version": 1,
+  "top_level_keys": [
+    "attempt_id",
+    "checks",
+    "operation",
+    "policy_validation",
+    "schema",
+    "schema_version",
+    "status"
+  ],
+  "check_keys": [
+    "message",
+    "name",
+    "status"
+  ]
+}

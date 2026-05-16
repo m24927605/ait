@@ -2,11 +2,10 @@
 
 # ait
 
-### AI agent 的共同記憶、長期記憶、互相溝通與對抗式審查
+### AI coding agents 的本機 control plane
 
-讓 Claude Code、Codex、Aider、Gemini、Cursor 共用 repo-local memory，
-保留長期 attempt history，透過 `AIT_CONTEXT_FILE` 交接脈絡，並讓另一個
-reviewer agent 在 apply 前做對抗式審查。
+Git-native attempt ledger、repo-local memory、跨 agent handoff，以及給
+Claude Code、Codex、Aider、Gemini、Cursor 使用的 review gate。
 
 <sub>[English](README.md) · [繁體中文](README.zh-TW.md)</sub>
 
@@ -24,11 +23,18 @@ reviewer agent 在 apply 前做對抗式審查。
 agent 學到了什麼、讓有用決策跨 session 留下來，並在高風險變更落地前交給
 另一個 agent 挑戰。
 
-`ait` 是給多個 AI coding agents 使用的本機 control plane。你照常使用
-Claude Code、Codex、Aider、Gemini 或 Cursor；AIT 會把每次執行變成一個
-可審核的 attempt，記錄 prompt、狀態、變更、commit 與 evidence。Agent
-可以共享 repo-local memory、保留長期記憶、互相交接，並在必要時由另一個
-reviewer agent 對抗式審查；在你明確 apply 之前，結果不會進入 root checkout。
+`ait` 是給多個 AI coding agents 使用的本機 control plane：包在 Claude
+Code、Codex、Aider、Gemini 或 Cursor 外面的 Git-native attempt ledger
+與 review gate。你照常使用原本的 agent；AIT 會把每次執行變成一個可審核的
+attempt，記錄 prompt、狀態、變更、commit 與 evidence。Agent 可以共享
+repo-local memory、保留長期記憶、互相交接，並在必要時由另一個 reviewer
+agent 對抗式審查；在你明確 apply 之前，結果不會進入 root checkout。
+
+更硬的產品分類是：**AI coding agents 的本機 control plane**。AIT 不只是
+worktree manager，不只是 memory layer，不只是 review bot，也不是 SaaS
+provenance dashboard。這些都是同一個 local attempt ledger 的不同面向：
+agent 在 attempt 裡工作，memory 來自可追溯 evidence，review finding 可以
+擋住 apply，而 Git 仍是 source of truth。
 
 ```text
 Claude 先調查 -> AIT 記錄 attempt 與 accepted context
@@ -78,6 +84,7 @@ PyPI 與 npm 上的套件名稱是 `ait-vcs`，安裝後的指令是 `ait`。
 
 | 特色 | 說明 |
 | --- | --- |
+| Git-native attempt ledger | 每次 agent run 都會成為可查詢 attempt，串起 intent、prompt、context、output、files、commits、memory 與 review evidence。 |
 | Live federated memory | Claude Code、Codex、Aider、Gemini、Cursor 與 shell agents 可以讀同一份即時 repo memory：AIT-owned history 加上目前的 `CLAUDE.md`、`AGENTS.md`、`.claude/`、`.codex/` 與 Cursor rules。 |
 | 長期 repo memory | 有價值的 attempts、commits、notes、accepted facts、prior findings，以及明確 adopt 的 memory 可以跨 terminal、跨 session、跨週期保留下來。 |
 | Agent-to-agent communication | 一個 agent 做過的調查、決策、失敗路線或 review finding，可以透過 `AIT_CONTEXT_FILE` 傳給後續另一個 agent，而不是藏在某個聊天視窗裡。 |
@@ -119,12 +126,13 @@ AIT 的核心不是取代 Claude Code 或 Codex，而是讓它們先在 attempt 
 attempts、查看它們改了哪些檔案、保留失敗結果作為 recovery 線索，最後再決定
 哪一個要套用到目前 checkout。
 
-AIT 的 memory 是 repo-local、可檢查的專案記憶，不是某個聊天視窗裡的隱藏
-上下文。它會依 policy 召回過去 attempts、commits、notes、accepted facts
-與 prior findings，再於 recall/run/review 當下即時 federate `CLAUDE.md`、
-`AGENTS.md`、`.claude/memory.md`、`.codex/memory.md`、`.cursor/rules`
-等 live external sources。這些檔案仍是自己的 source of truth；AIT 不會自動
-匯入。
+AIT 的 memory 是 **attempt-derived、evidence-backed repo memory**，不是
+某個聊天視窗裡的隱藏上下文。它不是外部 vector database 產品，不是
+`CLAUDE.md` generator，也不是一袋未審核 prompt snippets。它會依 policy
+召回過去 attempts、commits、notes、accepted facts 與 prior findings，再於
+recall/run/review 當下即時 federate `CLAUDE.md`、`AGENTS.md`、
+`.claude/memory.md`、`.codex/memory.md`、`.cursor/rules` 等 live external
+sources。這些檔案仍是自己的 source of truth；AIT 不會自動匯入。
 
 ## Agent-to-agent communication
 
@@ -363,7 +371,10 @@ commits、curated notes、accepted facts、review findings，以及即時讀取�
 `CLAUDE.md`、`AGENTS.md`、`.claude/memory.md`、`.codex/memory.md`、
 `.cursor/rules`。AIT 會記錄 context manifest，包含 source path、hash、
 mtime、bytes used 與 policy status，但不會把外部檔案偽裝成 AIT captured
-provenance。
+provenance。這個 versioned `ait.context_manifest` 會分開 trusted baseline、
+advisory 與 excluded memory；candidate、stale、superseded、policy-blocked
+memory 不能成為 trusted baseline，policy-blocked body text 不會被寫進
+context 或 manifest。
 
 ## 安裝
 
@@ -392,7 +403,7 @@ ait --version
 安裝指定 GitHub release：
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.55.64"
+pipx install "git+https://github.com/m24927605/ait.git@v0.55.66"
 ```
 
 升級：
@@ -439,6 +450,12 @@ ait memory lint --fix
 
 ait graph
 ait graph --html
+ait console --read-only
+ait console action apply --attempt latest --dry-run --format json
+
+ait policy validate --format json
+ait metadata export --dry-run --output ait-metadata.bundle.json --format json
+ait metadata import --input ait-metadata.bundle.json --dry-run --format json
 ```
 
 Shell 自動啟用：
@@ -458,10 +475,33 @@ ait shell uninstall --shell zsh
 
 ## 狀態
 
-`ait` 目前是 `0.55.64`，仍屬 alpha quality。它適合 local dogfooding，
-以及熟悉 Git workflow、願意早期試用的使用者。
+`ait` 目前是 `0.55.66`，仍屬 alpha quality。它適合 local dogfooding、
+power users，以及熟悉 Git workflow、偏 infra-minded 的早期使用者。
 
 Metadata 只存在單一 repo 的 `.ait/` 裡，不會跨機器同步。
+
+AIT 的視覺模型已開始可用：`ait graph --html` 仍是本機靜態報告，
+`ait console --read-only` 則會用同一份 attempt graph、evidence、memory、
+hot files 與 review results 產生或 loopback-only serve 一個 read-only daily
+console。Browser mutation UI 尚未啟用；目前只有 apply/recover/discard 的
+CLI dry-run action layer，提供 preflight 與 append-only journal。真實
+apply/recover/discard 仍必須走既有 CLI/domain paths。
+
+Team-readiness hardening 仍保持 local-first：`.ait/policy.json` validation 會
+fail closed，且目前已被 apply、review、console action preflight 與 context
+trust filtering 實際使用。Metadata export/import 目前只支援 dry-run planning。
+仍然沒有 cross-machine sync、SaaS dashboard、telemetry、自動 push 或自動
+merge。
+
+產品解法方向：
+
+| 目前限制 | 解法 |
+| --- | --- |
+| 類別容易被分散理解成好幾種工具 | 主定位固定為本機 control plane 與 Git-native attempt ledger；memory、review、provenance、apply/recover 都是 ledger 的不同面向。 |
+| CLI-first 體驗會輸給視覺化 agent managers | Daily console 先維持 read-only；在任何 browser mutation UI 前，先硬化 apply/recover/discard dry-run preflight 與 journal。 |
+| Alpha quality 限制一般團隊 adoption | 先服務 local power users 與 infra-minded engineers；先提供 dry-run metadata export/import 與 fail-closed policy validation，再談更廣的 team sync。 |
+| Memory 容易被誤解成 prompt stuffing | 堅持 attempt-derived、evidence-backed、可檢查、與 Git 狀態綁定的 memory；避免宣稱外部 vector DB 或 hidden chat memory。 |
+| Review gate 效果需要量化 | 10-case benchmark fixture 與修復後的 Claude/Codex dogfood artifacts 已存在。持續發布誠實 repeated runs，直到 recall、false positives、latency、token cost，以及 deterministic review 與 LLM review 的取捨足夠穩定，才能做品質宣稱。 |
 
 ## 開發
 
@@ -498,5 +538,7 @@ git status --short
 - [對抗式 code review](https://m24927605.github.io/ait/zh-TW/reference/adversarial-code-review/)
 - [指令參考](https://m24927605.github.io/ait/zh-TW/reference/commands/)
 - [Compare: naked git-worktree vs ait](https://m24927605.github.io/ait/compare/git-worktree-naked-vs-ait/)
+- [Compare: agent managers、memory layers、review bots](https://m24927605.github.io/ait/zh-TW/compare/agent-managers-memory-review-vs-ait/)
 
-內部設計筆記、規格與 refactor plan 請見 [`docs/`](docs/)。
+內部設計筆記、規格與 refactor plan 請見 [`docs/`](docs/)，包含
+[產品弱點回應與實作計畫](docs/ait-product-weakness-response-plan-zh.md)。

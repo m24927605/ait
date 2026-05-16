@@ -42,25 +42,26 @@ def run_review_adapter(
     review_id: str,
     adapter: str,
     brief: str,
+    timeout_seconds: int | float | None = None,
 ) -> ReviewAdapterResult:
     adapter_name = adapter.strip()
     local_cli_command = _LOCAL_CLI_REVIEW_ADAPTERS.get(adapter_name)
     config = None if local_cli_command is not None else resolve_review_adapter_policy(repo_root, adapter)
     if local_cli_command is not None:
         command = local_cli_command
-        timeout = None
+        timeout = timeout_seconds
         env_allowlist: tuple[str, ...] = ()
         env_blocklist = _REVIEW_ADAPTER_ENV_BLOCKLIST.get(adapter_name, ())
         configured_cwd: str | None = None
     elif config is None:
         command = _adapter_command(adapter)
-        timeout = None
+        timeout = timeout_seconds
         env_allowlist: tuple[str, ...] = ()
         env_blocklist = _REVIEW_ADAPTER_ENV_BLOCKLIST.get(adapter_name, ())
         configured_cwd: str | None = None
     else:
         command = _adapter_command(" ".join([config.command, *config.args]))
-        timeout = config.timeout_seconds
+        timeout = timeout_seconds if timeout_seconds is not None else config.timeout_seconds
         env_allowlist = config.env_allowlist
         env_blocklist = ()
         configured_cwd = config.cwd

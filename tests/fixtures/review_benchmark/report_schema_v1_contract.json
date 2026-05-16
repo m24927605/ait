@@ -1,0 +1,21 @@
+{
+  "schema": "ait.review_benchmark",
+  "schema_version": 1,
+  "top_level_keys": [
+    "baseline_usefulness",
+    "blocked_memory_source_recall_count",
+    "case_count",
+    "evidence_completeness",
+    "false_positive_count",
+    "finding_recall",
+    "fixture",
+    "latency_ms",
+    "non_actionable_warning_count",
+    "reviewer",
+    "risk_scoring_calibration",
+    "schema",
+    "schema_version",
+    "summary_fidelity",
+    "trusted_baseline_contamination_rate"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "schema": "ait.metadata_import_plan",
+  "schema_version": 1,
+  "top_level_keys": [
+    "created_at",
+    "dry_run",
+    "errors",
+    "input",
+    "limitations",
+    "object_counts",
+    "operation",
+    "repo",
+    "schema",
+    "schema_version",
+    "status",
+    "warnings",
+    "will_write"
+  ]
+}

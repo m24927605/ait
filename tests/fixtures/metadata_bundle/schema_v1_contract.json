@@ -1,0 +1,25 @@
+{
+  "schema": "ait.metadata_bundle",
+  "schema_version": 1,
+  "top_level_keys": [
+    "content_sha256",
+    "contents",
+    "created_at",
+    "dry_run",
+    "limitations",
+    "object_counts",
+    "operation",
+    "output",
+    "redaction",
+    "repo",
+    "schema",
+    "schema_version",
+    "status"
+  ],
+  "object_count_keys": [
+    "attempts",
+    "memory_facts",
+    "review_findings",
+    "reviews"
+  ]
+}

@@ -21,8 +21,14 @@ from ait.review import (
     create_fake_reviewer_review,
 )
 from ait.review_policy import risk_reason_payload
-from ait.review_benchmark import run_review_benchmark
+from ait.review_benchmark import (
+    DEFAULT_REAL_REVIEWER_BENCHMARK_TIMEOUT_SECONDS,
+    load_review_benchmark_payload,
+    render_review_benchmark_markdown,
+    run_review_benchmark_payload,
+)
 from ait.review_queue import list_review_jobs, process_review_queue
+from ait.team_policy import TeamPolicyEnforcementError, enforce_team_policy
 
 
 def handle(args, repo_root: Path, parser=None) -> int:
@@ -73,16 +79,66 @@ def handle(args, repo_root: Path, parser=None) -> int:
             print(_format_worker_text(result))
         return 0 if result.failed == 0 else 1
     if args.review_command == "benchmark":
-        result = run_review_benchmark(args.fixture, fake_reviewer=args.fake_reviewer)
-        payload = result.to_dict()
-        if args.format == "json":
-            print(json.dumps(payload, indent=2))
+        command = args.benchmark_command_or_fixture or "run"
+        if command == "report":
+            if not args.input:
+                return _review_error(args.format, "review benchmark report requires --input", exit_code=2)
+            try:
+                payload = load_review_benchmark_payload(args.input)
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                return _review_error(args.format, str(exc), exit_code=2)
+            rendered = _render_benchmark_payload(payload, args.format)
+            if args.output:
+                output = Path(args.output)
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_text(rendered if rendered.endswith("\n") else rendered + "\n", encoding="utf-8")
+                print(f"Wrote {output}")
+            else:
+                print(rendered, end="" if rendered.endswith("\n") else "\n")
+            return 0
+        fixture = args.fixture if command == "run" else command
+        if not fixture:
+            return _review_error(args.format, "review benchmark requires a fixture", exit_code=2)
+        try:
+            payload = run_review_benchmark_payload(
+                fixture,
+                fake_reviewer=args.fake_reviewer,
+                reviewer_adapter=getattr(args, "reviewer_adapter", None),
+                dogfood=bool(getattr(args, "dogfood", False)),
+                repo_root=repo_root,
+                permission_profile=getattr(args, "permission_profile", None),
+                model=getattr(args, "model", None),
+                timeout_seconds=getattr(
+                    args,
+                    "timeout_seconds",
+                    DEFAULT_REAL_REVIEWER_BENCHMARK_TIMEOUT_SECONDS,
+                ),
+            )
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            return _review_error(args.format, str(exc), exit_code=2)
+        rendered = _render_benchmark_payload(payload, args.format)
+        if args.output:
+            output = Path(args.output)
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(rendered if rendered.endswith("\n") else rendered + "\n", encoding="utf-8")
+            if args.format == "json":
+                print(json.dumps({"schema_version": 1, "status": "written", "output": str(output), "report": payload}, indent=2))
+            else:
+                print(f"Wrote {output}")
         else:
-            print(_format_benchmark_text(payload))
+            print(rendered, end="" if rendered.endswith("\n") else "\n")
         return 0
     if args.review_command == "finding":
         return _handle_review_finding(args, repo_root)
     if args.review_command == "attempt":
+        try:
+            enforce_team_policy(repo_root, operation="review", attempt_id=args.selector)
+        except TeamPolicyEnforcementError as exc:
+            if args.format == "json":
+                print(json.dumps(exc.payload, indent=2, sort_keys=True))
+            else:
+                print(f"error: team policy blocked review: {exc}", file=sys.stderr)
+            return 2
         try:
             if getattr(args, "mode", "light") == "adversarial":
                 adapter = getattr(args, "review_adapter", None)
@@ -350,6 +406,14 @@ def _format_benchmark_text(payload: dict[str, object]) -> str:
         f"false_positives={payload['false_positive_count']} "
         f"latency_ms={payload['latency_ms']}"
     )
+
+
+def _render_benchmark_payload(payload: dict[str, object], output_format: str) -> str:
+    if output_format == "json":
+        return json.dumps(payload, indent=2) + "\n"
+    if output_format == "markdown":
+        return render_review_benchmark_markdown(payload)
+    return _format_benchmark_text(payload) + "\n"
 
 
 def _findings_payload(findings) -> dict[str, object]:

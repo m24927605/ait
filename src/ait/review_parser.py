@@ -93,13 +93,21 @@ def _parse_finding(
     if not isinstance(item, dict):
         raise ReviewOutputParseError(f"finding {index} must be an object")
     severity = _normalize_severity(item.get("severity"), index=index)
-    path = _optional_text(item.get("path")) or ""
+    path = _optional_text(item.get("path")) or _optional_text(item.get("file")) or ""
     cross_file = _bool_value(item.get("cross_file"), default=False)
-    title = _optional_text(item.get("title")) or ""
-    body = _optional_text(item.get("body")) or ""
-    evidence_ref = _optional_text(item.get("evidence_ref"))
-    suggested_test = _optional_text(item.get("suggested_test"))
-    mitigation = _optional_text(item.get("mitigation"))
+    title = _optional_text(item.get("title")) or _optional_text(item.get("issue")) or _optional_text(item.get("category")) or ""
+    body = _optional_text(item.get("body")) or _optional_text(item.get("details")) or _optional_text(item.get("issue")) or ""
+    evidence_ref = _optional_text(item.get("evidence_ref")) or _optional_text(item.get("evidence"))
+    suggested_test = (
+        _optional_text(item.get("suggested_test"))
+        or _optional_text(item.get("recommendation"))
+        or _optional_text(item.get("recommended_fix"))
+    )
+    mitigation = (
+        _optional_text(item.get("mitigation"))
+        or _optional_text(item.get("recommendation"))
+        or _optional_text(item.get("recommended_fix"))
+    )
     hunk_ref = _optional_text(item.get("hunk_ref"))
     line = _optional_int(item.get("line"), field_name="line", index=index)
     _validate_changed_file_reference(

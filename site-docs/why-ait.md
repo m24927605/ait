@@ -10,6 +10,10 @@ description: >-
 
 # Why ait
 
+AIT's category is **local control plane for AI coding agents**. It is a
+Git-native attempt ledger and review gate around Claude Code, Codex, Aider,
+Gemini CLI, and Cursor.
+
 AI coding agents are fast. Shared memory, long-term memory, review discipline,
 and communication across different agents are not. `ait` closes that gap by
 giving agents a repo-local way to communicate: prior attempts, accepted facts,

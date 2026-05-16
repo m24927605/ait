@@ -71,14 +71,15 @@ ait review finding list --status open
 ait review report --attempt latest --format markdown --output docs/reviews/latest.md
 ```
 
-Enable review-gated apply in repo policy when you want blocked reviews to hold
-apply:
+Enable review-gated apply in `.ait/policy.json` when you want CLI apply to
+require a clear latest review:
 
 ```json
 {
-  "review": {
-    "auto_apply_requires_review": true,
-    "allow_override": false
+  "schema": "ait.team_policy",
+  "schema_version": 1,
+  "apply": {
+    "require_review_clearance": true
   }
 }
 ```
@@ -197,6 +198,34 @@ Queued reviews can be inspected and processed with:
 ait review status
 ait review worker --once
 ```
+
+## Measuring review quality
+
+AIT should not claim that adversarial review is automatically better without
+evidence. The implemented workflow gives you the substrate to measure it:
+
+- deterministic `light` review for cheap risk classification
+- separate LLM-backed reviewer adapters for high-risk attempts
+- structured findings with severity, confidence, path, status, and blocking
+  state
+- queryable review status and finding history
+- review-gated apply when policy requires review
+
+The still-missing evidence is repeated successful real-reviewer data: how many
+bugs a reviewer found that the implementer missed, false positive rate,
+latency, token cost, which risk patterns benefit most, and when deterministic
+review is enough versus when an LLM reviewer pays off. Until that data is
+published, treat adversarial review as an explicit extra safety pass, not a
+correctness guarantee.
+
+The current baseline report is tracked in the repository at
+[`docs/review-benchmark-dogfood-report.md`](https://github.com/m24927605/ait/blob/main/docs/review-benchmark-dogfood-report.md).
+It records deterministic fake-reviewer metrics, local Claude Code/Codex
+dogfood artifacts, and the acceptance targets that must be met before stronger
+public quality claims are made. The current repaired real dogfood artifacts
+complete successfully; they prove honest local invocation, parsing, and
+reporting, but they are still local dogfood evidence rather than review quality
+proof.
 
 ## Demo flow
 

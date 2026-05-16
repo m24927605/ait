@@ -27,7 +27,7 @@ from ait.db.review_repositories import AttemptReviewRecord
 from ait.idresolver import IdResolutionError, resolve_attempt_id
 from ait.ids import new_ulid
 from ait.review_adapter import ReviewAdapterError, ReviewAdapterResult, run_review_adapter
-from ait.review_baseline import create_review_baseline_snapshot, render_reviewer_brief
+from ait.review_baseline import create_review_baseline_snapshot, render_reviewer_brief, write_review_context_manifest
 from ait.review_parser import ParsedReviewFinding, ReviewOutputParseError, parse_review_output
 from ait.review_policy import (
     RiskAssessment,
@@ -184,6 +184,14 @@ def create_fake_reviewer_review(
             profiles=profiles,
         )
         _write_text_artifact(init_result.repo_root / brief_ref, brief)
+        context_manifest_ref = write_review_context_manifest(
+            init_result.repo_root,
+            review_id=review_id,
+            target_attempt_id=target.attempt_id,
+            baseline_ref=baseline.baseline_ref,
+            brief_ref=brief_ref,
+            brief_text=brief,
+        )
         raw_output = _fake_reviewer_output(fake_adapter, target=target)
         findings: tuple[ParsedReviewFinding, ...] = ()
         parse_error: str | None = None
@@ -204,6 +212,7 @@ def create_fake_reviewer_review(
                 assessment=assessment,
                 baseline_ref=baseline.baseline_ref,
                 brief_ref=brief_ref,
+                context_manifest_ref=context_manifest_ref,
                 reviewer_adapter=fake_adapter,
                 raw_output=raw_output,
                 findings=findings,
@@ -310,6 +319,14 @@ def create_command_reviewer_review(
             profiles=profiles,
         )
         _write_text_artifact(init_result.repo_root / brief_ref, brief)
+        context_manifest_ref = write_review_context_manifest(
+            init_result.repo_root,
+            review_id=review_id,
+            target_attempt_id=target.attempt_id,
+            baseline_ref=baseline.baseline_ref,
+            brief_ref=brief_ref,
+            brief_text=brief,
+        )
 
         adapter_result: ReviewAdapterResult | None = None
         findings: tuple[ParsedReviewFinding, ...] = ()
@@ -343,6 +360,7 @@ def create_command_reviewer_review(
                 assessment=assessment,
                 baseline_ref=baseline.baseline_ref,
                 brief_ref=brief_ref,
+                context_manifest_ref=context_manifest_ref,
                 reviewer_adapter=reviewer_adapter,
                 raw_output="" if adapter_result is None else adapter_result.stdout,
                 findings=findings,
@@ -463,6 +481,14 @@ def execute_queued_review(repo_root: str | Path, review_id: str) -> Deterministi
             profiles=profiles,
         )
         _write_text_artifact(init_result.repo_root / brief_ref, brief)
+        context_manifest_ref = write_review_context_manifest(
+            init_result.repo_root,
+            review_id=review_id,
+            target_attempt_id=target.attempt_id,
+            baseline_ref=baseline_ref,
+            brief_ref=brief_ref,
+            brief_text=brief,
+        )
 
         adapter = running.reviewer_adapter or "fake:pass"
         adapter_result: ReviewAdapterResult | None = None
@@ -502,6 +528,7 @@ def execute_queued_review(repo_root: str | Path, review_id: str) -> Deterministi
                 assessment=assessment,
                 baseline_ref=baseline_ref,
                 brief_ref=brief_ref,
+                context_manifest_ref=context_manifest_ref,
                 reviewer_adapter=adapter,
                 raw_output=raw_output,
                 findings=findings,
@@ -978,6 +1005,7 @@ def _reviewer_artifact_payload(
     assessment: RiskAssessment,
     baseline_ref: str,
     brief_ref: str,
+    context_manifest_ref: str | None,
     reviewer_adapter: str,
     raw_output: str,
     findings: tuple[ParsedReviewFinding, ...],
@@ -999,6 +1027,7 @@ def _reviewer_artifact_payload(
         ],
         "baseline_ref": baseline_ref,
         "brief_ref": brief_ref,
+        "context_manifest_ref": context_manifest_ref,
         "raw_output": raw_output,
         "parse_error": parse_error,
         "findings": [

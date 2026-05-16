@@ -1103,6 +1103,113 @@ class CliRunTests(unittest.TestCase):
             self.assertNotIn("https://", html)
             self.assertNotIn("http://", html)
 
+    def test_work_graph_json_matches_schema_v1_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            run_stdout = io.StringIO()
+            graph_stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "run",
+                        "--format",
+                        "json",
+                        "--intent",
+                        "Build graph JSON contract",
+                        "--",
+                        sys.executable,
+                        "-c",
+                        "from pathlib import Path; Path('contract.txt').write_text('ok\\n')",
+                    ],
+                ):
+                    with redirect_stdout(run_stdout):
+                        run_exit = cli.main()
+                with patch("sys.argv", ["ait", "graph", "--format", "json"]):
+                    with redirect_stdout(graph_stdout):
+                        graph_exit = cli.main()
+
+            payload = json.loads(graph_stdout.getvalue())
+            contract = json.loads(
+                (Path(__file__).parent / "fixtures" / "work_graph" / "schema_v1_contract.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            intents = [item for item in payload["intents"] if isinstance(item, dict)]
+            attempts = [item for item in intents[0]["attempts"] if isinstance(item, dict)]
+
+            self.assertEqual(0, run_exit)
+            self.assertEqual(0, graph_exit)
+            self.assertEqual(contract["schema"], payload["schema"])
+            self.assertEqual(contract["schema_version"], payload["schema_version"])
+            self.assertEqual(contract["top_level_keys"], sorted(payload.keys()))
+            self.assertEqual(contract["summary_keys"], sorted(payload["summary"].keys()))
+            self.assertEqual(contract["intent_keys"], sorted(intents[0].keys()))
+            self.assertEqual(contract["attempt_keys"], sorted(attempts[0].keys()))
+            self.assertEqual("Build graph JSON contract", intents[0]["title"])
+            self.assertIn("contract.txt", attempts[0]["files"].get("changed", []))
+
+    def test_console_read_only_writes_temp_html_without_repo_mutation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            subprocess.run(["git", "init"], cwd=repo_root, check=True, capture_output=True)
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "console", "--read-only", "--format", "json"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+            payload = json.loads(stdout.getvalue())
+            contract_path = Path(__file__).parent / "fixtures" / "daily_console" / "schema_v1_contract.json"
+            contract = json.loads(contract_path.read_text(encoding="utf-8"))
+            output = Path(payload["output"])
+            html = output.read_text(encoding="utf-8")
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual(contract["schema"], payload["schema"])
+            self.assertEqual(contract["schema_version"], payload["schema_version"])
+            self.assertEqual(contract["top_level_keys"], sorted(payload.keys()))
+            self.assertTrue(payload["read_only"])
+            self.assertTrue(output.exists())
+            self.assertIn("AIT Daily Console", html)
+            self.assertIn("Read-only", html)
+            self.assertNotIn("https://", html)
+            self.assertNotIn("http://", html)
+            self.assertNotIn("data-action", html)
+            self.assertFalse((repo_root / ".ait").exists())
+
+    def test_console_serve_local_rejects_non_loopback_host(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            subprocess.run(["git", "init"], cwd=repo_root, check=True, capture_output=True)
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "console",
+                        "--read-only",
+                        "--serve-local",
+                        "--host",
+                        "0.0.0.0",
+                        "--format",
+                        "json",
+                    ],
+                ):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(2, exit_code)
+            self.assertEqual("error", payload["status"])
+            self.assertIn("loopback-only", payload["error"])
+
     def test_work_graph_html_shows_background_health_warning(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

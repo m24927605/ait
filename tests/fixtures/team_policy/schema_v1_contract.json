@@ -1,0 +1,26 @@
+{
+  "schema": "ait.team_policy.validation",
+  "schema_version": 1,
+  "top_level_keys": [
+    "errors",
+    "policy",
+    "policy_path",
+    "schema",
+    "schema_version",
+    "source",
+    "status",
+    "warnings"
+  ],
+  "policy_schema": "ait.team_policy",
+  "policy_schema_version": 1,
+  "policy_keys": [
+    "apply",
+    "console",
+    "memory",
+    "metadata",
+    "redaction",
+    "review",
+    "schema",
+    "schema_version"
+  ]
+}

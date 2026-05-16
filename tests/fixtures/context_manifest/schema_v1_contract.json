@@ -1,0 +1,39 @@
+{
+  "schema": "ait.context_manifest",
+  "schema_version": 1,
+  "top_level_keys": [
+    "content_sha256",
+    "context_id",
+    "context_ref",
+    "entries",
+    "generated_at",
+    "memory_query",
+    "owner_id",
+    "owner_kind",
+    "policy_exclusions",
+    "policy_hash",
+    "schema",
+    "schema_version",
+    "selected_memory",
+    "skipped_memory",
+    "source_manifest",
+    "trusted_baseline_refs",
+    "write_mode"
+  ],
+  "entry_keys": [
+    "body_included",
+    "bytes_included",
+    "content_hash",
+    "included_in_context",
+    "reason",
+    "selected",
+    "source_id",
+    "source_path_redacted",
+    "source_ref",
+    "source_type",
+    "status",
+    "topic",
+    "trusted_baseline",
+    "trust_level"
+  ]
+}

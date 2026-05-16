@@ -299,6 +299,7 @@ def run_agent_command(
         if commit_enabled:
             if context_file is not None:
                 context_file.unlink(missing_ok=True)
+                context_file.with_name(context_file.name + ".manifest.json").unlink(missing_ok=True)
             workspace_path = Path(attempt.workspace_ref)
             _stage_all_changes(workspace_path)
             if _has_staged_changes(workspace_path):

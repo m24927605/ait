@@ -152,6 +152,9 @@ detach/resume is enabled. Session terminal commands do not apply changes;
 ait review attempt latest-reviewable --mode light
 ait review attempt latest-reviewable --mode adversarial --review-adapter claude-code
 ait run --review risk-based --review-adapter claude-code --adapter claude-code -- claude
+ait review benchmark run --fixture tests/fixtures/review_benchmark/cases.json --fake-reviewer fake:case --format json
+ait review benchmark run --fixture tests/fixtures/review_benchmark/cases.json --reviewer-adapter claude-code --dogfood --permission-profile read-only --format json
+ait review benchmark report --input benchmark.json --format markdown
 ```
 
 `light` mode is a deterministic risk scan: changed-file count, sensitive paths,
@@ -166,6 +169,18 @@ provider API credits.
 See [Review modes](review-modes.md) for the exact mode boundaries and
 [Adversarial code review](adversarial-code-review.md) for the reviewer
 workflow.
+
+`ait review benchmark run` is a local deterministic measurement path when used
+with `fake:*` reviewers. It does not call a real LLM, network, login state, API
+key, or paid credits. The Markdown report command formats a previously written
+JSON benchmark payload; it is dogfood evidence, not a guarantee of review
+quality.
+
+Real reviewer benchmark dogfood is opt-in. Passing `--reviewer-adapter` without
+`--dogfood` fails closed. With `--dogfood`, AIT records adapter metadata,
+resolved binary path when known, redacted command argv, local-auth assumptions,
+permission profile, fixture hash, latency, and token/cost placeholders. A single
+local dogfood run is not a benchmark-proven quality claim.
 
 ## Attempts and intents
 
@@ -219,8 +234,46 @@ under `.ait/`. Global or out-of-repo memory requires an explicit
 
 ```bash
 ait graph
+ait graph --format json
 ait graph --html
+ait console --read-only
+ait console --read-only --serve-local --host 127.0.0.1 --port 0
+ait console action apply --attempt latest --dry-run --format json
+ait console action recover --attempt latest --dry-run --format json
+ait console action discard --attempt latest --dry-run --format json
 ```
+
+`ait graph --format json` emits the versioned `ait.work_graph` schema used as
+the data contract for the repo-local daily console. `ait graph --html` writes a
+static local report under `.ait/report/graph.html` by default.
+
+`ait console --read-only` writes a temporary read-only daily console HTML page
+from the same graph data without creating `.ait/` in an uninitialized repo. The
+optional `--serve-local` mode only accepts loopback hosts such as `127.0.0.1`
+or `localhost`.
+
+`ait console action ... --dry-run` is the preflight and journal contract for
+future console mutation. It writes an append-only local journal entry under
+`.ait/actions/console-actions.jsonl` and returns `schema: ait.console_action`.
+It does not execute apply/recover/discard; real mutation still goes through the
+existing CLI/domain paths.
+
+## Team readiness
+
+```bash
+ait policy validate --format json
+ait policy show --format json
+ait metadata export --dry-run --output ait-metadata.bundle.json --format json
+ait metadata import --input ait-metadata.bundle.json --dry-run --format json
+```
+
+`.ait/policy.json` uses `schema: ait.team_policy`. Invalid policy fails closed
+in `ait policy validate` and in runtime paths that consume team policy: apply,
+review, console action preflight, and context trust filtering. The current
+metadata commands are local dry-run planning tools: export omits raw traces,
+absolute paths, memory bodies, and review finding bodies by default; import
+writes nothing and reports a `schema: ait.metadata_import_plan` payload. There
+is no SaaS sync, telemetry, automatic push, or automatic merge.
 
 ## Wrapping commands
 

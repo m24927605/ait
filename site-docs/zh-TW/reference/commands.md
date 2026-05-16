@@ -147,6 +147,9 @@ reasons。Session terminal commands 不會 apply changes；`ait apply
 ait review attempt latest-reviewable --mode light
 ait review attempt latest-reviewable --mode adversarial --review-adapter claude-code
 ait run --review risk-based --review-adapter claude-code --adapter claude-code -- claude
+ait review benchmark run --fixture tests/fixtures/review_benchmark/cases.json --fake-reviewer fake:case --format json
+ait review benchmark run --fixture tests/fixtures/review_benchmark/cases.json --reviewer-adapter claude-code --dogfood --permission-profile read-only --format json
+ait review benchmark report --input benchmark.json --format markdown
 ```
 
 `light` mode 是 deterministic risk scan：變更檔案數、敏感路徑、
@@ -159,6 +162,18 @@ dependency 或 lockfile、generated/binary 檔案、缺少 test evidence。它
 
 精確邊界請看 [審查模式](review-modes.md)，完整 reviewer workflow 請看
 [對抗式 code review](adversarial-code-review.md)。
+
+搭配 `fake:*` reviewers 時，`ait review benchmark run` 是本機 deterministic
+measurement path，不會呼叫真實 LLM、network、login state、API key 或 paid
+credits。Markdown report command 只格式化先前寫出的 JSON benchmark payload；
+它是 dogfood evidence，不是 review quality 保證。
+
+Real reviewer benchmark dogfood 必須明確 opt-in。只傳
+`--reviewer-adapter` 但沒有 `--dogfood` 時會 fail closed。加上 `--dogfood`
+後，AIT 會記錄 adapter metadata、可解析時的 binary path、redacted command
+argv、local-auth assumptions、permission profile、fixture hash、latency 與
+token/cost placeholders。單次本機 dogfood run 不是 benchmark-proven quality
+claim。
 
 ## Attempts 與 intents
 
@@ -209,8 +224,44 @@ memory 必須明確指定 `--global --path ...`。
 
 ```bash
 ait graph
+ait graph --format json
 ait graph --html
+ait console --read-only
+ait console --read-only --serve-local --host 127.0.0.1 --port 0
+ait console action apply --attempt latest --dry-run --format json
+ait console action recover --attempt latest --dry-run --format json
+ait console action discard --attempt latest --dry-run --format json
 ```
+
+`ait graph --format json` 會輸出 versioned `ait.work_graph` schema，作為
+repo-local daily console 的 data contract。`ait graph --html` 仍會預設寫入
+`.ait/report/graph.html` 靜態本機報告。
+
+`ait console --read-only` 會用同一份 graph data 寫出暫存的 read-only daily
+console HTML；在未初始化 repo 中不會建立 `.ait/`。選用 `--serve-local` 時只接受
+`127.0.0.1` 或 `localhost` 這類 loopback host。
+
+`ait console action ... --dry-run` 是未來 console mutation 的 preflight 與
+journal contract。它會在 `.ait/actions/console-actions.jsonl` 寫入 append-only
+本機 journal，並回傳 `schema: ait.console_action`。它不會真的執行
+apply/recover/discard；真實 mutation 仍必須走既有 CLI/domain path。
+
+## Team readiness
+
+```bash
+ait policy validate --format json
+ait policy show --format json
+ait metadata export --dry-run --output ait-metadata.bundle.json --format json
+ait metadata import --input ait-metadata.bundle.json --dry-run --format json
+```
+
+`.ait/policy.json` 使用 `schema: ait.team_policy`。Invalid policy 會在
+`ait policy validate` 以及會消費 team policy 的 runtime paths fail closed：
+apply、review、console action preflight 與 context trust filtering。現階段
+metadata commands 是本機 dry-run planning tools：export 預設不包含 raw
+traces、absolute paths、memory bodies、review finding bodies；import 不寫入，
+只回報 `schema: ait.metadata_import_plan`。沒有 SaaS sync、telemetry、自動
+push 或自動 merge。
 
 ## 包裝指令
 

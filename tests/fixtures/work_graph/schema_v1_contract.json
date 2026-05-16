@@ -1,0 +1,60 @@
+{
+  "schema": "ait.work_graph",
+  "schema_version": 1,
+  "top_level_keys": [
+    "attempt_count",
+    "filters",
+    "generated_at",
+    "initialized",
+    "intent_count",
+    "intents",
+    "matched_attempt_count",
+    "matched_intent_count",
+    "memory_note_count",
+    "memory_topics",
+    "repo_root",
+    "report_status",
+    "schema",
+    "schema_version",
+    "state_path",
+    "summary"
+  ],
+  "summary_keys": [
+    "agent_counts",
+    "hot_files",
+    "outcome_counts",
+    "status_counts"
+  ],
+  "intent_keys": [
+    "attempts",
+    "created_at",
+    "id",
+    "kind",
+    "short_id",
+    "status",
+    "title"
+  ],
+  "attempt_keys": [
+    "agent_id",
+    "commits",
+    "ended_at",
+    "files",
+    "id",
+    "memory_eval",
+    "memory_facts",
+    "memory_notes",
+    "memory_retrievals",
+    "ordinal",
+    "outcome_class",
+    "outcome_confidence",
+    "outcome_reasons_json",
+    "raw_trace_ref",
+    "reported_status",
+    "review",
+    "short_id",
+    "started_at",
+    "transcript",
+    "transcript_mode",
+    "verified_status"
+  ]
+}

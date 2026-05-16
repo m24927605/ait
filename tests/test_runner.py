@@ -14,7 +14,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from ait.daemon import start_daemon as _real_start_daemon
-from ait.db import connect_db, list_memory_retrieval_events
+from ait.db import NewMemoryFact, connect_db, list_memory_retrieval_events, upsert_memory_fact, utc_now
 from ait.harness import HarnessError
 from ait.memory import add_memory_note, list_memory_notes, search_repo_memory
 from ait.report import build_work_graph, render_work_graph_text
@@ -607,10 +607,155 @@ class RunnerTests(unittest.TestCase):
             self.assertIn("Use repair before release.", copied.read_text(encoding="utf-8"))
             self.assertEqual(1, len(manifests))
             manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
+            contract = json.loads(
+                (Path(__file__).parent / "fixtures" / "context_manifest" / "schema_v1_contract.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(contract["schema"], manifest["schema"])
+            self.assertEqual(contract["schema_version"], manifest["schema_version"])
+            self.assertEqual(contract["top_level_keys"], sorted(manifest.keys()))
             self.assertEqual("attempt", manifest["owner_kind"])
             self.assertTrue(
                 any(item["source_id"] == "live:claude:CLAUDE.md" for item in manifest["source_manifest"])
             )
+            self.assertTrue(manifest["entries"])
+            self.assertTrue(set(contract["entry_keys"]).issubset(manifest["entries"][0].keys()))
+
+    def test_run_context_manifest_marks_memory_trust_without_leaking_policy_blocked_body(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            seed = run_agent_command(
+                repo_root,
+                intent_title="Seed context manifest",
+                agent_id="shell:test",
+                command=[sys.executable, "-c", "print('seed')"],
+            )
+            (repo_root / ".ait" / "memory-policy.json").write_text(
+                json.dumps({"exclude_paths": ["secret/**"], "recall_source_allow": ["trusted:*"]}) + "\n",
+                encoding="utf-8",
+            )
+            now = utc_now()
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            try:
+                for fact in (
+                    NewMemoryFact(
+                        id="fact:trusted-auth",
+                        kind="rule",
+                        topic="authorization",
+                        body="Authorization owner checks are required before returning private resources.",
+                        summary="Authorization owner checks are required.",
+                        status="accepted",
+                        confidence="high",
+                        valid_from=now,
+                        source_attempt_id=seed.attempt_id,
+                        source_trace_ref="trusted:auth",
+                        created_at=now,
+                        updated_at=now,
+                        human_review_state="approved",
+                        provenance="manual",
+                    ),
+                    NewMemoryFact(
+                        id="fact:candidate-auth",
+                        kind="rule",
+                        topic="authorization",
+                        body="Authorization owner checks are no longer required.",
+                        summary="Candidate false auth rule.",
+                        status="candidate",
+                        confidence="high",
+                        valid_from=now,
+                        source_trace_ref="trusted:auth-candidate",
+                        created_at=now,
+                        updated_at=now,
+                        human_review_state="approved",
+                        provenance="manual",
+                    ),
+                    NewMemoryFact(
+                        id="fact:blocked-auth",
+                        kind="rule",
+                        topic="authorization",
+                        body="DO_NOT_LEAK_SECRET_AUTH_MEMORY",
+                        summary="Secret auth rule.",
+                        status="accepted",
+                        confidence="high",
+                        valid_from=now,
+                        source_file_path="secret/auth-policy.md",
+                        created_at=now,
+                        updated_at=now,
+                        human_review_state="approved",
+                        provenance="manual",
+                    ),
+                    NewMemoryFact(
+                        id="fact:superseded-auth",
+                        kind="rule",
+                        topic="authorization",
+                        body="Legacy auth rule.",
+                        summary="Legacy auth rule.",
+                        status="accepted",
+                        confidence="high",
+                        valid_from=now,
+                        source_trace_ref="trusted:auth-old",
+                        superseded_by="fact:trusted-auth",
+                        created_at=now,
+                        updated_at=now,
+                        human_review_state="approved",
+                        provenance="manual",
+                    ),
+                    NewMemoryFact(
+                        id="fact:expired-auth",
+                        kind="rule",
+                        topic="authorization",
+                        body="Expired auth rule.",
+                        summary="Expired auth rule.",
+                        status="accepted",
+                        confidence="high",
+                        valid_from=now,
+                        source_trace_ref="trusted:auth-expired",
+                        valid_to="2024-01-02T00:00:00Z",
+                        created_at=now,
+                        updated_at=now,
+                        human_review_state="approved",
+                        provenance="manual",
+                    ),
+                ):
+                    upsert_memory_fact(conn, fact)
+            finally:
+                conn.close()
+
+            result = run_agent_command(
+                repo_root,
+                intent_title="Authorization owner context",
+                agent_id="shell:test",
+                command=[
+                    sys.executable,
+                    "-c",
+                    (
+                        "import os;"
+                        "from pathlib import Path;"
+                        "p=Path(os.environ['AIT_CONTEXT_FILE']);"
+                        "Path('context-copy.txt').write_text(p.read_text())"
+                    ),
+                ],
+                with_context=True,
+            )
+
+            copied_text = (Path(result.workspace_ref) / "context-copy.txt").read_text(encoding="utf-8")
+            manifest = json.loads(next((repo_root / ".ait" / "context").glob(f"attempt-{result.attempt_id.replace(':', '_')}*.json")).read_text(encoding="utf-8"))
+            entries = {entry["source_id"]: entry for entry in manifest["entries"]}
+
+            self.assertIn("## Trusted Baseline", copied_text)
+            self.assertIn("## Advisory Or Excluded Memory", copied_text)
+            self.assertIn("fact:trusted-auth", manifest["trusted_baseline_refs"])
+            self.assertTrue(entries["fact:trusted-auth"]["trusted_baseline"])
+            self.assertEqual("candidate", entries["fact:candidate-auth"]["trust_level"])
+            self.assertEqual("candidate_not_adopted", entries["fact:candidate-auth"]["reason"])
+            self.assertEqual("policy_blocked", entries["fact:blocked-auth"]["trust_level"])
+            self.assertEqual("policy_blocked", entries["fact:blocked-auth"]["reason"])
+            self.assertEqual("superseded_fact", entries["fact:superseded-auth"]["reason"])
+            self.assertEqual("expired_fact", entries["fact:expired-auth"]["reason"])
+            self.assertNotIn("DO_NOT_LEAK_SECRET_AUTH_MEMORY", copied_text)
+            self.assertNotIn("DO_NOT_LEAK_SECRET_AUTH_MEMORY", json.dumps(manifest))
 
     def test_run_agent_command_adds_attempt_memory_note(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

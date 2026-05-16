@@ -107,3 +107,61 @@ Required fields:
 - `fixes_applied`
 - `final_approval_status`
 - `residual_risks`
+
+## `ait.context_manifest`
+
+Context manifests are written for wrapped run contexts, review briefs, and
+session participant contexts. Required shared fields:
+
+- `schema`: `ait.context_manifest`
+- `schema_version`
+- `owner_kind`
+- `owner_id`
+- `context_ref`
+- `entries`
+- `trusted_baseline_refs`
+- `policy_exclusions`
+- `source_manifest`
+- `selected_memory`
+- `skipped_memory`
+- `content_sha256`
+
+Every entry includes `source_id`, `source_type`, `status`, `trust_level`,
+`trusted_baseline`, `included_in_context`, `body_included`, `reason`, and
+`bytes_included`. Candidate, stale, superseded, and policy-blocked entries must
+not be trusted baseline entries. Policy-blocked body text must not be present
+in the context or manifest.
+
+## `ait.team_policy.enforcement`
+
+Runtime team policy enforcement is returned when policy blocks apply, review,
+console action preflight, or context trust generation. Required fields:
+
+- `schema`: `ait.team_policy.enforcement`
+- `schema_version`
+- `operation`
+- `attempt_id`
+- `status`
+- `checks`
+- `policy_validation`
+
+Invalid `.ait/policy.json` fails closed. Runtime paths must not silently fall
+back to defaults when validation fails.
+
+## `ait review benchmark run --dogfood --format json`
+
+Real reviewer dogfood payloads use `schema: ait.review_benchmark` and include:
+
+- `dogfood`
+- `run_status`
+- `reviewer`
+- `fixture`
+- `fixture_hash`
+- `repo_revision`
+- `adapter`
+- `case_results`
+- `limitations`
+- `token_cost`
+
+`run_status` may be `completed`, `completed_with_failures`, or `unavailable`.
+Mock reviewers must not be labeled as real dogfood.

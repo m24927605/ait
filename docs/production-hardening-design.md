@@ -5,6 +5,11 @@
 This document defines an implementable plan for the remaining production
 hardening work after `ait-vcs 0.55.3`.
 
+For the newer product-maturity work orders covering daily console, review
+benchmark expansion, memory trust demos, metadata export/import, team policy
+profile, and UI mutation recovery, see
+[`docs/ait-product-maturity-hardening-work-orders-zh.md`](ait-product-maturity-hardening-work-orders-zh.md).
+
 Cursor and aider are explicitly out of scope for this plan. The supported
 agent CLIs for this phase are:
 

@@ -18,7 +18,7 @@ from ait.db import (
     run_migrations,
     upsert_memory_fact,
 )
-from ait.review import create_deterministic_review
+from ait.review import create_deterministic_review, create_fake_reviewer_review
 from ait.review_baseline import render_reviewer_brief
 
 
@@ -81,6 +81,32 @@ class ReviewPromptTests(unittest.TestCase):
 
         self.assertLessEqual(len(brief), 4000)
         self.assertIn("reviewer brief truncated by budget", brief)
+
+    def test_adversarial_review_artifact_links_context_manifest_without_blocked_body(self) -> None:
+        repo_root = _repo_with_prompt_context(raw_trace_ref=".ait/traces/producer.jsonl")
+
+        result = create_fake_reviewer_review(repo_root, "latest-reviewable", fake_adapter="fake:pass")
+        artifact = json.loads((repo_root / result.review.artifact_ref).read_text(encoding="utf-8"))
+        manifest_ref = artifact["context_manifest_ref"]
+        brief_ref = artifact["brief_ref"]
+        manifest = json.loads((repo_root / manifest_ref).read_text(encoding="utf-8"))
+        brief = (repo_root / brief_ref).read_text(encoding="utf-8")
+        serialized_artifact = json.dumps(artifact)
+        serialized_manifest = json.dumps(manifest)
+        entries = {entry["source_id"]: entry for entry in manifest["entries"]}
+
+        self.assertEqual("ait.context_manifest", manifest["schema"])
+        self.assertEqual("review", manifest["owner_kind"])
+        self.assertEqual("review_brief", manifest["context_kind"])
+        self.assertEqual(result.review.id, manifest["review_id"])
+        self.assertEqual(brief_ref, manifest["context_ref"])
+        self.assertEqual(manifest_ref, artifact["context_manifest_ref"])
+        self.assertTrue(entries["fact:approved"]["trusted_baseline"])
+        self.assertEqual("policy_blocked", entries["fact:blocked"]["trust_level"])
+        self.assertNotIn("fact:blocked", manifest["trusted_baseline_refs"])
+        self.assertNotIn("Policy-blocked fact.", brief)
+        self.assertNotIn("Policy-blocked fact.", serialized_manifest)
+        self.assertNotIn("Policy-blocked fact.", serialized_artifact)
 
 
 def _repo_with_prompt_context(

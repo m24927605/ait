@@ -211,24 +211,18 @@ def write_context_manifest(
     owner_id: str,
     context_ref: str,
     recall: RelevantMemoryRecall,
+    context_text: str = "",
 ) -> str:
-    root = resolve_repo_root(repo_root)
-    safe_owner_id = owner_id.replace(":", "_").replace("/", "_")
-    manifest_ref = f".ait/context/{owner_kind}-{safe_owner_id}.json"
-    payload = {
-        "schema_version": 1,
-        "owner_kind": owner_kind,
-        "owner_id": owner_id,
-        "context_ref": context_ref,
-        "memory_query": recall.query,
-        "source_manifest": list(recall.source_manifest),
-        "selected_memory": [item.to_dict() for item in recall.selected],
-        "write_mode": "ait_context_artifact",
-    }
-    path = root / manifest_ref
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return manifest_ref
+    from ait.context_manifest import write_context_manifest as _write_context_manifest
+
+    return _write_context_manifest(
+        repo_root,
+        owner_kind=owner_kind,
+        owner_id=owner_id,
+        context_ref=context_ref,
+        recall=recall,
+        context_text=context_text,
+    )
 
 
 def _candidate_paths(

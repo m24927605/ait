@@ -1,0 +1,17 @@
+{
+  "schema": "ait.daily_console",
+  "schema_version": 1,
+  "top_level_keys": [
+    "graph_schema",
+    "graph_schema_version",
+    "host",
+    "output",
+    "port",
+    "read_only",
+    "repo_root",
+    "schema",
+    "schema_version",
+    "served",
+    "status"
+  ]
+}

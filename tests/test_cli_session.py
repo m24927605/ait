@@ -228,6 +228,7 @@ class CliSessionTests(unittest.TestCase):
             repo = Path(tmp)
             _init_git_repo(repo)
             (repo / "AGENTS.md").write_text("do not leak this memory\n", encoding="utf-8")
+            (repo / "CLAUDE.md").write_text("allowed advisory memory\n", encoding="utf-8")
             (repo / ".ait").mkdir(exist_ok=True)
             (repo / ".ait" / "memory-policy.json").write_text(
                 json.dumps({"recall_source_block": ["live-memory:codex:AGENTS.md"]}) + "\n",
@@ -239,10 +240,21 @@ class CliSessionTests(unittest.TestCase):
 
             manifest_ref = payload["responses"][0]["context_manifest_ref"]
             manifest = json.loads((repo / manifest_ref).read_text(encoding="utf-8"))
+            context_text = (repo / manifest["context_ref"]).read_text(encoding="utf-8")
+            entries = {item["source_id"]: item for item in manifest["entries"]}
 
+            self.assertEqual("ait.context_manifest", manifest["schema"])
             self.assertIn("advisory_response_refs", manifest)
             self.assertTrue(any(item["source_id"] == "live:codex:AGENTS.md" for item in manifest["policy_exclusions"]))
+            self.assertEqual("policy_blocked", entries["live:codex:AGENTS.md"]["trust_level"])
+            self.assertFalse(entries["live:codex:AGENTS.md"]["body_included"])
+            self.assertEqual("advisory", entries["live:claude:CLAUDE.md"]["trust_level"])
+            self.assertTrue(entries["live:claude:CLAUDE.md"]["included_in_context"])
+            self.assertFalse(entries["live:claude:CLAUDE.md"]["trusted_baseline"])
             self.assertFalse(any(item == "live:codex:AGENTS.md" for item in manifest["trusted_baseline_refs"]))
+            self.assertIn("allowed advisory memory", context_text)
+            self.assertNotIn("do not leak this memory", context_text)
+            self.assertNotIn("do not leak this memory", json.dumps(manifest))
 
     def test_redaction_before_transcript_and_export(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

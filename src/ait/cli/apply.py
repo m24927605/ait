@@ -2,11 +2,24 @@ from __future__ import annotations
 
 from ._shared import *
 
+from ait.app import init_repo
+from ait.db import connect_db, list_attempts
+from ait.idresolver import resolve_attempt_id
 from ait.landing import ApplyError, apply_attempt, apply_result_payload
+from ait.review import latest_review_summary
+from ait.team_policy import TeamPolicyEnforcementError, enforce_team_policy
 
 
 def handle(args, repo_root: Path, parser=None) -> int:
     del parser
+    try:
+        _enforce_apply_policy(repo_root, str(args.attempt_id))
+    except TeamPolicyEnforcementError as exc:
+        if args.format == "json":
+            print(json.dumps(exc.payload, indent=2, sort_keys=True))
+        else:
+            print(f"error: team policy blocked apply: {exc}", file=sys.stderr)
+        return 2
     if getattr(args, "dry_run", False):
         from ait.merge import merge_result
 
@@ -53,6 +66,31 @@ def handle(args, repo_root: Path, parser=None) -> int:
     else:
         print(_format_apply_result(result, debug=args.debug))
     return 0 if result.status in {"applied", "already_applied"} else 1
+
+
+def _enforce_apply_policy(repo_root: Path, attempt_selector: str) -> None:
+    init_result = init_repo(repo_root)
+    conn = connect_db(init_result.db_path)
+    try:
+        attempt_id = _resolve_attempt_selector_for_policy(conn, attempt_selector)
+        review = latest_review_summary(conn, attempt_id, repo_root=init_result.repo_root)
+    finally:
+        conn.close()
+    enforce_team_policy(
+        init_result.repo_root,
+        operation="apply",
+        attempt_id=attempt_id,
+        review_summary=review,
+    )
+
+
+def _resolve_attempt_selector_for_policy(conn, selector: str) -> str:
+    if selector == "latest":
+        attempts = list_attempts(conn)
+        if not attempts:
+            return selector
+        return attempts[-1].id
+    return resolve_attempt_id(conn, selector)
 
 
 def _format_apply_result(result, *, debug: bool = False) -> str:

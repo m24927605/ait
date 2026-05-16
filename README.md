@@ -2,8 +2,8 @@
 
 # ait
 
-### Shared memory, long-term memory, and adversarial review for AI coding agents
-**Claude Code · Codex CLI · Aider · Gemini CLI · Cursor can share memory, hand off context, and challenge each other before apply**
+### Local control plane for AI coding agents
+**Git-native attempt ledger, repo-local memory, cross-agent handoff, and review gate for Claude Code · Codex CLI · Aider · Gemini CLI · Cursor**
 
 <sub>[English](README.md) · [繁體中文](README.zh-TW.md)</sub>
 
@@ -19,19 +19,26 @@
 
 ---
 
-**`ait` is the local control plane for teams using multiple AI coding agents.
-It gives Claude Code, Codex CLI, Aider, Gemini CLI, and Cursor a shared
-repo-local memory, long-term attempt history, an inspectable handoff channel,
-and adversarial review before code lands. Each run is still isolated as a
-reviewable attempt with provenance and an explicit apply gate, so collaboration
-does not turn into working-tree chaos. Open source (MIT), Python 3.14+,
-dependency-free, no SaaS, no telemetry.**
+**`ait` is the local control plane for teams using multiple AI coding agents:
+a Git-native attempt ledger and review gate around Claude Code, Codex CLI,
+Aider, Gemini CLI, and Cursor. It gives those agents shared repo-local memory,
+long-term attempt history, an inspectable handoff channel, and adversarial
+review before code lands. Each run is still isolated as a reviewable attempt
+with provenance and an explicit apply gate, so collaboration does not turn into
+working-tree chaos. Open source (MIT), Python 3.14+, dependency-free, no SaaS,
+no telemetry.**
 
 The hard part of multi-agent coding is not starting another model. It is making
 sure the next agent knows what the previous one learned, preserving useful
 decisions across sessions, and asking a different agent to challenge risky
 work before it reaches your checkout. AIT makes those steps local, queryable,
 and tied to Git state.
+
+Put it in this category: **local control plane for AI coding agents**. AIT is
+not only a worktree manager, not a generic memory layer, not a review bot, and
+not a SaaS provenance dashboard. Those surfaces are pieces of one local
+attempt ledger: agents work in attempts, memory is derived from evidence, review
+findings can gate apply, and Git remains the source of truth.
 
 ```text
 Claude investigates -> AIT records attempt + accepted context
@@ -82,6 +89,7 @@ The package is named `ait-vcs` on PyPI and npm. The installed command is
 
 | Capability | What it means |
 | --- | --- |
+| Git-native attempt ledger | Each agent run becomes a queryable attempt linked to intent, prompt, context, output, files, commits, memory, and review evidence. |
 | Live federated memory | Claude Code, Codex, Aider, Gemini, Cursor, and shell agents can read the same live repo memory: AIT-owned history plus current `CLAUDE.md`, `AGENTS.md`, `.claude/`, `.codex/`, and Cursor rules. |
 | Long-term repo memory | Useful attempts, commits, notes, accepted facts, prior findings, and explicit adopted memory can survive across terminals, sessions, and weeks. |
 | Agent-to-agent communication | One agent can record an investigation, decision, failed path, or review finding, and another agent can receive that context later through `AIT_CONTEXT_FILE` rather than hidden chat state. |
@@ -124,13 +132,14 @@ That keeps AI-generated changes in a reviewable proposal state. You can compare
 attempts from different agents, inspect what each changed, keep failed runs for
 recovery, and decide which result should land in your checkout.
 
-Memory in AIT is repo-local, inspectable project memory, not a hidden
-chat-window transcript. AIT recalls policy-allowed context from prior attempts,
-commits, notes, accepted facts, and review findings, then federates that
-AIT-owned memory with live external sources such as `CLAUDE.md`, `AGENTS.md`,
-`.claude/memory.md`, `.codex/memory.md`, and `.cursor/rules` at
-recall/run/review time. Those files remain their own source of truth; AIT does
-not auto-import them.
+Memory in AIT is **attempt-derived, evidence-backed repo memory**, not a hidden
+chat-window transcript. It is not an external vector database product, not a
+`CLAUDE.md` generator, and not a bag of unreviewed prompt snippets. AIT recalls
+policy-allowed context from prior attempts, commits, notes, accepted facts, and
+review findings, then federates that AIT-owned memory with live external
+sources such as `CLAUDE.md`, `AGENTS.md`, `.claude/memory.md`,
+`.codex/memory.md`, and `.cursor/rules` at recall/run/review time. Those files
+remain their own source of truth; AIT does not auto-import them.
 
 ## Agent-to-agent communication
 
@@ -364,6 +373,7 @@ agent or script.
 | **Aider's `--auto-commits`** | Outer-layer attempt history (Aider commits land *inside* an `ait` attempt), cross-session memory, multi-agent handoff |
 | **Claude Code's built-in worktrees** | Cross-agent (not Claude-only), structured attempt records, query DSL, explicit `apply`/`recover` |
 | **SaaS observability (Langfuse, Braintrust)** | Local-first, no telemetry, `git`-native (commit-linked, not token-linked); they operate at the LLM-call layer, `ait` at the git-call layer — both stack |
+| **GUI-first agent managers, memory layers, review bots** | AIT is CLI-first today. It is strongest as a local attempt ledger around existing CLIs: memory, review, provenance, and apply/recover are one Git-native workflow. See the [category comparison](https://m24927605.github.io/ait/compare/agent-managers-memory-review-vs-ait/). |
 
 ## How It Works
 
@@ -396,8 +406,10 @@ AIT_CONTEXT_FILE   # when context is enabled
 previous attempts, commits, curated notes, accepted facts, review findings, and
 live external memory files such as `CLAUDE.md`, `AGENTS.md`,
 `.claude/memory.md`, `.codex/memory.md`, and `.cursor/rules`. AIT records a
-context manifest with source path, hash, mtime, bytes used, and policy status
-without claiming those external files as captured AIT provenance.
+versioned `ait.context_manifest` next to the context file. The manifest
+separates trusted baseline, advisory, and excluded memory; candidate, stale,
+superseded, and policy-blocked memory cannot become trusted baseline, and
+policy-blocked body text is not copied into the context or manifest.
 
 ## Install
 
@@ -426,7 +438,7 @@ ait --version
 Tagged GitHub release:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.55.64"
+pipx install "git+https://github.com/m24927605/ait.git@v0.55.66"
 ```
 
 Upgrade:
@@ -473,6 +485,12 @@ ait memory lint --fix
 
 ait graph
 ait graph --html
+ait console --read-only
+ait console action apply --attempt latest --dry-run --format json
+
+ait policy validate --format json
+ait metadata export --dry-run --output ait-metadata.bundle.json --format json
+ait metadata import --input ait-metadata.bundle.json --dry-run --format json
 ```
 
 Shell auto-activation:
@@ -492,11 +510,35 @@ ait shell uninstall --shell zsh
 
 ## Status
 
-`ait` is currently `0.55.64` and alpha quality. It is intended for local
-dogfooding and early users who are comfortable with Git workflows.
+`ait` is currently `0.55.66` and alpha quality. It is intended for local
+dogfooding, power users, and infra-minded engineers who are comfortable with
+Git workflows.
 
 Metadata is local to one repository under `.ait/`. It is not
 synchronized across machines.
+
+The visual model is becoming usable: `ait graph --html` remains a static local
+report, and `ait console --read-only` writes or serves a loopback-only daily
+console over the same attempt graph, evidence, memory, hot files, and review
+results. Browser mutation UI is not enabled. A CLI action dry-run layer now
+exists for apply/recover/discard preflight and append-only journaling, but real
+apply/recover/discard still go through the existing CLI/domain paths.
+
+Team-readiness hardening is still local-first: `.ait/policy.json` validation is
+fail-closed and is now consumed by apply, review, console action preflight, and
+context trust filtering. Metadata export/import currently supports dry-run
+planning only. There is still no cross-machine sync, SaaS dashboard, telemetry,
+automatic push, or automatic merge.
+
+Product direction:
+
+| Current constraint | Solution path |
+| --- | --- |
+| Category can sound like several tools at once | Anchor the product as a local control plane and Git-native attempt ledger; describe memory, review, provenance, and apply/recover as parts of that ledger. |
+| CLI-first experience loses some users to visual agent managers | Keep the daily console read-only while hardening apply/recover/discard dry-run preflight and journaling before any browser mutation UI. |
+| Alpha quality limits broad team adoption | Focus first on local power users and infra-minded engineers; expose dry-run metadata export/import and fail-closed policy validation before any broader team sync story. |
+| "Memory" can be mistaken for prompt stuffing | Keep memory attempt-derived, evidence-backed, inspectable, and tied to Git state; avoid claiming external vector DB or hidden chat memory behavior. |
+| Review gate impact needs proof | The 10-case benchmark fixture and repaired Claude/Codex dogfood artifacts now exist. Keep publishing honest repeated runs until recall, false positives, latency, token cost, and the deterministic-vs-LLM tradeoff are stable enough for a quality claim. |
 
 ## Development
 
@@ -533,9 +575,10 @@ should match.
 - [Getting started](https://m24927605.github.io/ait/getting-started/)
 - [AI search facts (Q&A)](https://m24927605.github.io/ait/facts/)
 - [Compare: naked git-worktree vs ait](https://m24927605.github.io/ait/compare/git-worktree-naked-vs-ait/)
+- [Compare: agent managers, memory layers, review bots](https://m24927605.github.io/ait/compare/agent-managers-memory-review-vs-ait/)
 - [Command reference](https://m24927605.github.io/ait/reference/commands/)
 - [Adversarial code review](https://m24927605.github.io/ait/reference/adversarial-code-review/)
 - [SEO strategy (internal)](docs/seo-strategy.md)
 
 For internal design notes (specs, memory architecture, refactor plans),
-see [`docs/`](docs/).
+see [`docs/`](docs/), including the [product weakness response plan](docs/ait-product-weakness-response-plan-zh.md).

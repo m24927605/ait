@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "id": "stale-memory-billing",
+  "query": "billing retry queue",
+  "policy": {
+    "exclude_paths": [],
+    "exclude_transcript_patterns": [],
+    "recall_source_allow": ["trusted:*"],
+    "recall_source_block": [],
+    "recall_lint_block_severities": ["error"]
+  },
+  "facts": [
+    {
+      "source_id": "fact:billing-current-queue",
+      "status": "accepted",
+      "trust_level": "trusted",
+      "topic": "billing",
+      "body": "Billing retry queue uses the durable queue implementation.",
+      "source_trace_ref": "trusted:billing-current",
+      "expected_in_context": true,
+      "expected_trusted": true
+    },
+    {
+      "source_id": "fact:billing-superseded-queue",
+      "status": "accepted",
+      "trust_level": "superseded",
+      "topic": "billing",
+      "body": "Billing retry queue uses the legacy in-memory queue.",
+      "source_trace_ref": "trusted:billing-old",
+      "superseded_by": "fact:billing-current-queue",
+      "expected_in_context": false,
+      "expected_trusted": false
+    },
+    {
+      "source_id": "fact:billing-expired-queue",
+      "status": "accepted",
+      "trust_level": "stale",
+      "topic": "billing",
+      "body": "Billing retry queue uses the 2024 temporary queue.",
+      "source_trace_ref": "trusted:billing-expired",
+      "valid_to": "2024-01-02T00:00:00Z",
+      "expected_in_context": false,
+      "expected_trusted": false
+    }
+  ]
+}

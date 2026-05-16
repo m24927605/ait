@@ -19,8 +19,10 @@ from ait.adapter_wrapper import _find_real_binary
 from ait.config import bootstrap_ait_dir, ensure_local_config
 from ait.app import init_repo
 from ait.db import NewMemoryFact, connect_db, upsert_memory_fact, utc_now
+from ait.context_manifest import write_context_manifest
 from ait.ids import new_ulid
 from ait.memory import discover_live_memory_sources, read_live_memory_source
+from ait.memory.models import RelevantMemoryRecall
 from ait.redaction import redact_text
 from ait.repo import resolve_repo_root
 from ait.runner import run_agent_command
@@ -1054,11 +1056,11 @@ class SessionStore:
         turn_id = str(turn["id"])
         participant_id = str(participant["id"])
         context_path = self._session_dir(session_id) / "contexts" / f"{turn_id}-{participant_id}.md"
-        manifest_path = self._session_dir(session_id) / "contexts" / f"{turn_id}-{participant_id}-manifest.json"
         user_text = _read_ref_text(self.repo_root, str(turn.get("user_input_redacted_ref") or ""))
         live_sources = discover_live_memory_sources(self.repo_root)
         source_manifest = []
         policy_exclusions = []
+        skipped_memory: list[dict[str, object]] = []
         memory_lines = []
         for source in live_sources:
             item = source.to_dict()
@@ -1067,9 +1069,29 @@ class SessionStore:
                 item["bytes_used"] = bytes_used
                 item["redacted"] = redacted
                 if text:
-                    memory_lines.append(f"- {source.source_id}: {text[:400].strip()}")
+                    memory_lines.append(f"- {source.source_id} (advisory): {text[:400].strip()}")
+                    skipped_memory.append(
+                        {
+                            "id": source.source_id,
+                            "kind": "live_source",
+                            "topic": "session-live-memory",
+                            "reason": "advisory_source",
+                            "source": source.path,
+                            "included_in_context": True,
+                            "bytes_included": bytes_used,
+                        }
+                    )
             else:
                 policy_exclusions.append(item)
+                skipped_memory.append(
+                    {
+                        "id": source.source_id,
+                        "kind": "live_source",
+                        "topic": "session-live-memory",
+                        "reason": "policy_blocked",
+                        "source": source.path,
+                    }
+                )
             source_manifest.append(item)
         advisory_refs = [
             response["id"]
@@ -1081,8 +1103,9 @@ class SessionStore:
             f"# AIT session context for {participant.get('agent_id')}",
             "",
             "Trust classes:",
-            "- trusted_baseline: accepted AIT evidence and allowed live source text",
-            "- advisory_response: prior agent response, attributed and not fact",
+            "- trusted_baseline: accepted AIT evidence only",
+            "- advisory: live source text and prior agent responses, attributed and not fact",
+            "- excluded: policy-blocked, stale, superseded, or unaccepted memory",
             "",
             "User turn:",
             user_text.strip(),
@@ -1101,7 +1124,10 @@ class SessionStore:
             )
         context_lines.extend(
             [
-                "Live federated memory:",
+                "## Trusted Baseline",
+                "- none",
+                "",
+                "## Advisory Or Excluded Memory",
                 *memory_lines,
                 "",
                 "Prior advisory response refs:",
@@ -1115,30 +1141,42 @@ class SessionStore:
         context_text = "\n".join(context_lines)
         redacted_context, changed = redact_text(context_text)
         context_path.write_text(redacted_context, encoding="utf-8")
-        manifest = {
-            "schema_version": SESSION_SCHEMA_VERSION,
-            "id": f"ctx_{new_ulid()}",
+        recall = RelevantMemoryRecall(
+            query=f"session:{session_id}:{turn_id}:{participant_id}",
+            selected=(),
+            skipped=tuple(skipped_memory),
+            budget_chars=len(redacted_context),
+            rendered_chars=len(redacted_context),
+            compacted=False,
+            source_manifest=tuple(source_manifest),
+            write_mode="session_context_artifact",
+        )
+        extra_payload: dict[str, object] = {
+            "context_kind": "session_participant_context",
             "session_id": session_id,
             "turn_id": turn_id,
             "participant_id": participant_id,
             "agent_id": participant.get("agent_id"),
-            "context_ref": self._relative(context_path),
-            "created_at": utc_now(),
-            "trusted_baseline_refs": [item.get("source_id") for item in source_manifest if item.get("allowed_by_policy")],
             "live_memory_source_manifest": source_manifest,
             "accepted_decision_refs": accepted_decision_refs,
             "prior_response_refs": advisory_refs,
             "advisory_response_refs": advisory_refs,
-            "policy_exclusions": policy_exclusions,
+            "session_policy_exclusions": policy_exclusions,
             "redaction_result": {"context_redacted": changed},
             "budget_chars": len(redacted_context),
-            "content_sha256": hashlib.sha256(redacted_context.encode("utf-8")).hexdigest(),
-            "write_mode": "session_context_artifact",
         }
         if role_assignment is not None:
-            manifest["role_assignment"] = role_assignment
-        manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        return self._relative(context_path), self._relative(manifest_path)
+            extra_payload["role_assignment"] = role_assignment
+        context_manifest_ref = write_context_manifest(
+            self.repo_root,
+            owner_kind="session_participant",
+            owner_id=f"{session_id}:{turn_id}:{participant_id}",
+            context_ref=self._relative(context_path),
+            recall=recall,
+            context_text=redacted_context,
+            extra_payload=extra_payload,
+        )
+        return self._relative(context_path), context_manifest_ref
 
     def _accepted_decision_refs(self, session_id: str) -> list[str]:
         refs: list[str] = []

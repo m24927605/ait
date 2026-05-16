@@ -70,13 +70,15 @@ ait review finding list --status open
 ait review report --attempt latest --format markdown --output docs/reviews/latest.md
 ```
 
-如果要讓 blocked review 真的擋下 apply，請在 repo policy 開啟 review gate：
+如果要讓 CLI apply 必須先看到 clear latest review，請在 `.ait/policy.json`
+設定 review gate：
 
 ```json
 {
-  "review": {
-    "auto_apply_requires_review": true,
-    "allow_override": false
+  "schema": "ait.team_policy",
+  "schema_version": 1,
+  "apply": {
+    "require_review_clearance": true
   }
 }
 ```
@@ -190,6 +192,30 @@ Queued reviews 可以這樣檢查與處理：
 ait review status
 ait review worker --once
 ```
+
+## 如何量化 review 品質
+
+AIT 不應該在沒有證據時聲稱 adversarial review 一定比較好。現在已實作的是
+可量測的 substrate：
+
+- deterministic `light` review，用低成本方式做 risk classification
+- high-risk attempt 可升級給另一個 LLM reviewer adapter
+- finding 有 severity、confidence、path、status 與 blocking state
+- review status 與 finding history 可查詢
+- policy 要求時，review-gated apply 可以擋下 blocked attempt
+
+仍然缺的是 repeated successful real-reviewer data：reviewer 找到多少
+implementer 漏掉的 bug、false positive rate、latency、token cost、哪些 risk
+patterns 最有效，以及何時 deterministic review 就夠、何時值得付出 LLM
+reviewer 成本。在這些數據公開前，請把 adversarial review 視為額外安全檢查，
+不是正確性保證。
+
+目前 baseline report 放在 repo 內的
+[`docs/review-benchmark-dogfood-report.md`](https://github.com/m24927605/ait/blob/main/docs/review-benchmark-dogfood-report.md)。
+它記錄 deterministic fake-reviewer metrics、本機 Claude Code/Codex dogfood
+artifacts，以及在做出更強公開品質宣稱前必須達成的驗收門檻。目前修復後的
+real dogfood artifacts 已可完成；它們證明 AIT 會誠實呼叫、解析與記錄本機
+reviewer，但仍只是本機 dogfood evidence，不是 review 品質證明。
 
 ## Demo flow
 

@@ -4,6 +4,7 @@ import argparse
 
 from ait.adapters import ADAPTERS
 from ait.cli_installation import package_version
+from ait.review_benchmark import DEFAULT_REAL_REVIEWER_BENCHMARK_TIMEOUT_SECONDS
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -233,6 +234,28 @@ def build_parser() -> argparse.ArgumentParser:
     config_show = config_subparsers.add_parser("show")
     config_show.add_argument("--format", choices=("text", "json"), default="text")
 
+    policy_parser = subparsers.add_parser("policy", help="validate repo-local team policy")
+    policy_subparsers = policy_parser.add_subparsers(dest="policy_command")
+    policy_validate = policy_subparsers.add_parser("validate")
+    policy_validate.add_argument("--format", choices=("text", "json"), default="text")
+    policy_validate.add_argument("--json", action="store_true", help="alias for --format json")
+    policy_show = policy_subparsers.add_parser("show")
+    policy_show.add_argument("--format", choices=("text", "json"), default="text")
+    policy_show.add_argument("--json", action="store_true", help="alias for --format json")
+
+    metadata_parser = subparsers.add_parser("metadata", help="export or inspect local AIT metadata bundles")
+    metadata_subparsers = metadata_parser.add_subparsers(dest="metadata_command")
+    metadata_export = metadata_subparsers.add_parser("export")
+    metadata_export.add_argument("--output")
+    metadata_export.add_argument("--dry-run", action="store_true", default=True)
+    metadata_export.add_argument("--format", choices=("text", "json"), default="text")
+    metadata_export.add_argument("--json", action="store_true", help="alias for --format json")
+    metadata_import = metadata_subparsers.add_parser("import")
+    metadata_import.add_argument("--input", required=True)
+    metadata_import.add_argument("--dry-run", action="store_true", required=True)
+    metadata_import.add_argument("--format", choices=("text", "json"), default="text")
+    metadata_import.add_argument("--json", action="store_true", help="alias for --format json")
+
     cleanup_parser = subparsers.add_parser("cleanup", help="inspect or remove safe internal AIT state")
     cleanup_parser.add_argument("--apply", action="store_true")
     cleanup_parser.add_argument("--force", action="store_true")
@@ -302,9 +325,22 @@ def build_parser() -> argparse.ArgumentParser:
     review_worker.add_argument("--json", action="store_true", help="alias for --format json")
     review_worker.add_argument("--no-interactive", action="store_true")
     review_benchmark = review_subparsers.add_parser("benchmark")
-    review_benchmark.add_argument("fixture")
+    review_benchmark.add_argument("benchmark_command_or_fixture", nargs="?")
+    review_benchmark.add_argument("--fixture")
+    review_benchmark.add_argument("--input")
+    review_benchmark.add_argument("--output")
     review_benchmark.add_argument("--fake-reviewer", default="fake:case")
-    review_benchmark.add_argument("--format", choices=("text", "json"), default="text")
+    review_benchmark.add_argument("--reviewer-adapter", help="real reviewer adapter for explicit --dogfood benchmark runs")
+    review_benchmark.add_argument("--dogfood", action="store_true", help="allow local real reviewer invocation for benchmark dogfood")
+    review_benchmark.add_argument("--permission-profile", default="read-only", help="permission profile recorded for real reviewer dogfood")
+    review_benchmark.add_argument("--model", help="reviewer model label to record when known")
+    review_benchmark.add_argument(
+        "--timeout-seconds",
+        type=int,
+        default=DEFAULT_REAL_REVIEWER_BENCHMARK_TIMEOUT_SECONDS,
+        help="per-case timeout for real reviewer dogfood",
+    )
+    review_benchmark.add_argument("--format", choices=("text", "json", "markdown"), default="text")
     review_benchmark.add_argument("--json", action="store_true", help="alias for --format json")
     review_finding = review_subparsers.add_parser("finding")
     review_finding_subparsers = review_finding.add_subparsers(dest="review_finding_command")
@@ -549,6 +585,28 @@ def build_parser() -> argparse.ArgumentParser:
     graph_parser.add_argument("--agent")
     graph_parser.add_argument("--status")
     graph_parser.add_argument("--file", dest="file_path")
+
+    console_parser = subparsers.add_parser("console", help="write or serve the read-only local daily console")
+    console_parser.add_argument("--read-only", action="store_true", default=True, help="only read graph data; no mutation actions are available")
+    console_parser.add_argument("--format", choices=("text", "json"), default="text")
+    console_parser.add_argument("--limit", type=int, default=20)
+    console_parser.add_argument("--output")
+    console_parser.add_argument("--agent")
+    console_parser.add_argument("--status")
+    console_parser.add_argument("--file", dest="file_path")
+    console_parser.add_argument("--serve-local", action="store_true", help="serve the generated console on a loopback-only HTTP server")
+    console_parser.add_argument("--host", default="127.0.0.1", help="loopback host for --serve-local")
+    console_parser.add_argument("--port", type=int, default=0, help="port for --serve-local; 0 chooses a free local port")
+    console_subparsers = console_parser.add_subparsers(dest="console_command")
+    console_action = console_subparsers.add_parser("action")
+    console_action_subparsers = console_action.add_subparsers(dest="console_action")
+    for name in ("apply", "recover", "discard"):
+        action_parser = console_action_subparsers.add_parser(name)
+        action_parser.add_argument("--attempt", default="latest")
+        action_parser.add_argument("--dry-run", action="store_true", required=True)
+        action_parser.add_argument("--actor-label", default="local-user")
+        action_parser.add_argument("--format", choices=("text", "json"), default="json")
+        action_parser.add_argument("--json", action="store_true", help="alias for --format json")
 
     repair_parser = subparsers.add_parser("repair")
     repair_parser.add_argument(

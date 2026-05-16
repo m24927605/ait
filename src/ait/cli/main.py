@@ -5,7 +5,7 @@ import sys
 
 from ait.cli_parser import build_parser
 
-from . import adapter, apply, attempt, cleanup, config, daemon, dev, graph, init, intent, memory, merge, next, query, reconcile, recover, resume, review, run, session, shell, upgrade, whereami
+from . import adapter, apply, attempt, cleanup, config, console, daemon, dev, graph, init, intent, memory, merge, metadata, next, policy, query, reconcile, recover, resume, review, run, session, shell, upgrade, whereami
 
 _HANDLERS = {
     "adapter": adapter.handle,
@@ -22,10 +22,13 @@ _HANDLERS = {
     "intent": intent.handle,
     "memory": memory.handle,
     "merge": merge.handle,
+    "metadata": metadata.handle,
     "next": next.handle,
+    "policy": policy.handle,
     "query": query.handle,
     "blame": query.handle,
     "cleanup": cleanup.handle,
+    "console": console.handle,
     "config": config.handle,
     "reconcile": reconcile.handle,
     "recover": recover.handle,

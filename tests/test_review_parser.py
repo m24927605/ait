@@ -59,6 +59,33 @@ class ReviewParserTests(unittest.TestCase):
         self.assertTrue(parsed.findings[0].blocking)
         self.assertEqual(42, parsed.findings[0].line)
 
+    def test_parses_common_reviewer_field_aliases(self) -> None:
+        parsed = parse_review_output(
+            """
+            {
+              "summary": "One issue.",
+              "findings": [
+                {
+                  "severity": "critical",
+                  "file": "src/auth/session.py",
+                  "issue": "Authorization bypass",
+                  "details": "The owner check is skipped.",
+                  "evidence": "- check_owner(user, resource)\\n+ return resource",
+                  "recommendation": "Restore the owner check and add a cross-user regression test.",
+                  "confidence": "high"
+                }
+              ]
+            }
+            """
+        )
+
+        finding = parsed.findings[0]
+        self.assertEqual("src/auth/session.py", finding.path)
+        self.assertEqual("Authorization bypass", finding.title)
+        self.assertEqual("The owner check is skipped.", finding.body)
+        self.assertEqual("- check_owner(user, resource)\n+ return resource", finding.evidence_ref)
+        self.assertIn("Restore", finding.suggested_test or "")
+
     def test_rejects_plain_prose(self) -> None:
         with self.assertRaises(ReviewOutputParseError):
             parse_review_output("Looks good to me.")

@@ -1,15 +1,16 @@
 ---
-title: ait — Shared memory and adversarial review for AI coding agents
+title: ait — Local control plane for AI coding agents
 description: >-
-  ait gives Claude Code, Codex, Aider, Gemini CLI, and Cursor shared repo-local
-  memory, long-term memory, agent-to-agent communication, adversarial review,
-  and reviewable attempts with explicit apply/recover. Open-source,
+  ait is a local control plane and Git-native attempt ledger for Claude Code,
+  Codex, Aider, Gemini CLI, and Cursor: repo-local memory, cross-agent handoff,
+  adversarial review, and explicit apply/recover. Open-source,
   dependency-free, no SaaS, no telemetry.
 ---
 
 # ait
 
-**Shared memory, long-term memory, communication, and adversarial review for AI coding agents.**
+**Local control plane for AI coding agents. Git-native attempt ledger,
+repo-local memory, cross-agent handoff, and review gate.**
 
 `ait` wraps the agent CLIs you already use — Claude Code, Codex, Aider,
 Gemini CLI, Cursor — and turns each run into a **reviewable attempt**.
@@ -17,6 +18,15 @@ It gives agents a shared repo-local memory, long-term attempt history, an
 inspectable handoff channel, and adversarial review before code lands. The
 agent still edits an isolated Git worktree, `ait` records what happened, and
 your main checkout stays untouched until you apply the result.
+
+Put it in this category: **local control plane for AI coding agents**. AIT is
+not only a worktree manager, not a generic memory layer, not a review bot, and
+not a SaaS provenance dashboard. Those surfaces are pieces of one local
+attempt ledger: agents work in attempts, memory is derived from evidence, review
+findings can gate apply, and Git remains the source of truth.
+See the category boundary page for a direct comparison with
+[GUI-first agent managers, worktree managers, memory layers, review bots, and
+provenance tools](compare/agent-managers-memory-review-vs-ait.md).
 
 ```text
 Claude investigates -> AIT records attempt + accepted context
@@ -53,6 +63,7 @@ _Static HTML from `ait graph --html`: attempts, evidence, memory, hot files, and
 
 | Capability | What it means |
 | --- | --- |
+| Git-native attempt ledger | Each agent run becomes a queryable attempt linked to intent, prompt, context, output, files, commits, memory, and review evidence. |
 | Live federated memory | Claude Code, Codex, Aider, Gemini, Cursor, and shell agents can reuse the same live repo memory: AIT-owned history plus current `CLAUDE.md`, `AGENTS.md`, `.claude/`, `.codex/`, and Cursor rules. |
 | Long-term repo memory | Attempts, commits, notes, accepted facts, prior findings, and explicit adopted memory can survive across sessions. |
 | Agent-to-agent communication | One agent can record an investigation, decision, failed path, or review finding, and another agent can receive it later through `AIT_CONTEXT_FILE`. |
@@ -85,8 +96,8 @@ See the full deep-dive on each problem in [Why ait](why-ait.md).
 For runnable evidence for each point, use the
 [Pain-point demos](demos/pain-point-demos.md).
 
-`ait` is **not** another agent. It is the local attempt workflow around the
-agents you already trust.
+`ait` is **not** another agent. It is the local attempt workflow and control
+plane around the agents you already trust.
 
 ## How agents communicate
 
@@ -97,7 +108,8 @@ from policy-allowed attempts, accepted facts, notes, commits, review findings,
 and live memory files such as `CLAUDE.md`, `AGENTS.md`, `.claude/memory.md`,
 `.codex/memory.md`, and `.cursor/rules`.
 
-The result is not a hidden chat transcript. It is repo-local project memory you
+The result is not a hidden chat transcript, an external vector database, or a
+`CLAUDE.md` generator. It is attempt-derived, evidence-backed repo memory you
 can inspect, search, review, and keep or discard with Git-aware context.
 
 ## Supported agents
@@ -147,8 +159,33 @@ on reviewer adapters, findings, reports, and review-gated apply.
 ## Status
 
 `ait` is alpha quality. It is intended for local dogfooding and early users
-who are comfortable with Git workflows. Metadata is local to one repository
-under `.ait/`; it is not synchronized across machines.
+who are comfortable with Git workflows, especially power users and
+infra-minded engineers. Metadata is local to one repository under `.ait/`; it
+is not synchronized across machines.
+
+The visual model is becoming usable: `ait graph --html` remains a static local
+report, and `ait console --read-only` writes or serves a loopback-only daily
+console over the same attempt graph, evidence, memory, hot files, and review
+results. The console is read-only today; apply/recover/discard still go through
+the existing CLI/domain paths. A CLI action dry-run layer now records
+apply/recover/discard preflight and append-only journal entries, but browser
+mutation UI and execution are not enabled.
+
+Team-readiness hardening is local-only: `.ait/policy.json` validation is
+fail-closed and is now consumed by apply, review, console action preflight, and
+context trust filtering. Metadata export/import currently emits dry-run plans.
+There is still no cross-machine sync, SaaS dashboard, telemetry, automatic
+push, or automatic merge.
+
+## Product direction
+
+| Current constraint | Solution path |
+| --- | --- |
+| Category can sound like several tools at once | Anchor ait as a local control plane and Git-native attempt ledger; memory, review, provenance, and apply/recover are parts of that ledger. |
+| CLI-first experience loses some users to visual agent managers | Keep the console read-only while hardening apply/recover/discard dry-run preflight and journaling before browser mutation UI. |
+| Alpha quality limits broad team adoption | Focus first on local power users and infra-minded engineers; expose dry-run metadata export/import and fail-closed policy validation before any broader sync story. |
+| "Memory" can be mistaken for prompt stuffing | Keep memory attempt-derived, evidence-backed, inspectable, and tied to Git state. |
+| Review gate impact needs proof | The 10-case benchmark fixture and repaired Claude/Codex dogfood artifacts now exist. Keep publishing honest repeated runs until recall, false positives, latency, token cost, and the deterministic-vs-LLM tradeoff are stable enough for a quality claim. |
 
 ## Project links
 

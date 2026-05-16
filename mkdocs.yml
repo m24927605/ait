@@ -1,11 +1,11 @@
-site_name: ait — Shared memory and adversarial review for AI coding agents
+site_name: ait — Local control plane for AI coding agents
 site_url: https://m24927605.github.io/ait/
 site_description: >-
-  ait gives Claude Code, Codex CLI, Aider, Gemini CLI, and Cursor shared
-  repo-local memory, long-term memory, agent-to-agent communication,
-  adversarial review, and reviewable attempts with explicit apply/recover on
-  top of Git. Open source (MIT), Python 3.14+, dependency-free, no SaaS, no
-  telemetry.
+  ait is a local control plane and Git-native attempt ledger for Claude Code,
+  Codex CLI, Aider, Gemini CLI, and Cursor: repo-local memory, cross-agent
+  handoff, adversarial review, and reviewable attempts with explicit
+  apply/recover on top of Git. Open source (MIT), Python 3.14+,
+  dependency-free, no SaaS, no telemetry.
 site_author: sin-chengchen
 repo_url: https://github.com/m24927605/ait
 repo_name: m24927605/ait
@@ -59,7 +59,7 @@ plugins:
         - locale: zh-TW
           name: 繁體中文
           build: true
-          site_name: ait — AI agent 的共同記憶與對抗式審查
+          site_name: ait — AI coding agents 的本機 control plane
           nav_translations:
             Home: 首頁
             Why ait: 為什麼用 ait
@@ -75,6 +75,7 @@ plugins:
             Shell agents: Shell agents
             Compare: 比較
             "ait vs naked git-worktree": ait 對比裸 git-worktree
+            "ait vs agent managers, memory layers, and review bots": ait 對比 agent managers、memory layers 與 review bots
             Facts: 事實
             Reference: 參考
             Commands: 指令
@@ -119,6 +120,7 @@ nav:
       - Shell agents: integrations/shell.md
   - Compare:
       - "ait vs naked git-worktree": compare/git-worktree-naked-vs-ait.md
+      - "ait vs agent managers, memory layers, and review bots": compare/agent-managers-memory-review-vs-ait.md
   - Reference:
       - Commands: reference/commands.md
       - Live federated memory: reference/live-federated-memory.md
