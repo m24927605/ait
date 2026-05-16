@@ -2,7 +2,7 @@
 
 # ait
 
-### AI coding agents should work in attempts, not your working tree
+### AI coding agents should work in attempts, share context, then earn apply
 **Claude Code · Codex CLI · Aider · Gemini CLI · Cursor**
 
 <sub>[English](README.md) · [繁體中文](README.zh-TW.md)</sub>
@@ -19,18 +19,21 @@
 
 ---
 
-**`ait` turns Claude Code, Codex CLI, Aider, Gemini CLI, and Cursor
-runs into isolated, reviewable attempts: provenance, shared repo memory,
-adversarial review, and explicit apply/recover on top of Git. Your root
-checkout stays untouched until you choose what lands. Open source (MIT),
-Python 3.14+, dependency-free, no SaaS, no telemetry.**
+**`ait` is the local control plane for AI coding agents. It turns Claude Code,
+Codex CLI, Aider, Gemini CLI, and Cursor runs into isolated, reviewable
+attempts, then lets agents communicate through repo-local memory instead of
+fragile chat windows. Provenance, agent-to-agent handoff, adversarial review,
+and explicit apply/recover all sit on top of Git. Your root checkout stays
+untouched until you choose what lands. Open source (MIT), Python 3.14+,
+dependency-free, no SaaS, no telemetry.**
 
-AI agents are fast enough to refactor real code, but the default workflow
-still lets them use your working tree like a scratchpad. `ait` wraps the
-agent CLIs you already use — it is not an agent and not a Git replacement —
-and turns each run into an attempt you can inspect, compare, review, recover,
-or apply. When the change matters, AIT can ask a separate reviewer agent to
-challenge the attempt before it reaches your checkout.
+AI agents are fast enough to refactor real code, but the default workflow still
+lets them use your working tree like a scratchpad and forget what another agent
+already learned. `ait` wraps the agent CLIs you already use — it is not an agent
+and not a Git replacement — and turns each run into an attempt you can inspect,
+compare, review, recover, or apply. A Claude investigation can become context
+for a Codex implementation; a Cursor rule can ride along with Aider; a separate
+reviewer agent can challenge the attempt before it reaches your checkout.
 
 ```bash
 pipx install ait-vcs
@@ -67,9 +70,9 @@ The package is named `ait-vcs` on PyPI and npm. The installed command is
 | Worktree isolation | Every run gets an internal isolated Git worktree, so failed or risky attempts do not pollute your current workspace. |
 | Attempt provenance | Prompt, intent, adapter, output, changed files, commits, trace references, status, and outcome stay linked in one attempt record. |
 | Wrapper bypass detection | `ait status <adapter>` shows whether this shell will enter AIT or silently call the real agent binary. |
-| Live federated memory | Claude Code, Codex, Aider, Gemini, Cursor, and shell agents can read the same live repo memory: AIT-owned history plus current `CLAUDE.md`, `AGENTS.md`, and Cursor rules. |
+| Live federated memory | Claude Code, Codex, Aider, Gemini, Cursor, and shell agents can read the same live repo memory: AIT-owned history plus current `CLAUDE.md`, `AGENTS.md`, `.claude/`, `.codex/`, and Cursor rules. |
 | Long-term repo memory | Useful attempts, commits, notes, accepted facts, prior findings, and explicit adopted memory can survive across terminals, sessions, and weeks. |
-| Cross-agent handoff | One agent can record an investigation or decision, and another agent can receive that context later through AIT rather than hidden chat state. |
+| Agent-to-agent communication | One agent can record an investigation, decision, failed path, or review finding, and another agent can receive that context later through `AIT_CONTEXT_FILE` rather than hidden chat state. |
 | Parallel agent attempts | Multiple agents can try different approaches at the same time without racing inside the same checkout. |
 | Explicit apply/recover flow | Agent output remains a proposal until you apply it; held or failed work remains recoverable instead of becoming working-copy debris. |
 | Adversarial review | A separate reviewer agent can challenge an attempt; high-risk findings can be recorded and used to hold apply. |
@@ -109,8 +112,26 @@ Memory in AIT is repo-local, inspectable project memory, not a hidden
 chat-window transcript. AIT recalls policy-allowed context from prior attempts,
 commits, notes, accepted facts, and review findings, then federates that
 AIT-owned memory with live external sources such as `CLAUDE.md`, `AGENTS.md`,
-and `.cursor/rules` at recall/run/review time. Those files remain their own
-source of truth; AIT does not auto-import them.
+`.claude/memory.md`, `.codex/memory.md`, and `.cursor/rules` at
+recall/run/review time. Those files remain their own source of truth; AIT does
+not auto-import them.
+
+## Agent-to-agent communication
+
+AIT gives agents a shared, local handoff channel that is tied to Git state:
+
+1. A wrapped agent run creates an attempt with prompt, output, changed files,
+   commits, status, and memory candidates.
+2. Useful facts, decisions, failures, and review findings stay queryable under
+   `.ait/` or in live repo memory files.
+3. The next wrapped run receives `AIT_CONTEXT_FILE`, a compact handoff assembled
+   from policy-allowed prior attempts, accepted facts, notes, commits, and live
+   agent memory files.
+
+That makes communication asynchronous and inspectable. Claude can investigate,
+Codex can implement, Aider can patch, Cursor can follow repo rules, and a
+reviewer agent can challenge the result without depending on one model's
+private chat history.
 
 ## What It Feels Like
 
@@ -356,9 +377,10 @@ AIT_CONTEXT_FILE   # when context is enabled
 ```
 
 `AIT_CONTEXT_FILE` contains a compact repo-local handoff selected from
-previous attempts, commits, curated notes, accepted facts, and live external
-memory files such as `CLAUDE.md`, `AGENTS.md`, and `.cursor/rules`. AIT records
-a context manifest with source path, hash, mtime, bytes used, and policy status
+previous attempts, commits, curated notes, accepted facts, review findings, and
+live external memory files such as `CLAUDE.md`, `AGENTS.md`,
+`.claude/memory.md`, `.codex/memory.md`, and `.cursor/rules`. AIT records a
+context manifest with source path, hash, mtime, bytes used, and policy status
 without claiming those external files as captured AIT provenance.
 
 ## Install
@@ -388,7 +410,7 @@ ait --version
 Tagged GitHub release:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.55.60"
+pipx install "git+https://github.com/m24927605/ait.git@v0.55.62"
 ```
 
 Upgrade:
@@ -454,7 +476,7 @@ ait shell uninstall --shell zsh
 
 ## Status
 
-`ait` is currently `0.55.60` and alpha quality. It is intended for local
+`ait` is currently `0.55.62` and alpha quality. It is intended for local
 dogfooding and early users who are comfortable with Git workflows.
 
 Metadata is local to one repository under `.ait/`. It is not

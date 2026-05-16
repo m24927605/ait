@@ -8,6 +8,7 @@ from ait.session_room import (
     ask_session,
     parse_agent_command_options,
     parse_agent_options,
+    session_permission_policy,
     start_session,
 )
 from ait.session_terminal import (
@@ -43,11 +44,13 @@ def _handle(args, repo_root: Path) -> tuple[dict[str, object], str] | int:
     store = SessionStore(repo_root)
     command = args.session_command
     if command == "start":
+        agents = parse_agent_options(args.agents)
         result = start_session(
             repo_root,
             args.title,
-            agents=parse_agent_options(args.agents),
+            agents=agents,
             agent_commands=parse_agent_command_options(args.agent_command),
+            permission_policy=_resolve_start_permission_policy(args, agents),
         )
         return result.payload, result.text
     if command == "ask":
@@ -161,6 +164,58 @@ def _handle(args, repo_root: Path) -> tuple[dict[str, object], str] | int:
     return 1
 
 
+def _resolve_start_permission_policy(args, agents: tuple[str, ...]) -> dict[str, str]:
+    claude_mode = args.claude_permission_mode
+    codex_sandbox = args.codex_sandbox
+    codex_approval = args.codex_approval
+    if _should_prompt_for_permissions(args, agents):
+        if _has_agent(agents, "claude-code") and claude_mode is None:
+            claude_mode = _prompt_choice(
+                "Claude Code permission mode",
+                choices=("plan", "default", "acceptEdits", "auto", "dontAsk", "bypassPermissions"),
+                default="plan",
+            )
+        if _has_agent(agents, "codex") and codex_sandbox is None:
+            codex_sandbox = _prompt_choice(
+                "Codex sandbox",
+                choices=("read-only", "workspace-write", "danger-full-access"),
+                default="read-only",
+            )
+        if _has_agent(agents, "codex") and codex_approval is None:
+            codex_approval = _prompt_choice(
+                "Codex approval policy",
+                choices=("never", "on-request", "untrusted"),
+                default="never",
+            )
+    return session_permission_policy(
+        claude_permission_mode=claude_mode,
+        codex_sandbox=codex_sandbox,
+        codex_approval=codex_approval,
+    )
+
+
+def _should_prompt_for_permissions(args, agents: tuple[str, ...]) -> bool:
+    if getattr(args, "format", "text") != "text":
+        return False
+    if not (hasattr(sys.stdin, "isatty") and sys.stdin.isatty() and hasattr(sys.stdout, "isatty") and sys.stdout.isatty()):
+        return False
+    return _has_agent(agents, "claude-code") or _has_agent(agents, "codex")
+
+
+def _has_agent(agents: tuple[str, ...], adapter_name: str) -> bool:
+    return any((agent.split(":", 1)[0] or agent) == adapter_name for agent in agents)
+
+
+def _prompt_choice(label: str, *, choices: tuple[str, ...], default: str) -> str:
+    prompt = f"{label} [{default}] ({', '.join(choices)}): "
+    value = input(prompt).strip()
+    if not value:
+        return default
+    if value not in choices:
+        raise SessionError(f"invalid {label}: {value}; expected one of: {', '.join(choices)}")
+    return value
+
+
 def _handle_participant(args, store: SessionStore) -> tuple[dict[str, object], str]:
     if args.participant_command == "list":
         payload = store.participant_list(args.selector)
@@ -211,6 +266,14 @@ def _format_session_text(payload: dict[str, object]) -> str:
         f"State: {payload.get('state')}",
         f"Turn: {payload.get('current_turn_id') or 'none'}",
     ]
+    permission_policy = payload.get("permission_policy")
+    if isinstance(permission_policy, dict):
+        lines.append(
+            "Permissions: "
+            f"claude={permission_policy.get('claude_code_permission_mode')} "
+            f"codex_sandbox={permission_policy.get('codex_sandbox')} "
+            f"codex_approval={permission_policy.get('codex_approval')}"
+        )
     responses = payload.get("responses", [])
     if isinstance(responses, list) and responses:
         lines.append("Responses:")

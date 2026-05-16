@@ -4,16 +4,17 @@ description: >-
   Deep dive on the ten problems ait solves for teams running Claude Code,
   Codex, Aider, Gemini CLI, and Cursor — blast radius, provenance, failed
   attempts, repeated investigation, parallel safety, apply ambiguity,
-  cross-agent hand-off, local-first metadata, adversarial review, and prompt
-  search.
+  agent-to-agent communication, local-first metadata, adversarial review, and
+  prompt search.
 ---
 
 # Why ait
 
-AI coding agents are fast. Git history, review discipline, and handoff
-context across runs are not. `ait` closes that gap by making every agent run
-an isolated, reviewable attempt before it reaches your working tree. Here is
-the long form of every problem it solves and how.
+AI coding agents are fast. Git history, review discipline, and shared context
+across runs are not. `ait` closes that gap by making every agent run an
+isolated, reviewable attempt before it reaches your working tree. It also gives
+agents a repo-local way to communicate: prior attempts, accepted facts, notes,
+review findings, and live memory files become the next agent's handoff context.
 
 For runnable evidence, see [Pain-point demos](demos/pain-point-demos.md).
 
@@ -59,9 +60,9 @@ Runnable example: [`03-failed-run-isolation`](https://github.com/m24927605/ait/t
 week Codex starts the investigation from scratch. Same tokens, twice.
 
 **ait.** Repo-local memory combines previous attempts, commits, curated notes,
-accepted facts, and live agent memory files (`CLAUDE.md`, `AGENTS.md`,
-`.cursor/rules`) into a compact context handoff (`AIT_CONTEXT_FILE`) for the
-next run.
+accepted facts, review findings, and live agent memory files (`CLAUDE.md`,
+`AGENTS.md`, `.claude/memory.md`, `.codex/memory.md`, `.cursor/rules`) into a
+compact context handoff (`AIT_CONTEXT_FILE`) for the next run.
 
 Runnable example: [`04-memory-reuse`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/04-memory-reuse)
 
@@ -87,15 +88,17 @@ proposal, not a fact.
 
 Runnable example: [`06-explicit-promotion`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/06-explicit-promotion)
 
-## 7. Cross-agent hand-off loses context
+## 7. Agents cannot talk to each other
 
-**Pain.** Claude ran three rounds, then Aider takes over and knows
-nothing about the decisions, dead ends, or partial fixes from before.
+**Pain.** Claude ran three rounds, then Aider takes over and knows nothing
+about the decisions, dead ends, or partial fixes from before. Codex repeats the
+same investigation because the useful context lives in another chat window.
 
-**ait.** The memory layer reads `CLAUDE.md`, `AGENTS.md`, Cursor rules, and
-AIT-owned attempt history live at handoff time, so the next agent — same or
-different — picks up with the shared repo context without auto-importing those
-external files.
+**ait.** The memory layer reads AIT-owned attempt history, accepted facts,
+notes, review findings, `CLAUDE.md`, `AGENTS.md`, `.claude/memory.md`,
+`.codex/memory.md`, and Cursor rules live at handoff time. The next agent —
+same or different — receives `AIT_CONTEXT_FILE` with the policy-allowed context
+instead of starting from a blank private chat.
 
 Runnable example: [`07-cross-agent-handoff`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/07-cross-agent-handoff)
 

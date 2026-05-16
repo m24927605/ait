@@ -2,21 +2,21 @@
 title: ait — AI agent 的可審核 attempts
 description: >-
   ait 把 Claude Code、Codex、Aider、Gemini CLI、Cursor 的每次執行變成
-  隔離、可審核的 attempt，保留 provenance、repo-local memory、跨 agent
-  handoff、對抗式審查與明確 apply/recover 流程。開源、零依賴、no SaaS、
-  no telemetry。
+  隔離、可審核的 attempt，保留 provenance、repo-local memory、agent-to-agent
+  communication、對抗式審查與明確 apply/recover 流程。開源、零依賴、
+  no SaaS、no telemetry。
 ---
 
 # ait
 
-**AI agent 應該在 attempt 裡動手，不是直接碰你的 working tree。**
+**AI agent 應該在 attempt 裡動手、共享脈絡，最後才 apply。**
 
 `ait` 包住你已經在用的 agent CLI——Claude Code、Codex、Aider、Gemini
 CLI、Cursor——把每次執行變成一筆**可審核的 attempt**。Agent 編輯獨立
 的 Git worktree，`ait` 紀錄發生過什麼，你的 root checkout 在你親手
-apply 之前不會被動到。AIT 會把 prompt、diff、commits、repo-local memory
-與 review evidence 留在一起，讓你先比較、再決定哪些結果可以落地。對高風險
-變更，AIT 也能在 apply 前執行對抗式審查。
+apply 之前不會被動到。AIT 也提供一條 repo-local handoff channel：Claude
+可以先調查，Codex 接著實作，Aider 做局部修補，Cursor 遵守 project rules，
+另一個 reviewer agent 再挑戰結果。
 
 ```bash
 pipx install ait-vcs    # 或用 npm install -g ait-vcs
@@ -39,9 +39,9 @@ _`ait graph --html` 產生的本機 HTML 報告：attempts、evidence、memory�
 | Worktree 隔離 | 每次執行都有自己的內部 Git worktree，失敗或高風險 attempt 不會污染目前 workspace。 |
 | Attempt provenance | prompt、intent、adapter、output、changed files、commits、trace references、status、outcome 會串成一筆紀錄。 |
 | Wrapper bypass 偵測 | `ait status <adapter>` 會告訴你目前 shell 會進 AIT wrapper，還是會 silent 地直接呼叫真正的 agent binary。 |
-| Live federated memory | Claude Code、Codex、Aider、Gemini、Cursor 與 shell agents 可以共用同一份即時 repo memory：AIT-owned history 加上目前的 `CLAUDE.md`、`AGENTS.md` 與 Cursor rules。 |
+| Live federated memory | Claude Code、Codex、Aider、Gemini、Cursor 與 shell agents 可以共用同一份即時 repo memory：AIT-owned history 加上目前的 `CLAUDE.md`、`AGENTS.md`、`.claude/`、`.codex/` 與 Cursor rules。 |
 | 長期 repo memory | attempts、commits、notes、accepted facts、prior findings，以及明確 adopt 的 memory 可以跨 session 保留。 |
-| 跨 agent handoff | 一個 agent 的調查或決策，可以透過 AIT 傳給後續另一個 agent。 |
+| Agent-to-agent communication | 一個 agent 的調查、決策、失敗路線或 review finding，可以透過 `AIT_CONTEXT_FILE` 傳給後續另一個 agent。 |
 | 平行 agent attempts | 多個 agents 可以同時試不同做法，不會在同一個 checkout 裡互相覆蓋。 |
 | 明確 apply/recover 流程 | Agent 產出的結果在 apply 前只是提案；held 或 failed work 仍可 recover。 |
 | 對抗式審查 | 另一個 reviewer agent 可以挑戰 attempt、記錄 findings，並對高風險結果 hold apply。 |
@@ -69,6 +69,18 @@ _`ait graph --html` 產生的本機 HTML 報告：attempts、evidence、memory�
 `ait` **不是**另一個 agent。它是包在你信任的 agents 外面的本機 attempt
 工作流。
 
+## Agents 如何互相溝通
+
+AIT 的溝通是非同步、可檢查的。每個 wrapped run 都會形成 attempt，保留
+prompt、output、changed files、commits、status 與 memory candidates。
+後續 run 會收到 `AIT_CONTEXT_FILE`：AIT 從 policy 允許的 attempts、
+accepted facts、notes、commits、review findings，以及 live memory files
+組出精簡 handoff，例如 `CLAUDE.md`、`AGENTS.md`、`.claude/memory.md`、
+`.codex/memory.md`、`.cursor/rules`。
+
+這不是隱藏聊天紀錄，而是 repo-local project memory：可以檢查、搜尋、審查，
+也能依 Git 狀態決定保留或丟棄。
+
 ## 支援的 agent
 
 - [Claude Code](integrations/claude-code.md)
@@ -95,9 +107,10 @@ ait review attempt latest-reviewable --mode adversarial --review-adapter claude-
 credits；你的機器上必須已安裝 Claude Code 並完成本機登入。
 
 Repo-local memory 是同一個 repository 內的 live federated view。AIT 會在
-`.ait/` 記錄 attempts、commits、notes、accepted memory facts 與 prior findings，
-並在 recall/run/review 當下即時讀取目前的 `CLAUDE.md`、`AGENTS.md`、
-`.cursor/rules`。這是可檢查的專案記憶，不是某個聊天視窗裡的隱藏上下文。
+`.ait/` 記錄 attempts、commits、notes、accepted memory facts、prior findings
+與 review findings，並在 recall/run/review 當下即時讀取目前的 `CLAUDE.md`、
+`AGENTS.md`、`.claude/memory.md`、`.codex/memory.md`、`.cursor/rules`。
+這是可檢查的專案記憶，不是某個聊天視窗裡的隱藏上下文。
 
 既有專案中途導入 AIT 時，先跑 `ait memory sources` 或 `ait memory recall`。
 兩者預設都是 zero-touch read：不建立 `.ait/`，也不改來源檔。

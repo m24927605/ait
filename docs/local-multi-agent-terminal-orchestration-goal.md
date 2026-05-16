@@ -16,7 +16,7 @@ AIT Local Multi-Agent Terminal Orchestration direction.
   AIT 已有 Local Multi-Agent Session Room 基礎能力：
   - `.ait/sessions/` repo-local session artifacts
   - `ait session start/ask/show/list/responses/export`
-  - panel/council/sequential fake/local command fan-out
+  - panel/council/sequential real adapter / fake / local command fan-out
   - Role Mode implementer attempt + reviewer evidence
   - per-agent context manifest
   - participant add/remove/list

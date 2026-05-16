@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.55.62 - 2026-05-16
+
+### Added
+
+- Make `ait session run --mode panel|council|sequential` invoke real local
+  adapter CLIs for active participants instead of returning the previous
+  non-fake placeholder response. Claude Code uses `claude -p`; Codex uses
+  `codex exec`; explicit `--agent-command agent=command` remains available for
+  custom local commands.
+- Add session-level permission consent for real panel/council invocation:
+  `--claude-permission-mode`, `--codex-sandbox`, and `--codex-approval` are
+  captured at `ait session start`, shown in session state, and reused for later
+  turns. Interactive text-mode starts ask for missing permission values; JSON
+  and non-TTY automation use flags or conservative defaults.
+
+### Documentation
+
+- Reframe README and docs site messaging around agent-to-agent communication
+  through repo-local memory and `AIT_CONTEXT_FILE`, while keeping claims aligned
+  with the implemented session, memory, and review behavior.
+- Document real local session invocation, permission consent prompts, and the
+  advisory/non-apply boundary for panel and council responses.
+
 ## 0.55.60 - 2026-05-15
 
 ### Fixed

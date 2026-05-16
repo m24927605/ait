@@ -81,7 +81,11 @@ review evidence without interactive prompts.
 ## Local multi-agent sessions
 
 ```bash
-ait session start "Refactor auth" --agents fake:one,fake:two
+ait session start "Refactor auth" --agents claude-code,codex
+ait session start "Refactor auth" --agents claude-code,codex \
+  --claude-permission-mode plan \
+  --codex-sandbox read-only \
+  --codex-approval never
 ait session ask latest "Compare the risks"
 ait session run latest --mode panel
 ait session attach latest
@@ -92,6 +96,31 @@ ait session send latest --all "list remaining risks"
 ait session kill latest --agent fake:one
 ait session replay latest --turn latest
 ```
+
+`ait session run --mode panel|council|sequential` invokes active participants.
+For `claude-code`, AIT runs the local `claude -p --permission-mode plan` CLI.
+For `codex`, AIT runs `codex exec --sandbox read-only --ask-for-approval never
+-`. Other registered adapters fall back to their real CLI command when present
+on `PATH`; explicit `--agent-command agent=command` remains available for custom
+local commands. Responses are advisory session artifacts, not applied changes.
+
+Choose the consented permission policy at session start. AIT stores that policy
+on the session and reuses it for later panel/council invocations:
+
+```bash
+ait session start "Investigate auth" --agents claude-code,codex \
+  --claude-permission-mode dontAsk \
+  --codex-sandbox workspace-write \
+  --codex-approval on-request
+```
+
+The conservative defaults are `claude=plan`, `codex_sandbox=read-only`, and
+`codex_approval=never`.
+
+When `ait session start` runs in an interactive terminal in text mode and you
+did not pass those flags, AIT asks for the missing policy values before creating
+the session. `--format json` and non-TTY automation never prompt; they use the
+flags you passed or the conservative defaults.
 
 `ait session attach latest --format json` returns an attach plan only; it does
 not start PTYs. Foreground attach starts one local PTY per active participant,
@@ -160,9 +189,10 @@ ait memory lint
 ait memory lint --fix
 ```
 
-Memory is a live federated repo view. AIT-owned memory under `.ait/` includes
-prior attempts, commits, curated notes, accepted memory facts, and prior
-findings. Live external sources such as `CLAUDE.md`, `AGENTS.md`, and
+Memory is a live federated repo view and agent handoff channel. AIT-owned memory
+under `.ait/` includes prior attempts, commits, curated notes, accepted memory
+facts, prior findings, and review findings. Live external sources such as
+`CLAUDE.md`, `AGENTS.md`, `.claude/memory.md`, `.codex/memory.md`, and
 `.cursor/rules` are read at recall/run/review time and remain their own source
 of truth.
 

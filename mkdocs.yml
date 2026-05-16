@@ -1,12 +1,12 @@
 site_name: ait — Reviewable attempts for AI coding agents
 site_url: https://m24927605.github.io/ait/
 site_description: >-
-  AI coding agents should work in attempts, not your working tree. ait turns
-  Claude Code, Codex CLI, Aider, Gemini CLI, and Cursor runs into isolated,
-  reviewable attempts with provenance, shared long-term repo memory,
-  cross-agent handoff, adversarial review, and explicit apply/recover flow on
-  top of Git. Open source (MIT), Python 3.14+, dependency-free, no SaaS, no
-  telemetry.
+  AI coding agents should work in attempts, share context, then earn apply.
+  ait turns Claude Code, Codex CLI, Aider, Gemini CLI, and Cursor runs into
+  isolated, reviewable attempts with provenance, repo-local memory,
+  agent-to-agent communication, adversarial review, and explicit apply/recover
+  flow on top of Git. Open source (MIT), Python 3.14+, dependency-free, no
+  SaaS, no telemetry.
 site_author: sin-chengchen
 repo_url: https://github.com/m24927605/ait
 repo_name: m24927605/ait

@@ -3,12 +3,13 @@ from __future__ import annotations
 from contextlib import chdir, redirect_stderr, redirect_stdout
 import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from ait import cli
 from ait.app import init_repo
@@ -78,6 +79,115 @@ class CliSessionTests(unittest.TestCase):
 
             self.assertIn("ctx=True", stdout)
             self.assertEqual("", _git_stdout(repo, "status", "--short"))
+
+    def test_panel_mode_invokes_real_adapter_cli_when_no_agent_command_is_provided(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            _init_git_repo(repo)
+            with tempfile.TemporaryDirectory() as bin_tmp:
+                bin_dir = Path(bin_tmp)
+                fake_codex = bin_dir / "codex"
+                fake_codex.write_text(
+                    "#!/bin/sh\n"
+                    "printf 'argv=%s\\n' \"$*\"\n"
+                    "printf 'ctx=%s\\n' \"$AIT_CONTEXT_FILE\"\n"
+                    "printf 'stdin=' \n"
+                    "cat\n",
+                    encoding="utf-8",
+                )
+                fake_codex.chmod(0o755)
+                start = _run_cli_json(
+                    repo,
+                    "session",
+                    "start",
+                    "Real invocation",
+                    "--agents",
+                    "codex",
+                    "--codex-sandbox",
+                    "workspace-write",
+                    "--codex-approval",
+                    "on-request",
+                    "--format",
+                    "json",
+                )
+                _run_cli_json(repo, "session", "ask", "latest", "Use real agent?", "--format", "json")
+
+                with patch.dict(os.environ, {"PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"}):
+                    payload = _run_cli_json(repo, "session", "run", "latest", "--mode", "panel", "--format", "json")
+            stdout = (repo / payload["responses"][0]["provenance_refs"]["stdout_ref"]).read_text(encoding="utf-8")
+            command = (repo / payload["responses"][0]["command_ref"]).read_text(encoding="utf-8")
+
+            self.assertEqual("workspace-write", start["permission_policy"]["codex_sandbox"])
+            self.assertEqual("on-request", start["permission_policy"]["codex_approval"])
+            self.assertIn("argv=exec --sandbox workspace-write --ask-for-approval on-request -", stdout)
+            self.assertIn("ctx=", stdout)
+            self.assertIn("Use real agent?", stdout)
+            self.assertIn("codex", command)
+            self.assertEqual("", _git_stdout(repo, "status", "--short"))
+
+    def test_session_start_records_claude_permission_consent_for_panel_invocation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            _init_git_repo(repo)
+            with tempfile.TemporaryDirectory() as bin_tmp:
+                bin_dir = Path(bin_tmp)
+                fake_claude = bin_dir / "claude"
+                fake_claude.write_text(
+                    "#!/bin/sh\n"
+                    "printf 'argv=%s\\n' \"$*\"\n"
+                    "cat\n",
+                    encoding="utf-8",
+                )
+                fake_claude.chmod(0o755)
+                start = _run_cli_json(
+                    repo,
+                    "session",
+                    "start",
+                    "Claude permissions",
+                    "--agents",
+                    "claude-code",
+                    "--claude-permission-mode",
+                    "bypassPermissions",
+                    "--format",
+                    "json",
+                )
+                _run_cli_json(repo, "session", "ask", "latest", "Use agreed permission mode", "--format", "json")
+
+                with patch.dict(os.environ, {"PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"}):
+                    payload = _run_cli_json(repo, "session", "run", "latest", "--mode", "panel", "--format", "json")
+            stdout = (repo / payload["responses"][0]["provenance_refs"]["stdout_ref"]).read_text(encoding="utf-8")
+
+            self.assertEqual("bypassPermissions", start["permission_policy"]["claude_code_permission_mode"])
+            self.assertIn("argv=-p --permission-mode bypassPermissions", stdout)
+            self.assertEqual("", _git_stdout(repo, "status", "--short"))
+
+    def test_session_start_prompts_for_real_agent_permission_policy_in_tty_text_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            _init_git_repo(repo)
+            fake_stdin = Mock()
+            fake_stdin.isatty.return_value = True
+            fake_stdout = Mock()
+            fake_stdout.isatty.return_value = True
+            answers = iter(["dontAsk", "workspace-write", "on-request"])
+
+            # JSON mode is automation-safe and does not prompt.
+            payload = _run_cli_json(repo, "session", "start", "Prompt", "--agents", "claude-code,codex", "--format", "json")
+            self.assertEqual("plan", payload["permission_policy"]["claude_code_permission_mode"])
+
+            stderr = io.StringIO()
+            with chdir(repo):
+                with patch("sys.argv", ["ait", "session", "start", "Prompt text", "--agents", "claude-code,codex"]):
+                    with patch("sys.stdin", fake_stdin), patch("sys.stdout", fake_stdout), patch("builtins.input", side_effect=lambda _prompt: next(answers)):
+                        with redirect_stderr(stderr):
+                            exit_code = cli.main()
+            self.assertEqual(0, exit_code, stderr.getvalue())
+            sessions = _run_cli_json(repo, "session", "list", "--format", "json")["sessions"]
+            prompted_session_id = next(item["session_id"] for item in sessions if item["title"] == "Prompt text")
+            show = _run_cli_json(repo, "session", "show", prompted_session_id, "--format", "json")
+            self.assertEqual("dontAsk", show["permission_policy"]["claude_code_permission_mode"])
+            self.assertEqual("workspace-write", show["permission_policy"]["codex_sandbox"])
+            self.assertEqual("on-request", show["permission_policy"]["codex_approval"])
 
     def test_timeout_and_cancelled_fake_agents_store_partial_response(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

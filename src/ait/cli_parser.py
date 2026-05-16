@@ -98,6 +98,21 @@ def build_parser() -> argparse.ArgumentParser:
     session_start.add_argument("title")
     session_start.add_argument("--agents", action="append")
     session_start.add_argument("--agent-command", action="append", help="explicit local command as agent=command")
+    session_start.add_argument(
+        "--claude-permission-mode",
+        choices=("plan", "default", "acceptEdits", "auto", "dontAsk", "bypassPermissions"),
+        help="consented Claude Code permission mode for real panel/council invocation",
+    )
+    session_start.add_argument(
+        "--codex-sandbox",
+        choices=("read-only", "workspace-write", "danger-full-access"),
+        help="consented Codex sandbox mode for real panel/council invocation",
+    )
+    session_start.add_argument(
+        "--codex-approval",
+        choices=("untrusted", "on-request", "never"),
+        help="consented Codex approval policy for real panel/council invocation",
+    )
     session_start.add_argument("--format", choices=("text", "json"), default="text")
     session_ask = session_subparsers.add_parser("ask")
     session_ask.add_argument("selector")

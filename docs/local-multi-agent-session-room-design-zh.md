@@ -13,10 +13,16 @@ Implementation note:
 
 - `ait session start/ask/show/list/responses/export` now has a repo-local
   `.ait/sessions/` JSON artifact store.
-- `ait session run --mode panel|council|sequential` supports local fake agents
-  and explicit local command participants for deterministic fan-out,
-  attribution, timeout/cancel simulation, retry, redaction, and per-agent
-  context manifests.
+- `ait session run --mode panel|council|sequential` supports real local adapter
+  invocation for active participants, plus local fake agents and explicit local
+  command participants for deterministic fan-out, attribution, timeout/cancel
+  simulation, retry, redaction, and per-agent context manifests. The default
+  real paths use non-interactive advisory commands where AIT knows them
+  (`claude -p --permission-mode plan`, `codex exec --sandbox read-only
+  --ask-for-approval never -`).
+- Real adapter invocation uses the session's consented permission policy:
+  `--claude-permission-mode`, `--codex-sandbox`, and `--codex-approval` are
+  captured at `ait session start` and reused for later panel/council turns.
 - `ait session run --mode role` can create isolated implementer attempts through
   the existing `ait run` substrate and attach deterministic review evidence
   through the existing review substrate.
@@ -1564,10 +1570,12 @@ Code changes:
 
 Docs changes:
 
-- Document Panel Mode and fake-agent testing pattern.
+- Document Panel Mode real adapter invocation and fake-agent testing pattern.
 
 Tests:
 
+- Panel mode invokes a real adapter CLI when no explicit `--agent-command` is
+  provided.
 - Panel mode runs two fake agents and records separate responses.
 - Failed one agent does not fail entire session.
 - Timeout/cancel records partial response.
@@ -1718,7 +1726,7 @@ Acceptance criteria:
 | Area | Test | Acceptance |
 | --- | --- | --- |
 | Root safety | `session start` does not mutate root checkout | `git status --short` unchanged except ignored `.ait/` metadata. |
-| Panel fan-out | Panel mode runs two fake agents | Two separate `AgentResponse` records with distinct ids and manifests. |
+| Panel fan-out | Panel mode invokes real adapter CLI or fake agents | Separate `AgentResponse` records with distinct ids, command refs, and manifests. |
 | Partial failure | One fake agent exits non-zero | Session state becomes `partial` or `awaiting_decision`, not total failure. |
 | Timeout/cancel | Fake agent sleeps past timeout or receives cancel | Partial stdout/stderr stored; state `timed_out` or `cancelled`. |
 | Role attempt | Implementer role creates attempt | Attempt is isolated and linked to implementer response. |
@@ -1730,7 +1738,7 @@ Acceptance criteria:
 | Redaction | Prompt/context/output contains secret fixture | Stored summary/export redacts it before durable reuse. |
 | JSON next action | `session show --format json` | Includes recommended next action, safe/unsafe actions, blocking reasons. |
 | Deterministic export | Export same session twice | Markdown output stable except explicitly volatile fields. |
-| Local-only | Session commands run with fake agents | No AIT network calls; metadata stays under `.ait/`. |
+| Local metadata | Session commands run with real local adapters or fake agents | AIT metadata stays under `.ait/`; model/network behavior is controlled by the chosen local adapter CLI. |
 | Backward compatibility | Existing `ait run` and `ait review` | Existing tests pass with session feature disabled. |
 | Locking | Two processes append turns | No duplicate ordinals; one writer waits or fails with actionable error. |
 | Workspace isolation | Two implementers in same session | Separate attempt workspaces; no overwrite. |

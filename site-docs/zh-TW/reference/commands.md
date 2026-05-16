@@ -79,7 +79,11 @@ JSON 狀態、合法下一步、dry-run merge operations，以及不需要互動
 ## 本機 multi-agent sessions
 
 ```bash
-ait session start "重構 auth" --agents fake:one,fake:two
+ait session start "重構 auth" --agents claude-code,codex
+ait session start "重構 auth" --agents claude-code,codex \
+  --claude-permission-mode plan \
+  --codex-sandbox read-only \
+  --codex-approval never
 ait session ask latest "比較風險"
 ait session run latest --mode panel
 ait session attach latest
@@ -90,6 +94,29 @@ ait session send latest --all "列出剩餘風險"
 ait session kill latest --agent fake:one
 ait session replay latest --turn latest
 ```
+
+`ait session run --mode panel|council|sequential` 會呼叫 active participants。
+對 `claude-code`，AIT 會執行本機 `claude -p --permission-mode plan` CLI。
+對 `codex`，AIT 會執行 `codex exec --sandbox read-only --ask-for-approval
+never -`。其他已註冊 adapter 會在 `PATH` 上存在時 fallback 到真實 CLI；
+自訂 local command 仍可用 `--agent-command agent=command` 指定。這些 response
+是 advisory session artifacts，不會直接 apply changes。
+
+權限 policy 應在 session start 時先由使用者決定。AIT 會把這份設定存在
+session 裡，後續 panel/council invocation 都照這份設定執行：
+
+```bash
+ait session start "調查 auth" --agents claude-code,codex \
+  --claude-permission-mode dontAsk \
+  --codex-sandbox workspace-write \
+  --codex-approval on-request
+```
+
+保守預設是 `claude=plan`、`codex_sandbox=read-only`、`codex_approval=never`。
+
+當 `ait session start` 在互動式 terminal 的 text mode 執行，且你沒有傳入
+上述 flags 時，AIT 會在建立 session 前詢問缺少的 policy 值。`--format json`
+與非 TTY automation 不會互動詢問；它們只會使用你傳入的 flags 或保守預設。
 
 `ait session attach latest --format json` 只回傳 attach plan，不會啟動 PTY。
 foreground attach 會替每個 active participant 建立一個本機 PTY，寫入
@@ -155,10 +182,11 @@ ait memory lint
 ait memory lint --fix
 ```
 
-Memory 是 live federated repo view。AIT-owned memory 存在 `.ait/`，包含
-prior attempts、commits、curated notes、accepted memory facts 與 prior findings。
-`CLAUDE.md`、`AGENTS.md`、`.cursor/rules` 等 live external sources 會在
-recall/run/review 當下即時讀取，並維持自己的 source of truth。
+Memory 是 live federated repo view，也是 agent handoff channel。AIT-owned
+memory 存在 `.ait/`，包含 prior attempts、commits、curated notes、accepted
+memory facts、prior findings 與 review findings。`CLAUDE.md`、`AGENTS.md`、
+`.claude/memory.md`、`.codex/memory.md`、`.cursor/rules` 等 live external
+sources 會在 recall/run/review 當下即時讀取，並維持自己的 source of truth。
 
 `ait memory sources` 與預設 `ait memory recall` 都是 zero-touch read：
 不建立 `.ait/`，也不修改來源檔。`ait memory backfill --dry-run` 只預覽

@@ -3,21 +3,21 @@ title: ait — Reviewable attempts for AI coding agents
 description: >-
   ait turns Claude Code, Codex, Aider, Gemini CLI, and Cursor runs into
   isolated, reviewable attempts with provenance, shared repo-local memory,
-  cross-agent handoff, adversarial review, and explicit apply/recover flow.
-  Open-source, dependency-free, no SaaS, no telemetry.
+  agent-to-agent communication, adversarial review, and explicit apply/recover
+  flow. Open-source, dependency-free, no SaaS, no telemetry.
 ---
 
 # ait
 
-**AI coding agents should work in attempts, not your working tree.**
+**AI coding agents should work in attempts, share context, then earn apply.**
 
 `ait` wraps the agent CLIs you already use — Claude Code, Codex, Aider,
 Gemini CLI, Cursor — and turns each run into a **reviewable attempt**.
-The agent edits an isolated Git worktree, `ait` records what happened,
-and your main checkout stays untouched until you apply the result. It keeps
-prompts, diffs, commits, repo-local memory, and review evidence together so you
-can compare agent work before it lands. For high-risk changes, AIT can also run
-adversarial review before apply.
+The agent edits an isolated Git worktree, `ait` records what happened, and your
+main checkout stays untouched until you apply the result. It also gives agents
+a shared repo-local handoff channel: Claude can investigate, Codex can
+implement, Aider can patch, Cursor can follow project rules, and a reviewer
+agent can challenge the result before it lands.
 
 ```bash
 pipx install ait-vcs    # or: npm install -g ait-vcs
@@ -40,9 +40,9 @@ _Static HTML from `ait graph --html`: attempts, evidence, memory, hot files, and
 | Worktree isolation | Every run gets an internal isolated Git worktree, so failed or risky attempts do not pollute your workspace. |
 | Attempt provenance | Prompt, intent, adapter, output, changed files, commits, trace references, status, and outcome stay linked. |
 | Wrapper bypass detection | `ait status <adapter>` shows whether this shell will enter AIT or silently call the real agent binary. |
-| Live federated memory | Claude Code, Codex, Aider, Gemini, Cursor, and shell agents can reuse the same live repo memory: AIT-owned history plus current `CLAUDE.md`, `AGENTS.md`, and Cursor rules. |
+| Live federated memory | Claude Code, Codex, Aider, Gemini, Cursor, and shell agents can reuse the same live repo memory: AIT-owned history plus current `CLAUDE.md`, `AGENTS.md`, `.claude/`, `.codex/`, and Cursor rules. |
 | Long-term repo memory | Attempts, commits, notes, accepted facts, prior findings, and explicit adopted memory can survive across sessions. |
-| Cross-agent handoff | One agent can record an investigation or decision, and another agent can receive it later through AIT. |
+| Agent-to-agent communication | One agent can record an investigation, decision, failed path, or review finding, and another agent can receive it later through `AIT_CONTEXT_FILE`. |
 | Parallel agent attempts | Multiple agents can try different approaches at the same time without racing inside the same checkout. |
 | Explicit apply/recover flow | Agent output stays a proposal until apply; held or failed work remains recoverable. |
 | Adversarial review | A separate reviewer agent can challenge an attempt, record findings, and hold apply on high-risk results. |
@@ -70,6 +70,18 @@ For runnable evidence for each point, use the
 
 `ait` is **not** another agent. It is the local attempt workflow around the
 agents you already trust.
+
+## How agents communicate
+
+AIT communication is asynchronous and inspectable. Every wrapped run creates an
+attempt with prompt, output, changed files, commits, status, and memory
+candidates. Later runs receive `AIT_CONTEXT_FILE`, a compact handoff assembled
+from policy-allowed attempts, accepted facts, notes, commits, review findings,
+and live memory files such as `CLAUDE.md`, `AGENTS.md`, `.claude/memory.md`,
+`.codex/memory.md`, and `.cursor/rules`.
+
+The result is not a hidden chat transcript. It is repo-local project memory you
+can inspect, search, review, and keep or discard with Git-aware context.
 
 ## Supported agents
 
@@ -100,10 +112,11 @@ silently fall back to provider API credits; Claude Code must be installed and
 locally authenticated on your machine.
 
 Repo-local memory is a live federated view inside one repository. AIT records
-attempts, commits, notes, accepted memory facts, and prior findings under
-`.ait/`, then reads current repo-local agent memory files such as `CLAUDE.md`,
-`AGENTS.md`, and `.cursor/rules` live at recall/run/review time. This is
-inspectable project memory, not hidden chat-window memory.
+attempts, commits, notes, accepted memory facts, prior findings, and review
+findings under `.ait/`, then reads current repo-local agent memory files such
+as `CLAUDE.md`, `AGENTS.md`, `.claude/memory.md`, `.codex/memory.md`, and
+`.cursor/rules` live at recall/run/review time. This is inspectable project
+memory, not hidden chat-window memory.
 
 When you introduce AIT to an existing repository, start with
 `ait memory sources` or `ait memory recall`. Both are zero-touch reads by

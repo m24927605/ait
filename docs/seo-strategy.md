@@ -20,14 +20,14 @@ SEO target is therefore not classical Google traffic. It is:
    for "AI agent VCS" or "git provenance for Claude Code".
 3. **Mid-funnel long-tail capture** in the three lanes we can win
    — `git worktree + AI agent`, `agent provenance / local-first`,
-   `cross-agent handoff`. Do not chase head terms.
+   `agent-to-agent communication`. Do not chase head terms.
 4. **Compounding multi-channel** — PyPI + npm + GitHub + docs +
    LLMs + awesome-lists.
 
 ## 2. Cross-domain decisions (ratified)
 
 1. **Canonical entity sentence (L)** — "AI coding agents should work
-   in attempts, not your working tree." Single source flows from
+   in attempts, share context, then earn apply." Single source flows from
    `mkdocs.yml site_description` into JSON-LD `description` via
    Jinja inheritance.
 2. **Alpha disclosure** — keep the word in README Status; remove
@@ -60,9 +60,9 @@ SEO target is therefore not classical Google traffic. It is:
 
 | Length | Chars | Surfaces (audit list — see §7 baseline) |
 | ------ | ----- | --------------------------------------- |
-| L (~360) | "AI coding agents should work in attempts, not your working tree. ait turns Claude Code, Codex CLI, Aider, Gemini CLI, and Cursor runs into isolated, reviewable attempts with provenance, shared long-term repo memory, cross-agent handoff, adversarial review, and explicit apply/recover flow on top of Git. Open source (MIT), Python 3.14+, dependency-free, no SaaS, no telemetry." | README hero, PyPI long_description, llms.txt blockquote, JSON-LD `description`, `mkdocs.yml site_description`, facts.md lead |
-| M (~150) | "Run Claude Code, Codex, Aider, Gemini CLI, and Cursor as isolated, reviewable attempts with provenance, memory, and apply/recover. MIT, no SaaS." | `pyproject.toml description`, `npm/ait-vcs/package.json description`, og:description fallback |
-| S (~64) | "AI coding agents should work in attempts, not your working tree" | GitHub repo `description`, og:title fallback |
+| L (~360) | "AI coding agents should work in attempts, share context, then earn apply. ait turns Claude Code, Codex CLI, Aider, Gemini CLI, and Cursor runs into isolated, reviewable attempts with provenance, repo-local memory, agent-to-agent communication, adversarial review, and explicit apply/recover flow on top of Git. Open source (MIT), Python 3.14+, dependency-free, no SaaS, no telemetry." | README hero, PyPI long_description, llms.txt blockquote, JSON-LD `description`, `mkdocs.yml site_description`, facts.md lead |
+| M (~150) | "Run Claude Code, Codex, Aider, Gemini CLI, and Cursor as isolated, reviewable attempts with repo-local memory, agent handoff, and apply/recover. MIT, no SaaS." | `pyproject.toml description`, `npm/ait-vcs/package.json description`, og:description fallback |
+| S (~64) | "AI agents work in attempts, share context, then earn apply" | GitHub repo `description`, og:title fallback |
 | XS (~30) | "Attempts for AI coding agents" | Twitter/X bio (maintainer manual), social embeds |
 
 The Twitter/X bio surface is a maintainer-manual update. It is in
@@ -111,7 +111,7 @@ Deploy in this order. Do not skip checkpoints.
 3. **Update GitHub repo metadata** (one command):
    ```bash
    gh repo edit m24927605/ait \
-     --description "AI coding agents should work in attempts, not your working tree" \
+     --description "AI agents work in attempts, share context, then earn apply" \
      --homepage "https://m24927605.github.io/ait/"
    ```
 4. **Apply final 20-topic set** (cap = 20). Drop `ai`, `cli`,

@@ -6,11 +6,16 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 import time
 from typing import Any
 
+from ait.adapter_models import AdapterError
+from ait.adapter_registry import get_adapter
+from ait.adapter_wrapper import _find_real_binary
 from ait.config import bootstrap_ait_dir, ensure_local_config
 from ait.app import init_repo
 from ait.db import NewMemoryFact, connect_db, upsert_memory_fact, utc_now
@@ -24,6 +29,15 @@ from ait.review import create_deterministic_review
 
 SESSION_SCHEMA_VERSION = 1
 DEFAULT_SESSION_TIMEOUT_SECONDS = 60
+DEFAULT_SESSION_PERMISSION_POLICY: dict[str, str] = {
+    "claude_code_permission_mode": "plan",
+    "codex_sandbox": "read-only",
+    "codex_approval": "never",
+}
+_REAL_PANEL_COMMANDS: dict[str, tuple[str, ...]] = {
+    "claude-code": ("claude", "-p"),
+    "codex": ("codex", "exec"),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +65,7 @@ class SessionStore:
         *,
         agents: tuple[str, ...] = (),
         agent_commands: dict[str, str] | None = None,
+        permission_policy: dict[str, str] | None = None,
     ) -> dict[str, object]:
         if not title.strip():
             raise SessionError("session title must not be empty")
@@ -67,6 +82,7 @@ class SessionStore:
             )
             for index, agent in enumerate(agents)
         ]
+        resolved_permission_policy = _normalize_session_permission_policy(permission_policy)
         session = {
             "schema_version": SESSION_SCHEMA_VERSION,
             "id": session_id,
@@ -86,7 +102,8 @@ class SessionStore:
             "policy_ref": None,
             "redaction_policy_ref": "ait.redaction.SECRET_PATTERNS",
             "summary_ref": None,
-            "metadata_json": {},
+            "metadata_json": {"permission_policy": resolved_permission_policy},
+            "permission_policy": resolved_permission_policy,
         }
         session_dir = self._session_dir(session_id)
         for child in (
@@ -690,6 +707,7 @@ class SessionStore:
                 for item in session.get("participants", [])
                 if isinstance(item, dict)
             ],
+            "permission_policy": _session_permission_policy(session),
             "responses": responses,
             "summary": None if turn is None or not turn.get("summary_id") else self._load_summary(str(session["id"]), str(turn["summary_id"])),
             "next_action": _next_action(recommended),
@@ -767,7 +785,23 @@ class SessionStore:
                 timeout_seconds=timeout_seconds,
             )
         else:
-            stdout, stderr, exit_code, state = _invoke_agent(str(participant["agent_id"]), timeout_seconds=timeout_seconds)
+            agent_id = str(participant["agent_id"])
+            if agent_id.startswith("fake:"):
+                stdout, stderr, exit_code, state = _invoke_agent(agent_id, timeout_seconds=timeout_seconds)
+            else:
+                prompt = self._panel_agent_prompt(session, turn, participant, context_ref=context_ref)
+                stdout, stderr, exit_code, state, command = self._invoke_real_panel_agent(
+                    agent_id,
+                    prompt=prompt,
+                    context_ref=context_ref,
+                    permission_policy=_session_permission_policy(session),
+                    session_id=str(session["id"]),
+                    response_id=response_id,
+                    timeout_seconds=timeout_seconds,
+                )
+                command_ref = self._relative(self._session_dir(str(session["id"])) / "transcripts" / f"{response_id}.command.txt")
+                self._write_text_ref(command_ref, " ".join(shlex.quote(part) for part in command) + "\n")
+                response["command_ref"] = command_ref
         response.update(self._persist_response_output(str(session["id"]), response_id, stdout=stdout, stderr=stderr))
         response["exit_code"] = exit_code
         response["state"] = state
@@ -1029,6 +1063,85 @@ class SessionStore:
             return exc.stdout or "", exc.stderr or "timed out\n", None, "timed_out"
         return completed.stdout or "", completed.stderr or "", completed.returncode, "completed" if completed.returncode == 0 else "failed"
 
+    def _invoke_real_panel_agent(
+        self,
+        agent_id: str,
+        *,
+        prompt: str,
+        context_ref: str,
+        permission_policy: dict[str, str],
+        session_id: str,
+        response_id: str,
+        timeout_seconds: int,
+    ) -> tuple[str, str, int | None, str, tuple[str, ...]]:
+        adapter_name = _adapter_for_agent(agent_id)
+        command = _real_panel_command(adapter_name, self.repo_root, permission_policy)
+        if command is None:
+            return (
+                "",
+                f"real panel/council invocation is not configured for agent {agent_id}\n",
+                127,
+                "failed",
+                (agent_id,),
+            )
+        run_dir = self._session_dir(session_id) / "local-runs" / response_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+        env = {
+            **os.environ,
+            "AIT_CONTEXT_FILE": str((self.repo_root / context_ref).resolve()),
+            "AIT_CONTEXT_HINT": "Read AIT_CONTEXT_FILE before answering.",
+            "AIT_SESSION_ID": session_id,
+            "AIT_RESPONSE_ID": response_id,
+            "AIT_REPO_ROOT": str(self.repo_root),
+            "AIT_SESSION_MODE": "panel",
+            "AIT_PANEL_ADVISORY_ONLY": "1",
+        }
+        try:
+            completed = subprocess.run(
+                list(command),
+                cwd=self.repo_root if adapter_name in _REAL_PANEL_COMMANDS else run_dir,
+                env=env,
+                input=prompt,
+                check=False,
+                text=True,
+                capture_output=True,
+                timeout=timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as exc:
+            return exc.stdout or "", exc.stderr or "timed out\n", None, "timed_out", command
+        except OSError as exc:
+            return "", f"real panel/council invocation failed: {exc}\n", 127, "failed", command
+        return (
+            completed.stdout or "",
+            completed.stderr or "",
+            completed.returncode,
+            "completed" if completed.returncode == 0 else "failed",
+            command,
+        )
+
+    def _panel_agent_prompt(
+        self,
+        session: dict[str, object],
+        turn: dict[str, object],
+        participant: dict[str, object],
+        *,
+        context_ref: str,
+    ) -> str:
+        user_text = _read_ref_text(self.repo_root, str(turn.get("user_input_redacted_ref") or "")).strip()
+        context_path = (self.repo_root / context_ref).resolve()
+        return "\n".join(
+            [
+                f"You are {participant.get('agent_id')} in AIT session {session.get('id')}.",
+                "This is panel/council mode: respond with advisory analysis only.",
+                "Do not edit files, do not apply changes, and do not mutate the repository.",
+                f"Read the repo-local handoff context from AIT_CONTEXT_FILE: {context_path}",
+                "",
+                "User turn:",
+                user_text,
+                "",
+            ]
+        )
+
     def _persist_response_output(
         self,
         session_id: str,
@@ -1249,9 +1362,10 @@ def start_session(
     *,
     agents: tuple[str, ...],
     agent_commands: dict[str, str] | None = None,
+    permission_policy: dict[str, str] | None = None,
 ) -> SessionCommandResult:
     store = SessionStore(repo_root)
-    session = store.start(title, agents=agents, agent_commands=agent_commands)
+    session = store.start(title, agents=agents, agent_commands=agent_commands, permission_policy=permission_policy)
     payload = store.state_payload(session)
     return SessionCommandResult(payload=payload, text=f"Started AIT session {session['id']}\n")
 
@@ -1324,6 +1438,91 @@ def _adapter_for_agent(agent: str) -> str:
     return agent.split(":", 1)[0] or "shell"
 
 
+def session_permission_policy(
+    *,
+    claude_permission_mode: str | None = None,
+    codex_sandbox: str | None = None,
+    codex_approval: str | None = None,
+) -> dict[str, str]:
+    return _normalize_session_permission_policy(
+        {
+            key: value
+            for key, value in {
+                "claude_code_permission_mode": claude_permission_mode,
+                "codex_sandbox": codex_sandbox,
+                "codex_approval": codex_approval,
+            }.items()
+            if value is not None
+        }
+    )
+
+
+def _session_permission_policy(session: dict[str, object]) -> dict[str, str]:
+    direct = session.get("permission_policy")
+    if isinstance(direct, dict):
+        return _normalize_session_permission_policy({str(k): str(v) for k, v in direct.items()})
+    metadata = session.get("metadata_json")
+    if isinstance(metadata, dict) and isinstance(metadata.get("permission_policy"), dict):
+        policy = metadata["permission_policy"]
+        return _normalize_session_permission_policy({str(k): str(v) for k, v in policy.items()})
+    return dict(DEFAULT_SESSION_PERMISSION_POLICY)
+
+
+def _normalize_session_permission_policy(policy: dict[str, str] | None) -> dict[str, str]:
+    resolved = dict(DEFAULT_SESSION_PERMISSION_POLICY)
+    if policy:
+        resolved.update({key: value for key, value in policy.items() if value})
+    if resolved["claude_code_permission_mode"] not in {"plan", "default", "acceptEdits", "auto", "dontAsk", "bypassPermissions"}:
+        raise SessionError(f"unsupported Claude Code permission mode: {resolved['claude_code_permission_mode']}")
+    if resolved["codex_sandbox"] not in {"read-only", "workspace-write", "danger-full-access"}:
+        raise SessionError(f"unsupported Codex sandbox mode: {resolved['codex_sandbox']}")
+    if resolved["codex_approval"] not in {"untrusted", "on-request", "never"}:
+        raise SessionError(f"unsupported Codex approval policy: {resolved['codex_approval']}")
+    return resolved
+
+
+def _real_panel_command(adapter_name: str, repo_root: Path, permission_policy: dict[str, str]) -> tuple[str, ...] | None:
+    try:
+        adapter = get_adapter(adapter_name)
+    except AdapterError:
+        return None
+    template = _REAL_PANEL_COMMANDS.get(adapter.name)
+    if template is None:
+        if not adapter.command_name:
+            return None
+        template = (adapter.command_name,)
+    command_name = template[0]
+    binary = _resolve_real_panel_binary(command_name, repo_root)
+    suffix = _permission_command_suffix(adapter.name, permission_policy)
+    if binary is None:
+        return (command_name, *template[1:], *suffix)
+    return (binary, *template[1:], *suffix)
+
+
+def _permission_command_suffix(adapter_name: str, permission_policy: dict[str, str]) -> tuple[str, ...]:
+    if adapter_name == "claude-code":
+        return ("--permission-mode", permission_policy["claude_code_permission_mode"])
+    if adapter_name == "codex":
+        return (
+            "--sandbox",
+            permission_policy["codex_sandbox"],
+            "--ask-for-approval",
+            permission_policy["codex_approval"],
+            "-",
+        )
+    return ()
+
+
+def _resolve_real_panel_binary(command_name: str, repo_root: Path) -> str | None:
+    wrapper_path = repo_root / ".ait" / "bin" / command_name
+    if wrapper_path.exists():
+        try:
+            return _find_real_binary(command_name, wrapper_path)
+        except AdapterError:
+            pass
+    return shutil.which(command_name)
+
+
 def _invoke_agent(agent: str, *, timeout_seconds: int) -> tuple[str, str, int | None, str]:
     if agent.startswith("fake:fail"):
         return f"{agent} failed\n", "fake failure\n", 1, "failed"
@@ -1338,12 +1537,7 @@ def _invoke_agent(agent: str, *, timeout_seconds: int) -> tuple[str, str, int | 
         return "TOKEN=super-secret-token-value\n", "", 0, "completed"
     if agent.startswith("fake:"):
         return f"fake response from {agent}\n", "", 0, "completed"
-    return (
-        f"{agent} is registered for this session, but non-fake invocation is not enabled in panel mode yet.\n",
-        "",
-        0,
-        "completed",
-    )
+    return "", f"unsupported fake agent path: {agent}\n", 127, "failed"
 
 
 def _fake_sleep_seconds(agent: str) -> int:
@@ -1425,6 +1619,7 @@ def _response_summary(response: dict[str, object]) -> dict[str, object]:
         "attempt_id": response.get("attempt_id"),
         "review_id": response.get("review_id"),
         "context_manifest_ref": response.get("context_manifest_ref"),
+        "command_ref": response.get("command_ref"),
         "provenance_refs": {
             "stdout_ref": response.get("stdout_ref"),
             "stderr_ref": response.get("stderr_ref"),

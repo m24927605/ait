@@ -8,9 +8,10 @@ Session Room.
 
 本文延伸
 [`local-multi-agent-session-room-design-zh.md`](local-multi-agent-session-room-design-zh.md)。
-目前 session room 已有 repo-local session store、fake/local command fan-out、
-Role Mode attempt/review linkage、context manifest、participant lifecycle、
-split implementation、adaptive allocation dry-run。本文專門定義尚未完成的
+目前 session room 已有 repo-local session store、real adapter / fake /
+local command fan-out、Role Mode attempt/review linkage、context manifest、
+participant lifecycle、split implementation、adaptive allocation dry-run。
+本文專門定義尚未完成的
 互動式 terminal / streaming UX。
 
 Implementation note:

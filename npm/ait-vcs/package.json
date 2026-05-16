@@ -1,7 +1,7 @@
 {
   "name": "ait-vcs",
-  "version": "0.55.61",
-  "description": "Run Claude Code, Codex, Aider, Gemini CLI, and Cursor as isolated, reviewable attempts with provenance, memory, and apply/recover. MIT, no SaaS.",
+  "version": "0.55.62",
+  "description": "Run Claude Code, Codex, Aider, Gemini CLI, and Cursor as isolated, reviewable attempts with repo-local memory, agent handoff, and apply/recover. MIT, no SaaS.",
   "license": "MIT",
   "author": "sin-chengchen",
   "homepage": "https://m24927605.github.io/ait/",

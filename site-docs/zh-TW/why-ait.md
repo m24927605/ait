@@ -2,16 +2,16 @@
 title: 為什麼用 ait — ait 解決的問題
 description: >-
   ait 解決的 10 個 AI coding agent 痛點深入解析：blast radius、provenance、
-  失敗污染、重複調查、平行安全、apply 模糊、跨 agent 脈絡、強迫 SaaS、
-  對抗式審查、prompt 搜尋。
+  失敗污染、重複調查、平行安全、apply 模糊、agent-to-agent communication、
+  強迫 SaaS、對抗式審查、prompt 搜尋。
 ---
 
 # 為什麼用 ait
 
-AI coding agent 跑得快。Git history、審核紀律、跨 session 的 hand-off
-脈絡跟不上。`ait` 先把每次 agent 執行變成隔離、可審核的 attempt，再讓你
-決定哪些結果可以進 working tree。下面是 ait 解決的每個問題的長版本，以及
-對應的解法。
+AI coding agent 跑得快。Git history、審核紀律、跨 session 的共享脈絡
+跟不上。`ait` 先把每次 agent 執行變成隔離、可審核的 attempt，再讓 agents
+透過 repo-local memory 交接資訊，最後由你決定哪些結果可以進 working tree。
+下面是 ait 解決的每個問題的長版本，以及對應的解法。
 
 想看可重跑證據，請看 [痛點 demo](demos/pain-point-demos.md)。
 
@@ -53,7 +53,8 @@ output、產生的 commits 串成一筆可查的紀錄。`ait attempt show <id>`
 從零開始查。一樣的 token 花兩遍。
 
 **解法：** Repo-local memory 把過去 attempts、commits、curated notes、
-accepted facts，以及即時讀取的 agent memory 檔（`CLAUDE.md`、`AGENTS.md`、
+accepted facts、review findings，以及即時讀取的 agent memory 檔
+（`CLAUDE.md`、`AGENTS.md`、`.claude/memory.md`、`.codex/memory.md`、
 `.cursor/rules`）組成一份 `AIT_CONTEXT_FILE` 餵給下一次執行。
 
 可執行範例：[`04-memory-reuse`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/04-memory-reuse)
@@ -79,14 +80,16 @@ accepted facts，以及即時讀取的 agent memory 檔（`CLAUDE.md`、`AGENTS.
 
 可執行範例：[`06-explicit-promotion`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/06-explicit-promotion)
 
-## 7. 跨 agent hand-off 弄丟脈絡
+## 7. Agents 不能互相溝通
 
 **痛點：** Claude 跑了三輪，換 Aider 接手，前面的決策、死路、半套修補
-全都不見。
+全都不見。Codex 又重查一次同一個問題，因為有用脈絡困在另一個聊天視窗。
 
-**解法：** Memory layer 在 handoff 當下即時讀 `CLAUDE.md`、`AGENTS.md`、
-Cursor rules 與 AIT-owned attempt history，下一個 agent — 同一個或不同 —
-接續共同 repo context，不需要自動匯入外部檔案。
+**解法：** Memory layer 在 handoff 當下即時讀 AIT-owned attempt history、
+accepted facts、notes、review findings、`CLAUDE.md`、`AGENTS.md`、
+`.claude/memory.md`、`.codex/memory.md` 與 Cursor rules。下一個 agent
+— 同一個或不同 — 會收到 `AIT_CONTEXT_FILE`，接續 policy 允許的共同 repo
+context，而不是從空白的私有聊天開始。
 
 可執行範例：[`07-cross-agent-handoff`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/07-cross-agent-handoff)
 

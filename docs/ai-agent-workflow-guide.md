@@ -7,6 +7,20 @@ next action, execute it, then record review and merge evidence.
 For multi-agent coordination, leases, stale-session recovery, and safety
 guarantees, see [`docs/multi-agent-control-plane.md`](multi-agent-control-plane.md).
 
+## Shared Context Between Agents
+
+AIT's agent-to-agent communication is repo-local and asynchronous. A wrapped
+agent run records an attempt with prompt, output, changed files, commits,
+status, and memory candidates. Later wrapped runs receive `AIT_CONTEXT_FILE`, a
+compact handoff built from policy-allowed attempts, commits, notes, accepted
+facts, review findings, and live memory files such as `CLAUDE.md`, `AGENTS.md`,
+`.claude/memory.md`, `.codex/memory.md`, and `.cursor/rules`.
+
+Agents should read `AIT_CONTEXT_FILE` before editing. They should treat it as
+project memory with provenance, not as hidden chat state. If the context points
+to a prior failed attempt or review finding, inspect the referenced attempt
+before repeating the same work.
+
 ## Standard Agent Loop
 
 1. `ait whereami --json`

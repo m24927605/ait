@@ -1,5 +1,9 @@
 # Live Federated Memory
 
+Live federated memory is AIT's agent-to-agent communication layer. It lets one
+wrapped run leave inspectable project context, then gives the next wrapped run a
+compact `AIT_CONTEXT_FILE` assembled from the current repository state.
+
 AIT memory has two sources:
 
 - **AIT-owned memory** under `.ait/`: attempts, prompts, traces, commits,
@@ -12,6 +16,20 @@ AIT memory has two sources:
 External files remain their own source of truth. AIT reads them live during
 `ait memory recall`, `ait run`, and `ait review`; it does not auto-import them
 into `.ait/`.
+
+## Agent handoff
+
+For a wrapped run or adversarial review, AIT can build `AIT_CONTEXT_FILE` from:
+
+- prior attempts and their prompt/output/status records
+- prior commits and changed files
+- curated notes and accepted facts under `.ait/`
+- previous review findings
+- live external memory files allowed by policy
+
+That is how Claude Code, Codex, Aider, Gemini, Cursor, and shell agents share
+repo context without sharing a private chat transcript. AIT records context
+manifests so you can inspect which sources contributed to a handoff.
 
 ## Zero-touch reads
 

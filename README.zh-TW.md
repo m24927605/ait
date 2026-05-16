@@ -2,10 +2,11 @@
 
 # ait
 
-### AI agent 應該在 attempt 裡動手，不是直接碰你的 working tree
+### AI agent 應該在 attempt 裡動手、共享脈絡，最後才 apply
 
 把 Claude Code、Codex、Aider、Gemini、Cursor 的每次執行變成隔離、
-可追溯、可審核的 attempt；在你明確 apply 前，不讓結果進入 root checkout。
+可追溯、可審核的 attempt；讓 agents 透過 repo-local memory 交接脈絡，
+而不是困在各自的聊天視窗裡。在你明確 apply 前，結果不會進入 root checkout。
 
 <sub>[English](README.md) · [繁體中文](README.zh-TW.md)</sub>
 
@@ -20,15 +21,16 @@
 ---
 
 AI coding agent 已經快到可以直接重構真實 repo，但預設工作流很容易讓它們把
-你的 working tree 當草稿紙。
+你的 working tree 當草稿紙，也很容易忘掉另一個 agent 剛剛查到的結論。
 
 `ait` 是包在既有 agent CLI 外面的一層 Git 工作流。你照常使用 Claude Code、
 Codex、Aider、Gemini 或 Cursor；AIT 會把每次執行變成一個可審核的
 attempt。Agent 在隔離 worktree 裡修改程式，AIT 記錄 prompt、狀態、變更、
 commit 與 evidence；在你明確 apply 之前，主要 checkout 不會被碰到。
 
-對高風險變更，AIT 也能加上一道對抗式 code review：讓另一個 agent 在套用前
-挑戰這次 attempt，必要時擋下 `ait apply`。
+Claude 做過的調查可以變成 Codex 的上下文；Cursor rules 可以跟著 Aider 的
+下一次修補一起進來；對高風險變更，AIT 也能加上一道對抗式 code review：讓
+另一個 agent 在套用前挑戰這次 attempt，必要時擋下 `ait apply`。
 
 ```bash
 pipx install ait-vcs
@@ -64,9 +66,9 @@ PyPI 與 npm 上的套件名稱是 `ait-vcs`，安裝後的指令是 `ait`。
 | Worktree 隔離 | 每次執行都有自己的內部 Git worktree，失敗或高風險 attempt 不會污染目前工作目錄。 |
 | Attempt provenance | prompt、intent、adapter、output、changed files、commits、trace references、status、outcome 會串成一筆紀錄。 |
 | Wrapper bypass 偵測 | `ait status <adapter>` 會告訴你目前 shell 會進 AIT wrapper，還是會 silent 地直接呼叫真正的 agent binary。 |
-| Live federated memory | Claude Code、Codex、Aider、Gemini、Cursor 與 shell agents 可以讀同一份即時 repo memory：AIT-owned history 加上目前的 `CLAUDE.md`、`AGENTS.md` 與 Cursor rules。 |
+| Live federated memory | Claude Code、Codex、Aider、Gemini、Cursor 與 shell agents 可以讀同一份即時 repo memory：AIT-owned history 加上目前的 `CLAUDE.md`、`AGENTS.md`、`.claude/`、`.codex/` 與 Cursor rules。 |
 | 長期 repo memory | 有價值的 attempts、commits、notes、accepted facts、prior findings，以及明確 adopt 的 memory 可以跨 terminal、跨 session、跨週期保留下來。 |
-| 跨 agent handoff | 一個 agent 做過的調查或決策，可以透過 AIT 傳給後續另一個 agent，而不是藏在某個聊天視窗裡。 |
+| Agent-to-agent communication | 一個 agent 做過的調查、決策、失敗路線或 review finding，可以透過 `AIT_CONTEXT_FILE` 傳給後續另一個 agent，而不是藏在某個聊天視窗裡。 |
 | 平行 agent attempts | 多個 agents 可以同時試不同做法，不會在同一個 checkout 裡互相覆蓋。 |
 | 明確 apply/recover 流程 | Agent 產出的結果在 apply 前只是提案；held 或 failed work 仍可 recover，不會變成 working-copy 爛攤子。 |
 | 對抗式審查 | 另一個 reviewer agent 可以挑戰 attempt；高風險 finding 可以被記錄，並用來 hold apply。 |
@@ -104,8 +106,25 @@ attempts、查看它們改了哪些檔案、保留失敗結果作為 recovery �
 AIT 的 memory 是 repo-local、可檢查的專案記憶，不是某個聊天視窗裡的隱藏
 上下文。它會依 policy 召回過去 attempts、commits、notes、accepted facts
 與 prior findings，再於 recall/run/review 當下即時 federate `CLAUDE.md`、
-`AGENTS.md`、`.cursor/rules` 等 live external sources。這些檔案仍是自己的
-source of truth；AIT 不會自動匯入。
+`AGENTS.md`、`.claude/memory.md`、`.codex/memory.md`、`.cursor/rules`
+等 live external sources。這些檔案仍是自己的 source of truth；AIT 不會自動
+匯入。
+
+## Agent-to-agent communication
+
+AIT 給 agents 一條跟 Git 狀態綁在一起的本機 handoff channel：
+
+1. 被 AIT 包住的 agent run 會形成 attempt，保留 prompt、output、changed
+   files、commits、status 與 memory candidates。
+2. 有用的事實、決策、失敗路線與 review findings 會留在 `.ait/`，或留在目前
+   repo 的 live memory files 裡。
+3. 下一次 wrapped run 會收到 `AIT_CONTEXT_FILE`：AIT 從 policy 允許的 prior
+   attempts、accepted facts、notes、commits 與 live agent memory files 組出
+   一份精簡 handoff。
+
+這讓 agents 的溝通變成非同步、可檢查、可追溯。Claude 可以先調查，Codex
+接著實作，Aider 做局部修補，Cursor 遵守 repo rules，另一個 reviewer agent
+再挑戰結果；整個流程不依賴單一模型私有的聊天歷史。
 
 ## 使用起來像這樣
 
@@ -324,10 +343,11 @@ AIT_CONTEXT_FILE   # 啟用 context 時
 ```
 
 `AIT_CONTEXT_FILE` 是一份精簡的 repo-local handoff，內容來自過去 attempts、
-commits、curated notes、accepted facts，以及即時讀取的 `CLAUDE.md`、
-`AGENTS.md`、`.cursor/rules`。AIT 會記錄 context manifest，包含 source
-path、hash、mtime、bytes used 與 policy status，但不會把外部檔案偽裝成
-AIT captured provenance。
+commits、curated notes、accepted facts、review findings，以及即時讀取的
+`CLAUDE.md`、`AGENTS.md`、`.claude/memory.md`、`.codex/memory.md`、
+`.cursor/rules`。AIT 會記錄 context manifest，包含 source path、hash、
+mtime、bytes used 與 policy status，但不會把外部檔案偽裝成 AIT captured
+provenance。
 
 ## 安裝
 
@@ -356,7 +376,7 @@ ait --version
 安裝指定 GitHub release：
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.55.60"
+pipx install "git+https://github.com/m24927605/ait.git@v0.55.62"
 ```
 
 升級：
@@ -422,7 +442,7 @@ ait shell uninstall --shell zsh
 
 ## 狀態
 
-`ait` 目前是 `0.55.60`，仍屬 alpha quality。它適合 local dogfooding，
+`ait` 目前是 `0.55.62`，仍屬 alpha quality。它適合 local dogfooding，
 以及熟悉 Git workflow、願意早期試用的使用者。
 
 Metadata 只存在單一 repo 的 `.ait/` 裡，不會跨機器同步。
