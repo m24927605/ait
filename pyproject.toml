@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.14"
 license = "MIT"
 authors = [
-  {name = "sin-chengchen"}
+  {name = "michael.chen"}
 ]
 keywords = [
   "ai",
