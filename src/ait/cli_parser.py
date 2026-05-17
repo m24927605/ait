@@ -88,6 +88,32 @@ def build_parser() -> argparse.ArgumentParser:
     query_parser.add_argument("expression", nargs="?")
     query_parser.add_argument("--limit", type=int, default=100)
     query_parser.add_argument("--offset", type=int, default=0)
+
+    demo_parser = subparsers.add_parser(
+        "demo",
+        help="run a self-contained 60-second walkthrough of the ait flow (no API keys required)",
+    )
+    demo_parser.add_argument(
+        "--clean",
+        action="store_true",
+        help="remove all prior /tmp/ait-demo-* directories and exit",
+    )
+    demo_parser.add_argument(
+        "--keep",
+        action="store_true",
+        help="suppress the 'demo repo kept at ...' hint (use in CI)",
+    )
+    demo_parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="suppress the explanatory output blocks",
+    )
+    demo_parser.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="output format; json emits a single object for scripting",
+    )
     query_parser.add_argument("--format", choices=("table", "jsonl"), default="table")
 
     blame_parser = subparsers.add_parser("blame")

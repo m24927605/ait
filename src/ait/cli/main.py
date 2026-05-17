@@ -5,7 +5,7 @@ import sys
 
 from ait.cli_parser import build_parser
 
-from . import adapter, apply, attempt, cleanup, config, console, daemon, dev, graph, init, intent, memory, merge, metadata, next, policy, query, reconcile, recover, resume, review, run, session, shell, upgrade, whereami
+from . import adapter, apply, attempt, cleanup, config, console, daemon, demo, dev, graph, init, intent, memory, merge, metadata, next, policy, query, reconcile, recover, resume, review, run, session, shell, upgrade, whereami
 
 _HANDLERS = {
     "adapter": adapter.handle,
@@ -14,6 +14,7 @@ _HANDLERS = {
     "bootstrap": init.handle,
     "context": run.handle,
     "daemon": daemon.handle,
+    "demo": demo.handle,
     "dev": dev.handle,
     "doctor": init.handle,
     "enable": init.handle,

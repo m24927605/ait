@@ -91,4 +91,5 @@ ait = [
   "resources/codex/*.json",
   "resources/gemini/*.py",
   "resources/gemini/*.json",
+  "resources/demo/*.json",
 ]

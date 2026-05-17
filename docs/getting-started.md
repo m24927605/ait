@@ -3,6 +3,21 @@
 This guide gets an external user from installation to a Claude Code run
 that is routed through `ait`.
 
+## Try in 60 seconds (no API keys required)
+
+```bash
+pipx install ait-vcs
+ait demo
+```
+
+`ait demo` runs a self-contained walkthrough in a temporary directory: it
+creates an intent, runs a scripted multi-agent attempt, invokes a fake
+reviewer that catches a high-severity issue, and shows the apply gate
+blocking the change. Everything you see is read live from a real SQLite
+ledger; no network calls, no real LLM calls, no existing repo touched.
+
+Run `ait demo --clean` afterwards to remove the temporary directories.
+
 ## Install
 
 Use `pipx` for a global command with an isolated Python environment:

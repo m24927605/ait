@@ -1,0 +1,20 @@
+{
+  "intent": {
+    "title": "Add a divide() helper to calculator.py",
+    "description": "Scripted scenario used by `ait demo` to showcase the multi-agent + review-gate flow without any real LLM call. Every line printed by the demo is read from the SQLite ledger after this scenario runs.",
+    "kind": "feature"
+  },
+  "implementer": {
+    "agent_id": "demo-implementer:scripted",
+    "files": [
+      {
+        "path": "calculator.py",
+        "content": "def divide(a, b):\n    return a / b\n"
+      }
+    ]
+  },
+  "reviewer": {
+    "fake_adapter": "fake:high",
+    "budget": "standard"
+  }
+}
