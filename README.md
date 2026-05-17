@@ -2,8 +2,8 @@
 
 # ait
 
-### Local control plane for AI coding agents
-**Git-native attempt ledger, repo-local memory, cross-agent handoff, and review gate for Claude Code · Codex CLI · Aider · Gemini CLI · Cursor**
+### **Local control plane for multi-agent AI coding**
+**Run Claude Code · Codex CLI · Aider · Gemini CLI · Cursor as a team on the same task — context handoff, review gate, attempt ledger — all on your machine.**
 
 <sub>[English](README.md) · [繁體中文](README.zh-TW.md)</sub>
 
@@ -19,65 +19,36 @@
 
 ---
 
-**`ait` is the local control plane for teams using multiple AI coding agents:
-a Git-native attempt ledger and review gate around Claude Code, Codex CLI,
-Aider, Gemini CLI, and Cursor. It gives those agents shared repo-local memory,
-long-term attempt history, an inspectable handoff channel, and adversarial
-review before code lands. Each run is still isolated as a reviewable attempt
-with provenance and an explicit apply gate, so collaboration does not turn into
-working-tree chaos. Open source (MIT), Python 3.14+, dependency-free, no SaaS,
-no telemetry.**
+## Why ait exists
 
-The hard part of multi-agent coding is not starting another model. It is making
-sure the next agent knows what the previous one learned, preserving useful
-decisions across sessions, and asking a different agent to challenge risky
-work before it reaches your checkout. AIT makes those steps local, queryable,
-and tied to Git state.
+Single-agent AI coding tools — Claude Code, Cursor, Aider — are fast but lock
+you to one model's view of the codebase. If that model misses something,
+nothing catches it before the code hits your tree.
 
-Put it in this category: **local control plane for AI coding agents**. AIT is
-not only a worktree manager, not a generic memory layer, not a review bot, and
-not a SaaS provenance dashboard. Those surfaces are pieces of one local
-attempt ledger: agents work in attempts, memory is derived from evidence, review
-findings can gate apply, and Git remains the source of truth.
+`ait` runs multiple agents as a team. One investigates, another implements, a
+third reviews — and the review gate can **block the apply** if it finds a
+critical issue. Cross-agent context is handed off via `AIT_CONTEXT_FILE`, not
+re-pasted. Everything runs locally; your prompts, diffs, and provenance never
+leave your machine.
 
-```text
-Claude investigates -> AIT records attempt + accepted context
-Codex implements with AIT_CONTEXT_FILE
-Reviewer agent challenges the result
-You run ait apply only when the evidence is good
-```
+It wraps the agent CLIs you already use. MIT, Python 3.14+, zero runtime
+dependencies, no SaaS, no telemetry.
 
-The four features to notice first:
+→ **Read the manifesto:** [Multi-agent AI coding belongs on your laptop](docs/marketing/manifesto-multi-agent-local.md)
 
-- **Shared repo memory.** Claude Code, Codex, Aider, Gemini, Cursor, and shell
-  agents can read the same policy-allowed project context.
-- **Long-term memory.** Useful attempts, commits, notes, accepted facts, and
-  findings survive across terminals, sessions, and weeks.
-- **Agent-to-agent communication.** One agent's investigation, decision, failed
-  path, or review finding can reach the next agent through `AIT_CONTEXT_FILE`.
-- **Adversarial review.** A separate reviewer agent can challenge an attempt and
-  leave evidence before you decide whether to apply.
+## Install and try
 
 ```bash
-pipx install ait-vcs
+pipx install ait-vcs            # or: npm install -g ait-vcs
 cd your-repo
-ait init
-direnv allow   # only if prompted
-
-claude ...
+ait init                        # one-time per repo
+direnv allow                    # only if prompted
+claude ...                      # or codex / aider / gemini / cursor — ait wraps them
+ait status                      # see what ran
+ait apply latest                # apply when you are ready
 ```
 
-Prefer npm?
-
-```bash
-npm install -g ait-vcs
-cd your-repo
-ait init
-claude ...
-```
-
-The package is named `ait-vcs` on PyPI and npm. The installed command is
-`ait`.
+The package is `ait-vcs` on PyPI and npm. The installed command is `ait`.
 
 <p align="center">
   <img src="site-docs/assets/ait-work-graph.png" alt="AIT Work Graph showing attempts, evidence, memory, hot files, and query filters" width="960">
