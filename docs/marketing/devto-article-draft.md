@@ -1,77 +1,66 @@
-# dev.to article draft
+# dev.to publishing instructions
 
-> Suggested title is keyword-dense for organic search. Pick one.
+The long-form article on dev.to is **the manifesto in
+[`manifesto-multi-agent-local.md`](manifesto-multi-agent-local.md)**.
+Copy the body of that file verbatim into the dev.to editor. This file
+holds dev.to-specific metadata only — it is not the article body.
 
-## Title options (most search-friendly first)
+The rationale for consolidating: maintaining two parallel long-form drafts
+drifts in voice and dilutes the manifesto's role as the canonical source
+for every downstream piece of copy (README hero, Show HN, KOL DMs, AEO
+posts). One source, multiple channels.
 
-1. How to run Claude Code safely in a Git worktree
-2. Git worktree isolation for AI coding agents (Claude Code, Codex, Aider)
-3. Stop letting AI agents trash your working copy: a Git-native review loop
+## Title
+
+`Multi-agent AI coding belongs on your laptop`
+
+Use the manifesto's title directly. Keyword-dense for organic search
+("multi-agent", "AI coding", "laptop" implies local).
+
+## Subtitle / dek
+
+`Why the next generation of AI coding workflows is local-first and
+model-pluralist — and what that means for your toolchain.`
 
 ## Tags (dev.to allows up to 4)
 
-`ai`, `claudecode`, `git`, `devtools`
+`ai`, `claudecode`, `multiagent`, `opensource`
+
+Rationale:
+- `ai` — broad reach within dev.to's AI vertical
+- `claudecode` — searched by the highest-intent audience for ait
+- `multiagent` — owns the differentiation
+- `opensource` — gets the OSS-first crowd that hates SaaS
+
+## Canonical URL
+
+Set the canonical URL in dev.to to point at the article on your personal
+blog or the `ait` docs site, not at dev.to itself. SEO juice should
+accumulate on the domain you control.
 
 ## Cover image
 
-Make a 1000x420 png with the words "ait — Git worktree isolation for AI
-coding agents" on a black background. Save under `assets/cover.png` and
-link in the article.
+1000x420 png, black background, white text:
 
-## Body
-
-Most teams using Claude Code, Codex CLI, or Aider run them straight against
-their working copy. That works until it doesn't:
-
-- One bad prompt edits 30 files.
-- The agent commits halfway and bails.
-- You can't recall what prompt produced which diff three sessions later.
-- Two agents stomp each other when you try to parallelize.
-
-I wanted a thin Git-native layer that fixes those four problems without
-introducing a SaaS, a daemon, or a new mental model. That's `ait`
-(https://github.com/m24927605/ait).
-
-### The model
-
-`ait` wraps the agent CLI you already use. When you run `claude`, `codex`,
-`aider`, `gemini`, or `cursor` inside an `ait`-initialized repo:
-
-1. The agent gets its own **Git worktree**. Your root checkout is never
-   touched.
-2. Everything the agent does — prompt, exit status, edited files, commits
-   — is captured as one **attempt**.
-3. You **promote** attempts you like. The rest can be discarded, rebased,
-   or kept for review.
-4. A repo-local memory layer summarizes prior attempts so the next agent
-   does not repeat investigation.
-
-### Install and try
-
-```bash
-pipx install ait-vcs
-cd your-repo
-ait init
-claude ...
-ait status
-ait attempt show <attempt-id>
-ait attempt promote <attempt-id> --to main
+```
+ait — multi-agent AI coding,
+                  on your laptop
 ```
 
-There is also `npm install -g ait-vcs` for teams that prefer Node.
+Save to `assets/devto-cover.png` and upload as the cover in the dev.to
+editor. Reuse for Hashnode and Medium mirrors.
 
-### What it is not
+## Publishing checklist
 
-- Not a new agent. It does not write code itself.
-- Not a Git replacement. Attempts produce real Git commits.
-- Not a SaaS. Metadata lives in `.ait/` next to `.git/`.
-
-### Where it goes next
-
-Currently alpha. Tested daily against real repos with Claude Code and
-Codex. Looking for feedback on the attempt model, the memory layer, and
-which agent integrations should ship next.
-
-GitHub: https://github.com/m24927605/ait
-PyPI: https://pypi.org/project/ait-vcs/
-npm: https://www.npmjs.com/package/ait-vcs
+- [ ] `ait demo` shipped (Task #1) — manifesto CTA references it
+- [ ] `[DOGFOOD-EVIDENCE]` placeholder in manifesto replaced with the real
+      bug story from Task #2
+- [ ] Article published on personal blog first; dev.to + Hashnode mirror
+      with canonical URL pointing back to the personal blog
+- [ ] Post-publish: cross-link from README, GitHub Discussions, and any
+      existing release notes
+- [ ] Submit to Lobsters (`open-source`, `ai`, `programming` tags) 48
+      hours after dev.to to avoid same-day double-spend
+- [ ] Tweet the manifesto in a 6-tweet thread (see Task #8 — separate file)
+- [ ] After 7 days, write a short "what happened after I posted this"
+      retrospective. The retro itself becomes a second piece of content.

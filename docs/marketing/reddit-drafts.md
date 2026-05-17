@@ -1,95 +1,135 @@
 # Reddit drafts
 
-Three subreddits, three slightly different angles. Read each subreddit's
-self-promotion rules before posting; some require flair or a comment-first
-karma history.
+Three subreddits, three angles, same product. Read each subreddit's rules
+before posting; some require flair or karma history. Space posts at least
+one day apart per subreddit and never paste identical bodies — Reddit
+spam-flags it.
+
+**Publishing blocked until:** `ait demo` ships (Task #1). The CTA references it.
 
 ---
 
 ## r/ClaudeAI
 
-**Title:** I built a Git layer that runs Claude Code in isolated worktrees
-with reviewable attempts
+**Title:** Run Claude Code, Codex, and Aider as a team — locally, with a review gate
 
 **Body:**
 
-Hey r/ClaudeAI — I have been using Claude Code daily and kept hitting two
-problems:
+I have been using Claude Code daily and kept hitting the same wall: Claude
+is fast, but it's the only agent in the loop. If Claude misses something —
+a missing edge case, a deadlock condition, a brittle assumption — nothing
+else catches it before the code lands.
 
-1. A single `claude` run can edit dozens of files. Mistakes are painful to
-   undo cleanly.
-2. The diff and the prompt that produced it drift apart in my memory after
-   a few sessions.
+So I built `ait` (https://github.com/m24927605/ait). It's a local control
+plane that lets Claude Code work with Codex, Aider, Gemini CLI, and Cursor
+on the same task. A typical flow:
 
-So I built `ait` (https://github.com/m24927605/ait). It wraps `claude` (and
-Codex / Aider / Gemini / Cursor) so each run happens in an isolated Git
-worktree, with the prompt, status, edited files, and resulting commits
-captured as one **attempt**. Your main checkout is untouched until you run
-`ait attempt promote <id>`.
+1. Claude investigates a bug
+2. The context (what was tried, what failed, what files matter) hands off
+   to Codex via `AIT_CONTEXT_FILE` — no re-paste, no re-learn
+3. Codex implements a fix in an isolated git worktree (your main checkout
+   stays untouched)
+4. A reviewer agent — same or different model — reads what was written
+   and can **block the apply** if it finds a critical issue
+5. You only see the diff if it survives all of that
 
-Quick install:
+Everything runs locally. No SaaS, no telemetry. The attempt ledger, review
+findings, and memory live in `.ait/` next to `.git/` in your repo.
+
+Quick try (no API keys needed):
 
 ```
 pipx install ait-vcs
 cd your-repo
 ait init
-claude ...   # run as usual; ait wraps it
+ait demo          # 60-second self-contained walkthrough
 ```
 
-It is alpha and local-only — metadata lives in `.ait/` next to `.git/`.
-
-Looking for early users who run a lot of Claude Code sessions and want a
-cleaner provenance + review loop. Feedback welcome.
+It's alpha. Looking for early users who run a lot of Claude sessions and
+want a way to bring a second pair of eyes into the loop before code hits
+their tree. Feedback welcome — especially on which agent combinations you
+would want to see supported next.
 
 ---
 
 ## r/LocalLLaMA
 
-**Title:** ait — Git worktree isolation for local AI coding agents (Aider,
-Codex CLI, Claude Code)
+**Title:** ait — local-first control plane for multi-agent AI coding (Claude Code, Codex, Aider, Gemini, Cursor)
 
 **Body:**
 
-If you run local-first AI coding agents — Aider, Continue, Codex CLI,
-Claude Code with bypass-permissions, etc. — `ait` adds a Git layer that
-isolates each run in a worktree and records what happened.
+If you run AI coding agents on your own machine — Aider, Continue, Codex
+CLI, Claude Code with bypass-permissions — `ait` is a thin local layer that
+lets you run them as a team rather than one-at-a-time.
 
 Why r/LocalLLaMA might care:
 
-- 100% local. No SaaS, no telemetry, no daemon. Metadata stays under
-  `.ait/` in your repo.
-- Dependency-free Python 3.14 + thin npm wrapper.
-- Each agent session = one attempt. Review with normal Git tools.
-- Memory layer keeps prior attempts and commits queryable for the next run.
+- **100% local.** No SaaS, no telemetry, no third-party orchestration.
+  Attempt ledger, review findings, and memory all live in `.ait/` in your
+  repo. Works offline; the control plane never reaches the network.
+- **Multi-model by design.** Different agents have different strengths and
+  different blind spots. ait lets one agent investigate, hand context to
+  another to implement, and a third to review with the actual power to
+  block the apply on critical findings.
+- **Cross-agent context handoff.** Structured handoff via
+  `AIT_CONTEXT_FILE`, not "paste the previous chat."
+- **Wraps the agents you already use.** Adapters for Aider, Codex, Claude
+  Code, Gemini CLI, Cursor. Bring your own model. The plumbing is the
+  product.
+- **Python 3.14, zero runtime deps, MIT.** Install via `pipx install
+  ait-vcs` or `npm install -g ait-vcs`.
+
+Quick try (no API keys needed):
+
+```
+pipx install ait-vcs && ait demo
+```
+
+`ait demo` is a 60-second self-contained walkthrough that runs offline and
+shows the full multi-agent + review-gate flow against a real SQLite ledger.
 
 GitHub: https://github.com/m24927605/ait
 
 Alpha quality. Looking for feedback from people running local agents on
-real repos.
+real codebases — especially on how the multi-agent handoff and review gate
+hold up under your actual workflow.
 
 ---
 
 ## r/programming
 
-**Title:** ait: a Git worktree layer that gives AI coding agents
-reviewable provenance
+**Title:** ait: local control plane for multi-agent AI coding — Claude + Codex + Aider work as a team
 
 **Body:**
 
-Open source. AI agents (Claude Code, Codex, Aider, Gemini, Cursor) are
-fast but produce diffs without useful provenance. `ait` wraps the agent
-CLI, runs the work in an isolated Git worktree, and captures each run as
-an attempt linking prompt, output, files, and commits.
+Open source. Today's single-agent AI coding tools (Claude Code, Codex,
+Cursor, Aider) are fast individually, but none of them lets you put a
+second agent in the loop — either to hand off context or to review what
+the first agent wrote.
 
-You promote attempts you like; the rest stay available for inspection or
-get discarded. Repo-local memory feeds future runs.
+`ait` is the missing infrastructure. It wraps the agent CLIs you already
+use, captures each run as a reviewable attempt with provenance, hands
+context between agents via `AIT_CONTEXT_FILE`, and lets a separate reviewer
+agent block the apply if it finds a critical issue. All local.
+
+The boring bits:
+
+- Each agent run gets an isolated git worktree (no working-copy stomping,
+  no parallel-agent interference)
+- Attempts are first-class: prompt, files, exit status, commits, all in
+  SQLite under `.ait/`
+- The review gate uses a separate agent with a different model and prompt
+  — cross-model evaluation catches what self-evaluation misses
+- Repo-local memory persists across sessions so the next agent on the
+  same intent doesn't re-investigate
 
 ```
 pipx install ait-vcs
 cd your-repo
 ait init
-claude ...
+ait demo            # 60-second walkthrough, no API keys needed
 ```
 
+Python 3.14, zero runtime deps, MIT. Alpha.
+
 Code: https://github.com/m24927605/ait
-PyPI: https://pypi.org/project/ait-vcs/
