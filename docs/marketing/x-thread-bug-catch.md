@@ -127,7 +127,7 @@ of `ait demo` output.
 Source: https://github.com/m24927605/ait
 
 Why this should be local, not cloud:
-[MANIFESTO URL]
+https://github.com/m24927605/ait/blob/main/docs/marketing/manifesto-multi-agent-local.md
 
 MIT. Python 3.14. Zero runtime deps. Alpha.
 

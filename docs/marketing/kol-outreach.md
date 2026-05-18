@@ -68,7 +68,7 @@ Three things I think you'd notice:
 `pipx install ait-vcs` if you want to poke at it.
 
   GitHub:    https://github.com/m24927605/ait
-  Manifesto: [MANIFESTO URL]
+  Manifesto: https://github.com/m24927605/ait/blob/main/docs/marketing/manifesto-multi-agent-local.md
 
 No expectation of a write-up. If you do find time, would love a
 brutally honest take — especially on the SQLite schema and the choice
@@ -105,7 +105,7 @@ ask I have is your critique: what would you change about the model?
 
   pipx install ait-vcs && ait init
   https://github.com/m24927605/ait
-  Manifesto: [MANIFESTO URL]
+  Manifesto: https://github.com/m24927605/ait/blob/main/docs/marketing/manifesto-multi-agent-local.md
 
 No expectation of promotion — want the honest read.
 
@@ -145,7 +145,7 @@ just want the taxonomy take.
 
   pipx install ait-vcs && ait init
   https://github.com/m24927605/ait
-  Manifesto: [MANIFESTO URL]
+  Manifesto: https://github.com/m24927605/ait/blob/main/docs/marketing/manifesto-multi-agent-local.md
 
 — [YOUR NAME]
 ```
@@ -214,7 +214,7 @@ scenario setups would help.
 
   pipx install ait-vcs && ait init
   https://github.com/m24927605/ait
-  Manifesto: [MANIFESTO URL]
+  Manifesto: https://github.com/m24927605/ait/blob/main/docs/marketing/manifesto-multi-agent-local.md
 
 If it's not your thing, no worries.
 
