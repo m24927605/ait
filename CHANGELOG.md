@@ -2,6 +2,56 @@
 
 ## Unreleased
 
+## 0.55.67 - 2026-05-18
+
+### Added
+
+- `ait demo` subcommand: zero-setup 60-second walkthrough that creates a
+  throwaway tmp repo, runs a scripted multi-agent attempt against the
+  built-in `fake:high` reviewer, and demonstrates the review gate
+  blocking the apply on a critical finding. No API keys required; all
+  printed values come from a real SQLite ledger that the user can
+  inspect afterwards (`docs/demo-subcommand-design.md`).
+- `--stdin {inherit,none}` flag on `ait run`. Default `inherit` keeps
+  the prior behaviour. Passing `--stdin none` redirects child stdin
+  from `/dev/null` so non-interactive agent CLIs (e.g. `codex exec`)
+  do not hang waiting for stdin EOF when invoked from a non-TTY
+  context.
+
+### Changed
+
+- README first-screen tightened to a dual positioning hero ("local
+  control plane for multi-agent AI coding"), with the long-form
+  rationale lifted into a new manifesto in
+  `docs/marketing/manifesto-multi-agent-local.md`.
+- `pyproject.toml` `authors` metadata aligned with the active
+  maintainer identity.
+
+### Fixed
+
+- `ait run` against an adapter whose repo-local wrapper has not been
+  installed by `ait init --adapter <name>` now prints a clear stderr
+  warning before spawning the agent. Previously the run would proceed
+  silently, ait would fail to capture internal tool calls, and the
+  verifier would later mark the attempt failed with no obvious
+  explanation. The new behaviour is non-blocking; the run still
+  proceeds.
+- When `ait run` is invoked from a non-TTY context against an adapter
+  with `native_hooks` (claude-code, codex, gemini), a one-line stderr
+  hint now points at `--stdin none` to prevent the agent CLI hanging
+  on stdin EOF.
+
+### Documentation
+
+- Add `docs/marketing/` launch artifact pack covering Show HN copy and
+  a 30-question response bank, Reddit/dev.to/Product Hunt/awesome-list
+  drafts, a manifesto with real dogfood evidence, a six-tweet X
+  thread, Big-5 + second-tier KOL outreach DMs, five long-form
+  answer-engine-optimised posts under `docs/marketing/aeo/`, and an
+  LLM citation baseline tracking document.
+- Add `docs/demo-subcommand-design.md` as the implementation spec for
+  the new `ait demo` command.
+
 ## 0.55.66 - 2026-05-17
 
 ### Documentation
