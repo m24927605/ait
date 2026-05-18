@@ -1,8 +1,8 @@
 # Multi-agent AI coding belongs on your laptop
 
 > **Status:** draft for owner review. Founder voice. Edit freely.
-> **Publishing blocked until:** `ait demo` ships (Task #1). The CTA promises a 60-second offline walkthrough that doesn't exist yet.
-> **Open placeholders:** `[DOGFOOD-EVIDENCE]` — replace with the real bug-story captured by Task #2. Until then this article is unpublishable; abstract evidence reads like marketing fluff.
+> **Publishing blocked until:** `ait demo` ships on PyPI/npm so the CTA actually works. (Code is on `main` as commit `44c6351`; needs a release tag + publish.)
+> **Dogfood evidence:** in place. Real artifacts cited in the cold-open (attempt `01KRWH5N80Q00MGP57REKQCTV9`, commit `f68a12a1`).
 > **Tags:** ai, multi-agent, claudecode, codex, devtools, opensource
 > **Target outlets:** personal blog, dev.to, Hashnode, optional Lobsters/Medium re-post
 
@@ -10,10 +10,33 @@
 
 A few weeks ago, I shipped a patch to my own project using a workflow that wouldn't have been possible with any AI coding tool I used the year before.
 
-[DOGFOOD-EVIDENCE]
-> Replace this block with the real story from Task #2. Format reference:
->
-> *Claude Code spent six minutes investigating a flaky test in our queue layer. It found the race window — two coroutines competing for the same lock — and handed the context to Codex. Codex wrote a fix using an `asyncio.Lock`. Then I asked Claude to read what Codex wrote, as a reviewer. The review flagged that the lock would deadlock if the wrapped function raised before releasing. Codex revised. Round two: clean. The patch landed in my repo. Total: 11 minutes. Three agent sessions, two different models, one local control plane.*
+Yesterday I asked Codex to add a `--scenario` flag to my own tool's demo
+command. It took just over six minutes. The code was correct — I ran
+the tests afterwards and 8/8 passed. The commit was clean: 130
+insertions, 9 deletions, four files, one new scenario fixture.
+
+ait blocked the apply anyway.
+
+Here's why. I'd skipped `ait init --adapter codex`, so the wrapper that
+captures Codex's internal tool calls wasn't installed. When Codex ran
+`pytest` itself to verify its own work, ait couldn't observe it. The
+verifier saw `observed_tests_run: 0`, marked the attempt failed, and
+held the apply. The adversarial reviewer agent never even got a turn —
+ait stopped one step earlier, on the question of *whether the
+implementer's claim of success was actually attested*.
+
+The mistake was on my side. The protection was on ait's side.
+
+I think that is the right shape for an AI control plane. Cloud tools
+optimise for the path where the agent reports success and the code
+ships; the failure mode is silent application of unverified changes.
+A local control plane can afford to be picky — the cost of one extra
+`ait init` is much smaller than the cost of code reaching your tree
+without observed test evidence behind it.
+
+(Actual artifacts: attempt `01KRWH5N80Q00MGP57REKQCTV9`, commit
+`f68a12a1`, in my own repo at github.com/m24927605/ait. The full trace
+is in `.ait/traces/` — open the SQLite ledger and follow the chain.)
 
 If you've used Claude Code or Codex or Aider on a real codebase, you know that workflow doesn't ship out of the box with any of them. You pick one. You run it. You hope it's good. That's not multi-agent — that's single-agent with chat history.
 
