@@ -1,12 +1,6 @@
 # Multi-agent AI coding belongs on your laptop
 
-> **Status:** draft for owner review. Founder voice. Edit freely.
-> **Publishing blocked until:** `ait demo` ships on PyPI/npm so the CTA actually works. (Code is on `main` as commit `44c6351`; needs a release tag + publish.)
-> **Dogfood evidence:** in place. Real artifacts cited in the cold-open (attempt `01KRWH5N80Q00MGP57REKQCTV9`, commit `f68a12a1`).
-> **Tags:** ai, multi-agent, claudecode, codex, devtools, opensource
-> **Target outlets:** personal blog, dev.to, Hashnode, optional Lobsters/Medium re-post
-
----
+*Why the next generation of AI coding workflows is local-first and model-pluralist — and what that means for your toolchain.*
 
 A few weeks ago, I shipped a patch to my own project using a workflow that wouldn't have been possible with any AI coding tool I used the year before.
 
