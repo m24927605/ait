@@ -2051,5 +2051,161 @@ def _upsert_eval_fact(
         conn.close()
 
 
+class CliRunStdinModeTests(unittest.TestCase):
+    """Tests for the --stdin flag on `ait run`.
+
+    Default 'inherit' is the prior behaviour (parent stdin passed through).
+    Explicit 'none' redirects child stdin from /dev/null so non-interactive
+    agent CLIs (e.g. `codex exec`) do not hang waiting for stdin EOF.
+    """
+
+    def test_parser_defaults_to_inherit(self) -> None:
+        from ait.cli_parser import build_parser
+
+        args = build_parser().parse_args(
+            ["run", "--adapter", "shell", "--", "echo", "hi"]
+        )
+        self.assertEqual(args.stdin, "inherit")
+
+    def test_parser_accepts_none(self) -> None:
+        from ait.cli_parser import build_parser
+
+        args = build_parser().parse_args(
+            ["run", "--adapter", "shell", "--stdin", "none", "--", "echo", "hi"]
+        )
+        self.assertEqual(args.stdin, "none")
+
+    def test_parser_rejects_unknown_value(self) -> None:
+        from ait.cli_parser import build_parser
+
+        with self.assertRaises(SystemExit):
+            build_parser().parse_args(
+                ["run", "--adapter", "shell", "--stdin", "wat", "--", "echo", "hi"]
+            )
+
+    def test_run_with_stdin_none_does_not_inherit_parent_stdin(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            with chdir(repo_root):
+                with (
+                    patch(
+                        "sys.argv",
+                        [
+                            "ait",
+                            "run",
+                            "--adapter",
+                            "shell",
+                            "--stdin",
+                            "none",
+                            "--intent",
+                            "stdin none integration",
+                            "--no-auto-commit",
+                            "--format",
+                            "json",
+                            "--",
+                            "sh",
+                            "-c",
+                            "cat; echo CAT_EXITED",
+                        ],
+                    ),
+                    redirect_stdout(io.StringIO()) as buf_out,
+                    redirect_stderr(io.StringIO()),
+                ):
+                    code = cli.main()
+                self.assertEqual(code, 0, f"ait run returned {code}")
+                payload = json.loads(buf_out.getvalue())
+                self.assertEqual(payload["exit_code"], 0)
+                self.assertIn(
+                    "CAT_EXITED",
+                    payload.get("command_stdout") or "",
+                    "cat must have seen EOF and exited cleanly; if this hangs, --stdin none is broken",
+                )
+
+
+class CliRunWrapperWarningTests(unittest.TestCase):
+    """Tests for the pre-run wrapper-not-installed warning.
+
+    `ait run --adapter <name>` runs against an adapter even when that adapter's
+    repo-local wrapper has not been installed via `ait init --adapter <name>`.
+    In that case ait cannot capture the wrapped agent's internal tool events,
+    the verifier sees zero evidence, and the attempt gets marked failed —
+    which is confusing if the user did not realise the wrapper was missing.
+    The fix prints a one-line stderr warning before the run starts.
+    """
+
+    def test_shell_adapter_does_not_emit_wrapper_warning(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            with chdir(repo_root):
+                stderr_buf = io.StringIO()
+                with (
+                    patch(
+                        "sys.argv",
+                        [
+                            "ait",
+                            "run",
+                            "--adapter",
+                            "shell",
+                            "--no-auto-commit",
+                            "--stdin",
+                            "none",
+                            "--intent",
+                            "shell no wrapper concept",
+                            "--format",
+                            "json",
+                            "--",
+                            "echo",
+                            "ok",
+                        ],
+                    ),
+                    redirect_stdout(io.StringIO()),
+                    redirect_stderr(stderr_buf),
+                ):
+                    code = cli.main()
+                self.assertEqual(code, 0)
+                self.assertNotIn(
+                    "wrapper is not active",
+                    stderr_buf.getvalue(),
+                    "shell adapter has no wrapper concept; warning must stay silent",
+                )
+
+    def test_codex_adapter_without_init_emits_wrapper_warning(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            with chdir(repo_root):
+                stderr_buf = io.StringIO()
+                with (
+                    patch(
+                        "sys.argv",
+                        [
+                            "ait",
+                            "run",
+                            "--adapter",
+                            "codex",
+                            "--no-auto-commit",
+                            "--stdin",
+                            "none",
+                            "--intent",
+                            "codex without ait init",
+                            "--format",
+                            "json",
+                            "--",
+                            "echo",
+                            "ok",
+                        ],
+                    ),
+                    redirect_stdout(io.StringIO()),
+                    redirect_stderr(stderr_buf),
+                ):
+                    code = cli.main()
+                self.assertEqual(code, 0)
+                stderr_text = stderr_buf.getvalue()
+                self.assertIn("wrapper is not active", stderr_text)
+                self.assertIn("ait init --adapter codex", stderr_text)
+
+
 if __name__ == "__main__":
     unittest.main()

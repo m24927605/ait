@@ -63,6 +63,7 @@ def handle(args, repo_root: Path, parser=None) -> int:
                 auto_commit=not args.no_auto_commit,
                 with_context=args.with_context,
                 capture_command_output=args.format == "json",
+                stdin_mode=getattr(args, "stdin", "inherit"),
             )
         except (AdapterError, WorkspaceError) as exc:
             print(f"error: {exc}", file=sys.stderr)

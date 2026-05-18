@@ -435,6 +435,16 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--format", choices=("json", "text"), default="json")
     run_parser.add_argument("--port", type=int, action="append", dest="dev_ports")
     run_parser.add_argument("--check-port", type=int, action="append", dest="dev_check_ports")
+    run_parser.add_argument(
+        "--stdin",
+        choices=("inherit", "none"),
+        default="inherit",
+        help=(
+            "stdin handling for the wrapped command; default 'inherit' passes the parent's "
+            "stdin through. Use 'none' (equivalent to '< /dev/null') for non-interactive "
+            "agent CLIs like 'codex exec' that otherwise hang waiting for stdin EOF"
+        ),
+    )
     run_parser.add_argument("run_command", nargs=argparse.REMAINDER)
 
     dev_parser = subparsers.add_parser("dev")

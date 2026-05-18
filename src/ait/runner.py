@@ -7,7 +7,7 @@ import subprocess
 import sys
 import time
 
-from ait.adapters import get_adapter
+from ait.adapters import doctor_automation, get_adapter
 from ait.app import AttemptShowResult, create_attempt, create_intent, show_attempt, verify_attempt
 from ait.daemon import start_daemon
 from ait.db import connect_db, get_attempt
@@ -99,16 +99,42 @@ def run_agent_command(
     context_file_override: str | Path | None = None,
     command_stdin: str | None = None,
     extra_env: dict[str, str] | None = None,
+    stdin_mode: str = "inherit",
 ) -> RunResult:
     if not intent_title.strip():
         raise ValueError("intent title must not be empty")
     if not command:
         raise ValueError("command must not be empty")
+    if stdin_mode not in ("inherit", "none"):
+        raise ValueError(f"stdin_mode must be 'inherit' or 'none', got: {stdin_mode!r}")
 
     adapter = get_adapter(adapter_name)
     resolved_agent_id = agent_id or adapter.default_agent_id
     resolved_with_context = with_context or adapter.default_with_context
+    if (
+        stdin_mode == "inherit"
+        and command_stdin is None
+        and adapter.native_hooks
+        and not _stdio_is_tty()
+    ):
+        print(
+            f"ait hint: stdin is not a TTY and adapter '{adapter.name}' may wait for stdin EOF; "
+            "pass --stdin none if the wrapped command does not need stdin",
+            file=sys.stderr,
+        )
     root = Path(repo_root).resolve()
+    if adapter.name != "shell":
+        try:
+            if not doctor_automation(adapter.name, root).ok:
+                print(
+                    f"ait warning: adapter '{adapter.name}' wrapper is not active. "
+                    f"ait cannot capture internal tool calls (tests, edits, etc.); "
+                    f"the verifier will see no test evidence and may mark the attempt failed. "
+                    f"Run `ait init --adapter {adapter.name}` for full observability.",
+                    file=sys.stderr,
+                )
+        except Exception:
+            pass
     init_memory_policy(root)
     daemon = start_daemon(root)
     local_only = False
@@ -196,15 +222,18 @@ def run_agent_command(
                 completed = _run_command_with_pty_transcript(command, cwd=workspace, env=env)
                 raw_trace_text = completed.stdout or ""
             else:
-                completed = subprocess.run(
-                    command,
-                    cwd=workspace,
-                    env=env,
-                    input=command_stdin,
-                    check=False,
-                    text=True,
-                    capture_output=should_capture_output,
-                )
+                subprocess_kwargs: dict[str, object] = {
+                    "cwd": workspace,
+                    "env": env,
+                    "check": False,
+                    "text": True,
+                    "capture_output": should_capture_output,
+                }
+                if command_stdin is not None:
+                    subprocess_kwargs["input"] = command_stdin
+                elif stdin_mode == "none":
+                    subprocess_kwargs["stdin"] = subprocess.DEVNULL
+                completed = subprocess.run(command, **subprocess_kwargs)
                 if should_capture_output:
                     raw_trace_text = "\n".join([completed.stdout or "", completed.stderr or ""])
                     if not capture_command_output and adapter.name != "cursor":
