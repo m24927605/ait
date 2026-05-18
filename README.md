@@ -19,6 +19,11 @@
 
 ---
 
+<p align="center">
+  <img src="docs/assets/ait-demo.gif" alt="ait demo: multi-agent attempt + review gate caught a critical finding and held back apply, all local, no API keys" width="800">
+</p>
+<p align="center"><sub>60-second walkthrough · run with <code>pipx install ait-vcs &amp;&amp; ait demo</code></sub></p>
+
 ## Why ait exists
 
 Single-agent AI coding tools — Claude Code, Cursor, Aider — are fast but lock
