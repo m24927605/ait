@@ -19,6 +19,8 @@
 
 ---
 
+<p align="center"><sub>Scenario: a checkout discount bug converts exact <code>Decimal</code> money math through <code>float</code>; AIT asks Claude Code, Codex, and Aider for advisory analysis before apply.</sub></p>
+
 <p align="center">
   <img src="docs/assets/ait-cross-agent-session.gif" alt="ait real local CLI panel: Claude Code, Codex, and Aider responses captured with command refs and redacted transcripts" width="800">
 </p>
