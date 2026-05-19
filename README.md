@@ -20,9 +20,9 @@
 ---
 
 <p align="center">
-  <img src="docs/assets/ait-demo.gif" alt="ait demo: multi-agent attempt + review gate caught a critical finding and held back apply, all local, no API keys" width="800">
+  <img src="docs/assets/ait-cross-agent-session.gif" alt="ait scripted local session room: Claude Code, Codex, and Aider participants receive routed input, hand off context, and record a replay" width="800">
 </p>
-<p align="center"><sub>60-second walkthrough · run with <code>pipx install ait-vcs &amp;&amp; ait demo</code></sub></p>
+<p align="center"><sub>Scripted local session-room capture · real AIT routing, PTYs, context refs, and replay</sub></p>
 
 ## Why ait exists
 
