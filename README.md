@@ -20,9 +20,9 @@
 ---
 
 <p align="center">
-  <img src="docs/assets/ait-cross-agent-session.gif" alt="ait scripted local session room: Claude Code, Codex, and Aider participants receive routed input, hand off context, and record a replay" width="800">
+  <img src="docs/assets/ait-cross-agent-session.gif" alt="ait real local CLI panel: Claude Code, Codex, and Aider responses captured with command refs and redacted transcripts" width="800">
 </p>
-<p align="center"><sub>Scripted local session-room capture · real AIT routing, PTYs, context refs, and replay</sub></p>
+<p align="center"><sub>Real local CLI panel capture · Claude Code, Codex, and Aider responses recorded with context refs, command refs, and redacted transcripts</sub></p>
 
 ## Why ait exists
 
