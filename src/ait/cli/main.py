@@ -5,7 +5,36 @@ import sys
 
 from ait.cli_parser import build_parser
 
-from . import adapter, apply, attempt, cleanup, config, console, daemon, demo, dev, graph, init, intent, memory, merge, metadata, next, policy, query, reconcile, recover, resume, review, run, session, shell, upgrade, whereami
+from . import (
+    adapter,
+    apply,
+    attempt,
+    cleanup,
+    config,
+    console,
+    continue_cmd,
+    daemon,
+    demo,
+    dev,
+    graph,
+    init,
+    intent,
+    memory,
+    merge,
+    metadata,
+    next,
+    policy,
+    query,
+    reconcile,
+    recover,
+    resume,
+    review,
+    run,
+    session,
+    shell,
+    upgrade,
+    whereami,
+)
 
 _HANDLERS = {
     "adapter": adapter.handle,
@@ -31,6 +60,7 @@ _HANDLERS = {
     "cleanup": cleanup.handle,
     "console": console.handle,
     "config": config.handle,
+    "continue": continue_cmd.handle,
     "reconcile": reconcile.handle,
     "recover": recover.handle,
     "resume": resume.handle,

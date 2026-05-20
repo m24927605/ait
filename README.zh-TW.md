@@ -403,7 +403,7 @@ ait --version
 安裝指定 GitHub release：
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v0.55.67"
+pipx install "git+https://github.com/m24927605/ait.git@v1.0.0"
 ```
 
 升級：
@@ -475,7 +475,7 @@ ait shell uninstall --shell zsh
 
 ## 狀態
 
-`ait` 目前是 `0.55.67`，仍屬 alpha quality。它適合 local dogfooding、
+`ait` 目前是 `1.0.0`，仍屬 alpha quality。它適合 local dogfooding、
 power users，以及熟悉 Git workflow、偏 infra-minded 的早期使用者。
 
 Metadata 只存在單一 repo 的 `.ait/` 裡，不會跨機器同步。

@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## 1.0.0 - 2026-05-20
+
+### Added
+
+- Add `ait continue` as a top-level recovery router for interrupted local work.
+  It chooses between reattaching an active AIT session and resuming a
+  recoverable attempt worktree, while keeping JSON/non-interactive mode
+  plan-only.
+- Add agent-native resume hints for Claude Code, Codex, and Aider. Codex
+  resume IDs are extracted best-effort from saved raw traces when present.
+- Add design, acceptance, test, and code review documentation for the
+  `ait continue` recovery flow.
+
+### Changed
+
+- Bump the Python and npm package versions to `1.0.0`.
+
 ## 0.55.67 - 2026-05-18
 
 ### Added

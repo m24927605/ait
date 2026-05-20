@@ -326,6 +326,12 @@ def build_parser() -> argparse.ArgumentParser:
     resume_parser.add_argument("--json", action="store_true", help="alias for --format json")
     resume_parser.add_argument("--no-interactive", action="store_true")
 
+    continue_parser = subparsers.add_parser("continue", help="continue the latest interrupted AIT work")
+    continue_parser.add_argument("selector", nargs="?", default="latest")
+    continue_parser.add_argument("--format", choices=("text", "json"), default="text")
+    continue_parser.add_argument("--json", action="store_true", help="alias for --format json")
+    continue_parser.add_argument("--no-interactive", action="store_true")
+
     review_parser = subparsers.add_parser("review", help="review an AIT attempt before apply")
     review_parser.add_argument("--format", choices=("text", "json", "markdown"), default="text")
     review_parser.add_argument("--json", action="store_true", help="alias for --format json")
