@@ -22,6 +22,16 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e . pytest
 
+      - name: Configure git identity for tests that shell out to git commit
+        # Several tests (cli_demo, daemon_e2e, federated_recall, etc.) create
+        # temp git repos and run `git commit`. Hosted runners ship with no
+        # user.email/user.name, so the commit fails with "Author identity
+        # unknown" — and the failure is silent (the tests just see exit 128).
+        # Set a stable CI identity globally so every subprocess inherits it.
+        run: |
+          git config --global user.email "ci@ait.test"
+          git config --global user.name "AIT CI"
+
       - name: Run tests
         run: pytest -q
 

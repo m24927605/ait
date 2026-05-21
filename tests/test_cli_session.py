@@ -168,8 +168,17 @@ class CliSessionTests(unittest.TestCase):
             _init_git_repo(repo)
             fake_stdin = Mock()
             fake_stdin.isatty.return_value = True
+            # Python 3.14 added color support to argparse, which calls
+            # `os.isatty(file.fileno())` on sys.stdout during formatter
+            # construction. A bare Mock returns another Mock from
+            # `fileno()`, and `os.isatty(<Mock>)` raises
+            # `TypeError: 'Mock' object cannot be interpreted as an integer`.
+            # Pin fileno to a real int so the colorize probe completes;
+            # the actual color decision is irrelevant to this test.
+            fake_stdin.fileno.return_value = 0
             fake_stdout = Mock()
             fake_stdout.isatty.return_value = True
+            fake_stdout.fileno.return_value = 1
             answers = iter(["dontAsk", "workspace-write", "on-request"])
 
             # JSON mode is automation-safe and does not prompt.
