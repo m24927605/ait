@@ -31,7 +31,7 @@ Pillar 1 — cross-agent handoff. Yesterday Claude chased a 429 bug.
 This morning Codex opens the same repo. Instead of re-investigating,
 Codex receives a handoff file (env var: `AIT_CONTEXT_FILE`), assembled
 by `src/ait/context_manifest.py` from prior attempts and notes. Handoff
-is asynchronous and inspectable: `ait query --on attempt 'agent.agent_id="codex-cli"'`.
+is asynchronous and inspectable: `ait query --on attempt 'agent.agent_id="codex:main"'`.
 Demo: `examples/pain-point-demos/07-cross-agent-handoff/`.
 
 Pillar 2 — the implementer does not review its own work.
@@ -148,7 +148,7 @@ Yesterday Claude chased a 429. This morning Codex opens the same repo
 and receives the prior agent's handoff file instead of starting from
 zero. (env var: AIT_CONTEXT_FILE)
 
-ait query --on attempt 'agent.agent_id="codex-cli"'
+ait query --on attempt 'agent.agent_id="codex:main"'
 
 [VIDEO: examples/pain-point-demos/07-cross-agent-handoff/ — 12-18s]
 
@@ -277,7 +277,7 @@ What AIT does, one pillar per pain:
    wrapped by `ait run --adapter <name>` — receives
    a handoff file (env var: `AIT_CONTEXT_FILE`), assembled from prior
    attempts and notes. You can walk the handoff with
-   `ait query --on attempt 'agent.agent_id="codex-cli"'`.
+   `ait query --on attempt 'agent.agent_id="codex:main"'`.
    Demo: `examples/pain-point-demos/07-cross-agent-handoff/`.
 
 2. A separate reviewer agent.
@@ -392,7 +392,7 @@ What AIT adds, one pillar per pain:
    `ait run --adapter <name>` (`src/ait/cli/run.py`). The next run
    receives a handoff file (env var: `AIT_CONTEXT_FILE`) assembled by
    `src/ait/context_manifest.py` from prior attempts and notes. Walk
-   the trail with `ait query --on attempt 'agent.agent_id="codex-cli"'`.
+   the trail with `ait query --on attempt 'agent.agent_id="codex:main"'`.
    Demo: `examples/pain-point-demos/07-cross-agent-handoff/`.
 
 2. A separate reviewer agent.

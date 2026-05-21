@@ -45,7 +45,7 @@ The package is `ait-vcs` on PyPI and npm. The installed command is `ait`.
 
 **Scenario.** Yesterday Claude chased a billing-retry 429 bug. This morning Codex opens the same repo and re-investigates from scratch. Zero handoff.
 
-**ait defuses it.** Every wrapped run lands as an attempt under `.ait/`. The next run — `ait run --adapter codex ...` (`src/ait/cli/run.py`) — receives the prior agent's decisions through a compact context file assembled from prior attempts, accepted facts, and notes (`src/ait/context_manifest.py`). Handoff is asynchronous and evidence-based: prompt, diff, findings, decisions. Trace handoffs with `ait query --on attempt 'agent.agent_id="codex-cli"'`.
+**ait defuses it.** Every wrapped run lands as an attempt under `.ait/`. The next run — `ait run --adapter codex ...` (`src/ait/cli/run.py`) — receives the prior agent's decisions through a compact context file assembled from prior attempts, accepted facts, and notes (`src/ait/context_manifest.py`). Handoff is asynchronous and evidence-based: prompt, diff, findings, decisions. Trace handoffs with `ait query --on attempt 'agent.agent_id="codex:main"'`.
 
 **Proof.** [`examples/pain-point-demos/07-cross-agent-handoff/`](examples/pain-point-demos/07-cross-agent-handoff/) — Codex inherits the prior decisions.
 

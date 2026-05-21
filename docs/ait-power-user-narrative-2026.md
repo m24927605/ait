@@ -57,7 +57,7 @@ next run — Codex, Aider, Gemini, Cursor, anything wrapped by `ait run
 --adapter <name>` (`src/ait/cli/run.py`) — receives `AIT_CONTEXT_FILE`,
 assembled from prior attempts and notes (`src/ait/context_manifest.py`).
 Asynchronous, evidence-based: prompt, diff, findings, decisions. Trace
-handoffs with `ait query --on attempt 'agent.agent_id="codex-cli"'`.
+handoffs with `ait query --on attempt 'agent.agent_id="codex:main"'`.
 
 **Proof.** [`examples/pain-point-demos/07-cross-agent-handoff/`](../examples/pain-point-demos/07-cross-agent-handoff/) — Codex inherits via `AIT_CONTEXT_FILE`.
 

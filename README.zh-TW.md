@@ -52,7 +52,7 @@ PyPI 與 npm 上的套件名稱是 `ait-vcs`，安裝後的指令是 `ait`。
 **AIT 怎麼化解。** 每一次被包住的 agent run 都會在 `.ait/` 裡留下一筆 attempt。下一次跑 agent——Codex、Aider、Gemini、Cursor，任何能被 `ait run --adapter <name>` ([`src/ait/cli/run.py`](src/ait/cli/run.py)) 包住的 CLI——都會收到一份 `AIT_CONTEXT_FILE`，內容由 [`src/ait/context_manifest.py`](src/ait/context_manifest.py) 從過去 attempts 與 notes 組出來：prompt、diff、findings、決定。非同步、有 evidence。要看交接軌跡：
 
 ```bash
-ait query --on attempt 'agent.agent_id="codex-cli"'
+ait query --on attempt 'agent.agent_id="codex:main"'
 ```
 
 **證據。** [`examples/pain-point-demos/07-cross-agent-handoff/`](examples/pain-point-demos/07-cross-agent-handoff/) — Codex 透過 `AIT_CONTEXT_FILE` 直接接到上一個 agent 的脈絡。
@@ -208,7 +208,7 @@ ait memory search "auth adapter"
 ait review attempt latest-reviewable --mode adversarial --review-adapter claude-code
 ait review finding list --severity high --format text
 
-ait query --on attempt 'agent.agent_id="codex-cli"'
+ait query --on attempt 'agent.agent_id="codex:main"'
 ait graph
 ait graph --html
 ```

@@ -30,7 +30,7 @@ asynchronous and one-direction: prompt, diff, findings, decisions. Trace
 handoffs with:
 
 ```bash
-ait query --on attempt 'agent.agent_id="codex-cli"'
+ait query --on attempt 'agent.agent_id="codex:main"'
 ```
 
 **Proof.** [`examples/pain-point-demos/07-cross-agent-handoff/`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/07-cross-agent-handoff) — Codex receives the prior agent's decisions through the handoff file.
