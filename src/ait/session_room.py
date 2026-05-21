@@ -790,6 +790,7 @@ class SessionStore:
                 session_id=str(session["id"]),
                 response_id=response_id,
                 timeout_seconds=timeout_seconds,
+                shell=bool(participant.get("shell", False)),
             )
         else:
             agent_id = str(participant["agent_id"])
@@ -1197,6 +1198,7 @@ class SessionStore:
         session_id: str,
         response_id: str,
         timeout_seconds: int,
+        shell: bool = False,
     ) -> tuple[str, str, int | None, str]:
         run_dir = self._session_dir(session_id) / "local-runs" / response_id
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -1207,12 +1209,38 @@ class SessionStore:
             "AIT_RESPONSE_ID": response_id,
             "AIT_REPO_ROOT": str(self.repo_root),
         }
+        # P1 fix: previous form passed the participant-supplied
+        # `command_template` to `subprocess.run` with `shell=True`. A
+        # hostile session config (synced from another machine, checked
+        # in to git, etc.) could inject arbitrary shell commands. We
+        # now default to `shlex.split` + no-shell execution; setting
+        # `shell: true` on the participant entry opts back into shell
+        # semantics via the explicit `/bin/sh -lc` argv form so the
+        # choice is visible to reviewers.
+        if shell:
+            argv: list[str] = ["/bin/sh", "-lc", command_template]
+        else:
+            try:
+                argv = shlex.split(command_template)
+            except ValueError as exc:
+                return (
+                    "",
+                    (
+                        f"ait: invalid command template ({exc}). "
+                        "Set `shell: true` on the participant entry "
+                        "to run the command through /bin/sh.\n"
+                    ),
+                    2,
+                    "failed",
+                )
+            if not argv:
+                return ("", "ait: empty command template\n", 2, "failed")
         try:
             completed = subprocess.run(
-                command_template,
+                argv,
                 cwd=run_dir,
                 env=env,
-                shell=True,
+                shell=False,
                 check=False,
                 text=True,
                 capture_output=True,

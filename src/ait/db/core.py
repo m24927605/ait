@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import os
 from pathlib import Path
 import sqlite3
 
@@ -13,10 +14,35 @@ def connect_db(
     check_same_thread: bool = True,
 ) -> sqlite3.Connection:
     in_memory = str(db_path) == ":memory:"
-    if not in_memory:
+    if in_memory:
+        conn = sqlite3.connect(db_path, check_same_thread=check_same_thread)
+    else:
         path = Path(db_path)
         path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path, check_same_thread=check_same_thread)
+        # P1 fix: SQLite creates the .db file inheriting the process
+        # umask. On a multi-user host that is often mode 0o644 (or
+        # 0o664 on group-writable umasks), exposing the attempt
+        # ledger — which carries decision provenance and review
+        # findings — to any local account. Constrain creation mode
+        # via os.umask while opening, then tighten the file modes
+        # explicitly as belt-and-braces for any sidecar files that
+        # may pre-date this fix.
+        old_umask = os.umask(0o077)
+        try:
+            conn = sqlite3.connect(db_path, check_same_thread=check_same_thread)
+        finally:
+            os.umask(old_umask)
+        for candidate in (
+            path,
+            path.with_name(path.name + "-wal"),
+            path.with_name(path.name + "-shm"),
+            path.with_name(path.name + "-journal"),
+        ):
+            try:
+                if candidate.exists():
+                    candidate.chmod(0o600)
+            except OSError:
+                pass
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA busy_timeout = 5000")

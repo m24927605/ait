@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 import hashlib
 import json
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -19,6 +20,7 @@ from ait.policy import (
     integration_allow_delete_merge,
     integration_allow_untracked_replay,
     integration_auto_test_command,
+    integration_auto_test_shell,
     integration_semantic_adapter,
 )
 from ait.workspace_lease import lease_payload, update_workspace_lease
@@ -343,7 +345,11 @@ def create_integration_attempt(
             reason_code=IntegrationCode.REPLAY_AGENT_FAILED,
             message="AIT found no integration changes to record.",
         )
-    test = _run_validation(workspace, test_command or integration_auto_test_command(root))
+    test = _run_validation(
+        workspace,
+        test_command or integration_auto_test_command(root),
+        shell=integration_auto_test_shell(root),
+    )
     if test.returncode != 0:
         update_workspace_lease(workspace, state="conflict", cleanup_policy="hold", preserve_reason="integration validation failed")
         return _result(
@@ -532,10 +538,51 @@ def _maybe_semantic_merge(
     )
 
 
-def _run_validation(workspace: Path, command: str | None) -> subprocess.CompletedProcess[str]:
+def _run_validation(
+    workspace: Path,
+    command: str | None,
+    *,
+    shell: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    """Run the integration-validation command.
+
+    P1 fix: the previous form passed the user-supplied ``command`` to
+    ``subprocess.run`` with ``shell=True``. On a shared CI runner that
+    let a hostile ``policy.json`` execute arbitrary shell via the
+    ``integration.auto_test_command`` key. We now parse the command via
+    :func:`shlex.split` and run it without a shell by default. Setting
+    ``integration.auto_test_shell: true`` in policy opts back into
+    shell semantics, but does so via the explicit ``/bin/sh -lc`` argv
+    form so the choice is visible to static analyzers and reviewers.
+    """
     if not command:
         return subprocess.CompletedProcess(["validation"], 0, "", "")
-    return subprocess.run(command, cwd=workspace, shell=True, text=True, capture_output=True, check=False)
+    if shell:
+        argv: list[str] = ["/bin/sh", "-lc", command]
+    else:
+        try:
+            argv = shlex.split(command)
+        except ValueError as exc:
+            return subprocess.CompletedProcess(
+                ["validation"],
+                2,
+                "",
+                (
+                    f"ait: invalid validation command ({exc}). "
+                    "Set integration.auto_test_shell=true in policy "
+                    "to run the command through /bin/sh.\n"
+                ),
+            )
+        if not argv:
+            return subprocess.CompletedProcess(["validation"], 0, "", "")
+    return subprocess.run(
+        argv,
+        cwd=workspace,
+        shell=False,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
 
 
 def _write_conflict_bundle(
