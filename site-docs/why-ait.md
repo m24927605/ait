@@ -1,167 +1,117 @@
 ---
-title: Why ait — problems it solves for AI coding agents
+title: Why ait — three power-user pains, and what ait does not do
 description: >-
-  Deep dive on the ten problems ait solves for teams running Claude Code,
-  Codex, Aider, Gemini CLI, and Cursor — blast radius, provenance, failed
-  attempts, repeated investigation, parallel safety, apply ambiguity,
-  agent-to-agent communication, local-first metadata, adversarial review, and
-  prompt search.
+  Three pains AIT defuses for engineers running Claude Code, Codex, Aider,
+  Gemini CLI, and Cursor — and four things AIT explicitly does not promise.
 ---
 
 # Why ait
 
-AIT's category is **local control plane for AI coding agents**. It is a
-Git-native attempt ledger and review gate around Claude Code, Codex, Aider,
-Gemini CLI, and Cursor.
+Three pains hit every engineer running multiple agent CLIs against the same
+repo. AIT defuses them with attempts, a separate reviewer, and queryable
+repo memory. Each pain below has a scenario, the AIT move, and a runnable
+demo.
 
-AI coding agents are fast. Shared memory, long-term memory, review discipline,
-and communication across different agents are not. `ait` closes that gap by
-giving agents a repo-local way to communicate: prior attempts, accepted facts,
-notes, review findings, and live memory files become the next agent's handoff
-context. The same attempt record can then be challenged by a separate reviewer
-agent before it reaches your working tree.
+For the full runnable evidence catalog, see
+[Pain-point demos](demos/pain-point-demos.md).
 
-For runnable evidence, see [Pain-point demos](demos/pain-point-demos.md).
+## 1. Every agent starts from zero on the same repo
 
-## 1. Blast radius is unbounded
+**Scenario.** Yesterday Claude chased a billing-retry 429 bug across three
+files. This morning Codex opens the same repo and re-investigates from
+scratch. Zero handoff. You pay the same tokens twice and lose the dead-end
+notes from yesterday.
 
-**Pain.** A single prompt to Claude Code or Codex can rewrite 30 files,
-delete entire directories, or overwrite content you were editing by hand.
-Undo means `git stash` plus `git reset --hard` and praying you do not also
-trash your own in-progress work.
-
-**ait.** Each run lands in an isolated Git worktree. Your root checkout
-is never touched. A bad attempt is `ait attempt discard <id>` — zero
-collateral damage.
-
-Runnable example: [`01-blast-radius`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/01-blast-radius)
-
-## 2. The diff has no useful provenance
-
-**Pain.** Three days later you cannot answer: which prompt produced this
-diff? what context files were used? did it exit 0 or 130? Shell history
-is not enough.
-
-**ait.** Each attempt links intent, prompt, exit status, edited files,
-captured output, and resulting commits as one queryable record. `ait
-attempt show <id>` returns the full picture.
-
-Runnable example: [`02-provenance`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/02-provenance)
-
-## 3. Failed runs pollute the working copy
-
-**Pain.** The agent times out halfway, leaves stray commits, partial
-edits, untracked files. You clean up by hand and still miss things, which
-contaminate the next run.
-
-**ait.** Failed attempts are kept inside their own worktree for review
-or `discard`. Main stays clean from end to end.
-
-Runnable example: [`03-failed-run-isolation`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/03-failed-run-isolation)
-
-## 4. You pay for the same investigation twice
-
-**Pain.** Last week Claude already traced why the auth retry fails. This
-week Codex starts the investigation from scratch. Same tokens, twice.
-
-**ait.** Repo-local memory combines previous attempts, commits, curated notes,
-accepted facts, review findings, and live agent memory files (`CLAUDE.md`,
-`AGENTS.md`, `.claude/memory.md`, `.codex/memory.md`, `.cursor/rules`) into a
-compact context handoff (`AIT_CONTEXT_FILE`) for the next run.
-
-Runnable example: [`04-memory-reuse`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/04-memory-reuse)
-
-## 5. Parallel agents stomp each other
-
-**Pain.** You want Claude and Codex to try two approaches simultaneously,
-then pick the better diff. Both fight over the working copy and corrupt
-each other.
-
-**ait.** Each attempt has its own worktree. Run N agents in parallel,
-compare attempts side by side, and apply the one you trust.
-
-Runnable example: [`05-parallel-agents`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/05-parallel-agents)
-
-## 6. Apply is ambiguous
-
-**Pain.** The agent says "I have fixed it." Should you accept the diff
-or not? Direct commits feel risky; reverting after the fact is friction.
-
-**ait.** Apply is an explicit step: `ait apply latest` or `ait apply
-<attempt-id> --mode current`. Until you call it, the agent's work is a
-proposal, not a fact.
-
-Runnable example: [`06-explicit-promotion`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/06-explicit-promotion)
-
-## 7. Agents cannot talk to each other
-
-**Pain.** Claude ran three rounds, then Aider takes over and knows nothing
-about the decisions, dead ends, or partial fixes from before. Codex repeats the
-same investigation because the useful context lives in another chat window.
-
-**ait.** The memory layer reads AIT-owned attempt history, accepted facts,
-notes, review findings, `CLAUDE.md`, `AGENTS.md`, `.claude/memory.md`,
-`.codex/memory.md`, and Cursor rules live at handoff time. The next agent —
-same or different — receives `AIT_CONTEXT_FILE` with the policy-allowed context
-instead of starting from a blank private chat.
-
-Runnable example: [`07-cross-agent-handoff`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/07-cross-agent-handoff)
-
-## 8. Provenance tools want your code in their cloud
-
-**Pain.** Most agent provenance / observability tools are SaaS. They
-require uploading prompts, diffs, and source. Off the table for many
-repos.
-
-**ait.** Everything lives under `.ait/` next to `.git/`. The harness
-daemon is local-only — Unix socket, no network. No telemetry, no SaaS,
-no cross-machine sync. Suitable for security-sensitive repos.
-
-Runnable example: [`08-local-only-provenance`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/08-local-only-provenance)
-
-## 9. Plausible agent output still needs challenge
-
-**Pain.** An agent can produce a convincing code change with weak evidence:
-no tests, incomplete checks, or a confident explanation that hides a risky edge
-case.
-
-**ait.** AIT can preserve the original attempt and record a separate
-adversarial review. The review target is an AIT attempt, not a loose diff, and
-the result is queryable evidence. With review gating enabled, a blocked review
-can hold `ait apply`.
+**What AIT does.** Every wrapped run lands as an attempt under `.ait/`. The
+next run — Codex, Aider, Gemini, Cursor, anything wrapped by `ait run
+--adapter <name>` (`src/ait/cli/run.py`) — receives a handoff file assembled
+from prior attempts and notes (`src/ait/context_manifest.py`). The handoff is
+asynchronous and one-direction: prompt, diff, findings, decisions. Trace
+handoffs with:
 
 ```bash
-ait query --on attempt 'review.mode="adversarial"' --format table
-ait query --on attempt 'review.status="blocked"' --format table
-ait review finding list --severity high --format text
-ait apply <attempt-id> --mode current
+ait query --on attempt 'agent.agent_id="codex-cli"'
 ```
 
-Runnable examples: [`09-verification-evidence`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/09-verification-evidence), [`09-1-codex-reviewer`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/09-1-codex-reviewer)
+**Proof.** [`examples/pain-point-demos/07-cross-agent-handoff/`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/07-cross-agent-handoff) — Codex receives the prior agent's decisions through the handoff file.
 
-## 10. Finding old prompts means grepping shell history
+## 2. The agent that wrote the code is the only one who reviewed it
 
-**Pain.** "Where is that refactor prompt I wrote last month for the
-query parser?" There is no good answer with raw shell history.
+**Scenario.** Codex finishes, says "all tests pass," shows a green diff. The
+implementer and the reviewer are the same model, same chat, same prompt.
+Anything the model missed at write-time, it misses at read-time.
 
-**ait.** Attempts, intents, and commits are queryable with a structured
-DSL. Find by intent text, status, agent, time range, files touched, and
-more.
-
-Runnable example: [`10-prompt-search`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/10-prompt-search)
-
-## So what
-
-If any of those ten problems hurt enough that you would tolerate one
-extra command (`ait init`) before each repo, the rest of `ait` is just
-your normal agent workflow with safety rails.
+**What AIT does.** AIT runs a separate reviewer agent with a different
+prompt against the attempt's diff. The reviewer cannot see the
+implementer's chat. The implementer doesn't review its own work.
 
 ```bash
-pipx install ait-vcs    # or: npm install -g ait-vcs
-cd your-repo
-ait init
-claude ...              # codex / aider / gemini / cursor — same idea
+ait review attempt latest-reviewable --mode adversarial --review-adapter claude-code
 ```
 
-Then read [Getting started](getting-started.md) and pick your
-[integration](integrations/claude-code.md).
+Findings are queryable rows (`ait query --on attempt 'review.status="blocked"'`).
+High-severity findings hold `ait apply` (`src/ait/cli/review.py`).
+
+**Proof.** [`examples/pain-point-demos/09-1-codex-reviewer/`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/09-1-codex-reviewer) — a separate reviewer agent records a blocking finding before apply.
+
+## 3. Last Tuesday's decision lives in a closed chat tab
+
+**Scenario.** Three weeks ago you capped the retry budget at three after a
+long debate with Claude. The chat tab is closed. This morning a new agent
+opens the same file and proposes five.
+
+**What AIT does.** `.ait/` keeps every attempt — prompt, intent, output,
+files, commits, findings — alongside live `CLAUDE.md`, `AGENTS.md`,
+`.claude/memory.md`, `.codex/memory.md`, and `.cursor/rules`. Recall is a CLI
+query (`src/ait/memory/recall.py`):
+
+```bash
+ait memory recall "retry budget"
+```
+
+`ait memory recall <query>` searches prior attempts, accepted facts, and
+notes — you decide what's relevant. Local, single-machine, shared across
+every wrapped agent.
+
+**Proof.** [`examples/pain-point-demos/04-memory-reuse/`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/04-memory-reuse) — the prior decision reaches the next agent via `ait memory recall`.
+
+## When NOT to use AIT
+
+These are honest boundaries, not warnings buried in a footer.
+
+- **AIT does not promise the reviewer catches every bug.** It promises the
+  reviewer is a different agent with a different prompt. There is no
+  published recall, precision, false-positive, or latency benchmark against
+  a real-world bug corpus. The dogfood report
+  ([`docs/aitbench-dogfood-report.md`](https://github.com/m24927605/ait/blob/main/docs/aitbench-dogfood-report.md))
+  is observational evidence, not a universal quality proof.
+
+- **AIT is not a multi-agent team.** Handoff is asynchronous and
+  one-direction. The next agent receives the prior agent's decisions
+  through a handoff file. There is no live coordination, no shared chat,
+  no agents working at the same time inside one task.
+
+- **AIT is alpha, not production-ready.** `.ait/` lives on one machine. No
+  cross-machine sync, no SaaS dashboard, no telemetry. Metadata
+  export/import emits dry-run plans only. The console is read-only;
+  mutation goes through CLI.
+
+- **Memory recall does not surface the right context every time.**
+  `src/ait/memory/recall.py` uses BM25-style ranking over prior attempts,
+  accepted facts, and notes. There is no published precision/recall
+  benchmark. You decide what's relevant.
+
+If those bound the value to zero for your situation, AIT is not the right
+tool. If you can live with them, the three pains above are real and
+recurring.
+
+## Differentiation, vs. tools you already use
+
+| Tool | What it does | What AIT adds |
+| --- | --- | --- |
+| **Aider** | In-process edit + auto-commit loop, single model, one chat per run. | A different reviewer agent against the same attempt (`ait review attempt --mode adversarial`, `src/ait/cli/review.py`). Aider commits land inside an attempt; apply is still explicit. The next agent receives the prior agent's decisions via the handoff file (`src/ait/context_manifest.py`). |
+| **Cursor** | IDE-integrated agent, in-editor diff review, agent-mode parallel tasks. | CLI-first attempt ledger across non-Cursor agents (`ait attempt list`, `src/ait/cli/attempt.py`). Nothing leaves your machine; the daemon is a local Unix socket (`src/ait/daemon_transport.py`). |
+| **Cline** | VSCode extension wrapping Claude/OpenAI for in-editor agentic edits. | Wraps the agent CLI you already use, no editor required (`ait run --adapter claude-code`, `src/ait/cli/run.py`). Prompts and findings are queryable rows (`ait query`, `src/ait/query/`). |
+| **Continue.dev** | IDE autocomplete and chat with model routing and rule files. | Reviewable attempts, not autocomplete. Apply is explicit (`ait apply` / `ait recover`). A review gate can block apply (`ait review finding list --severity high`). |
+
+Ready to try it? Read [Getting started](getting-started.md).
