@@ -14,10 +14,8 @@
 
 </div>
 
-<!-- TODO: replace with 12-18s recording of examples/pain-point-demos/07-cross-agent-handoff/run.sh — see docs/ait-power-user-narrative-2026.md Section 5 for asset spec. Until then, use the static fallback below. -->
-
 <p align="center">
-  <img src="site-docs/assets/ait-work-graph.png" alt="Claude 完成 attempt，Codex 接手讀到上一輪的 AIT_CONTEXT_FILE" width="880">
+  <img src="docs/assets/hero-cross-agent-handoff.gif" alt="Claude 把決定寫進 AGENTS.md，Codex 在沒讀過 AGENTS.md 的情況下把同一段 proof 字串寫進 handoff-proof.txt——handoff 經過 AIT" width="880">
 </p>
 
 <p align="center"><sub>Claude 收尾、Codex 接手，同一個 repo 兩個 agent 的 attempt 都留得下來。</sub></p>

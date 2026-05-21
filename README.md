@@ -17,10 +17,8 @@
 
 ---
 
-<!-- TODO: replace with 12-18s recording of examples/pain-point-demos/07-cross-agent-handoff/run.sh — see docs/ait-power-user-narrative-2026.md Section 5 for asset spec. Until then, use the static fallback below. -->
-
 <p align="center">
-  <img src="site-docs/assets/ait-work-graph.png" alt="Claude finishes an attempt; Codex opens the same repo and reads the inherited context instead of starting from zero" width="800">
+  <img src="docs/assets/hero-cross-agent-handoff.gif" alt="Claude writes a decision into AGENTS.md; Codex copies the exact proof string into handoff-proof.txt without re-reading AGENTS.md — proving the handoff went through AIT" width="800">
 </p>
 <p align="center"><sub>Hero demo: <a href="examples/pain-point-demos/07-cross-agent-handoff/"><code>07-cross-agent-handoff</code></a> — Claude finishes, Codex inherits the prior decisions.</sub></p>
 
