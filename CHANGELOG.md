@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 1.0.2 - 2026-05-22
+
+### Changed
+
+- Rework the README, docs-site home, and getting-started flow around the
+  three power-user pillars: cross-agent handoff, separate reviewer agents, and
+  queryable repo memory.
+- Replace placeholder hero media with recorded local AIT demo assets and add
+  the VHS recording toolchain for regenerating them.
+- Add launch copy, QA audit reports, a Traditional Chinese README rewrite, and
+  supporting rebrand planning docs.
+- Bump the Python and npm package versions to `1.0.2`.
+
 ## 1.0.1 - 2026-05-21
 
 ### Security

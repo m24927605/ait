@@ -173,7 +173,7 @@ ait --version
 指定 GitHub release：
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v1.0.0"
+pipx install "git+https://github.com/m24927605/ait.git@v1.0.2"
 ```
 
 升級：
