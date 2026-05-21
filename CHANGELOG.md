@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## 1.0.1 - 2026-05-21
+
+### Security
+
+- Harden runner and session-room execution paths so shell execution is
+  opt-in, subprocess output capture has size and timeout guards, PID reuse is
+  less likely to confuse liveness checks, SQLite database files are opened
+  through safer path and mode checks, and PTY/socket cleanup is more robust.
+
+### Fixed
+
+- Restore CI by configuring Git author identity in the workflow and preserving
+  Python 3.14 mock file-descriptor behaviour in session tests.
+
+### Changed
+
+- Bump the Python and npm package versions to `1.0.1`.
+
 ## 1.0.0 - 2026-05-20
 
 ### Added

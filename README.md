@@ -416,7 +416,7 @@ ait --version
 Tagged GitHub release:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v1.0.0"
+pipx install "git+https://github.com/m24927605/ait.git@v1.0.1"
 ```
 
 Upgrade:
@@ -488,7 +488,7 @@ ait shell uninstall --shell zsh
 
 ## Status
 
-`ait` is currently `1.0.0` and alpha quality. It is intended for local
+`ait` is currently `1.0.1` and alpha quality. It is intended for local
 dogfooding, power users, and infra-minded engineers who are comfortable with
 Git workflows.
 
