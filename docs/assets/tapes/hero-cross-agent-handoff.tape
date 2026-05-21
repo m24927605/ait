@@ -1,12 +1,11 @@
 # hero-cross-agent-handoff.tape — Pillar 1: multi-agent communication.
-# Shows Claude writing a decision to AGENTS.md, then Codex copying the
-# exact proof string into handoff-proof.txt WITHOUT opening AGENTS.md —
-# proving Codex received Claude's context through AIT, not by re-reading
-# the file. Hero moment: beat 4, the two proof strings match.
+# Hero moment: the same proof string appears in AGENTS.md (written by
+# Claude) and in handoff-proof.txt (written by Codex). Codex never
+# opened AGENTS.md — it received the decision through AIT's handoff
+# file. Two agents. One reproducible handoff.
 #
 # Pre-recording: run the demo once to populate state:
 #   bash examples/pain-point-demos/07-cross-agent-handoff/run.sh
-#   bash examples/pain-point-demos/07-cross-agent-handoff/verify.sh
 # Then: vhs docs/assets/tapes/hero-cross-agent-handoff.tape
 
 Output docs/assets/hero-cross-agent-handoff.gif
@@ -28,37 +27,27 @@ Show
 
 Sleep 600ms
 
-# Beat 1: surface the two attempts AIT recorded
-Type "ait query --on attempt 'agent.agent_id=\""
-Sleep 100ms
-Type "claude-code\"' --format table"
-Sleep 200ms
-Enter
-Sleep 2000ms
-
-Screenshot docs/assets/hero-cross-agent-handoff-1.png
-
-# Beat 2: Claude's promoted decision in AGENTS.md
-Type "cat AGENTS.md | grep AIT_HANDOFF_PROOF"
+# Beat 1: Claude's decision, promoted to AGENTS.md
+Type "grep AIT_HANDOFF_PROOF AGENTS.md"
 Sleep 200ms
 Enter
 Sleep 1800ms
 
-# Beat 3: Codex's handoff proof — same string, different file, different agent
-Type "cat ../.state/07-cross-agent-handoff/handoff-proof.txt 2>/dev/null || \\"
-Enter
-Type '  find ../../../.ait/workspaces -name handoff-proof.txt -exec cat {} \;'
+Screenshot docs/assets/hero-cross-agent-handoff-1.png
+
+# Beat 2: hero moment — Codex copied the same string into handoff-proof.txt
+Type 'find .ait/workspaces -name handoff-proof.txt -exec grep -H AIT_HANDOFF_PROOF {} \;'
 Sleep 200ms
 Enter
-Sleep 2200ms
+Sleep 2400ms
 
 Screenshot docs/assets/hero-cross-agent-handoff-2.png
 
-# Beat 4: Codex never opened AGENTS.md — handoff went through AIT_CONTEXT_FILE
-Type "echo  # Codex received Claude's decision via the handoff file, not the source."
+# Beat 3: caption
+Type "echo  # Same proof. Two agents. One handoff file."
 Sleep 200ms
 Enter
-Sleep 2500ms
+Sleep 2200ms
 
 Screenshot docs/assets/hero-cross-agent-handoff-3.png
 

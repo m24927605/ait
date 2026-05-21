@@ -1,11 +1,10 @@
 # hero-codex-reviewer.tape — Pillar 2: adversarial review.
-# Shows the implementer's attempt blocked by a separate reviewer agent
-# before `ait apply` lets it touch main. Hero moment: `ait apply`
-# returns held: review gate citation, severity high finding visible.
+# Hero moment: ait apply held by the review gate after a separate Codex
+# reviewer raises a high-severity finding on the Claude implementation.
+# The implementer cannot review its own work.
 #
 # Pre-recording: run the demo once to populate state:
 #   bash examples/pain-point-demos/09-1-codex-reviewer/run.sh
-#   bash examples/pain-point-demos/09-1-codex-reviewer/verify.sh
 # Then: vhs docs/assets/tapes/hero-codex-reviewer.tape
 
 Output docs/assets/hero-codex-reviewer.gif
@@ -27,32 +26,27 @@ Show
 
 Sleep 600ms
 
-# Beat 1: high-severity finding from the separate reviewer
+# Beat 1: a separate reviewer raised a high-severity finding
 Type "ait review finding list --severity high --format text"
 Sleep 200ms
 Enter
-Sleep 2200ms
+Sleep 2400ms
 
 Screenshot docs/assets/hero-codex-reviewer-1.png
 
-# Beat 2: the adversarial review record itself
-Type "cat ../.state/09-1-codex-reviewer/codex-adversarial-review.json | head -20"
+# Beat 2: hero moment — review gate holds apply
+Type "ait apply latest --mode current 2>&1 | head -8"
 Sleep 200ms
 Enter
-Sleep 2200ms
-
-# Beat 3: the hero moment — review gate holds apply
-Type "ait apply latest --mode current --json | head -10"
-Sleep 200ms
-Enter
-Sleep 2500ms
+Sleep 2400ms
 
 Screenshot docs/assets/hero-codex-reviewer-2.png
 
+# Beat 3: caption
 Type "echo  # The implementer did not review its own work."
 Sleep 200ms
 Enter
-Sleep 2000ms
+Sleep 2200ms
 
 Screenshot docs/assets/hero-codex-reviewer-3.png
 

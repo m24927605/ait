@@ -1,12 +1,10 @@
 # hero-memory-recall.tape — Pillar 3: shared + long-term memory.
-# Shows Claude's earlier decision in notes/auth-retry.md surfacing in a
-# later Codex run via `ait memory recall`. Hero moment: the same proof
-# string appears in two attempts from two different agents — handoff
-# through repo-local memory, not chat history.
+# Hero moment: the same proof string appears in Claude's notes file and
+# in Codex's later context file — both pulled from `.ait/`, not chat
+# history. Same decision. Two agents. Different sessions.
 #
 # Pre-recording: run the demo once to populate state:
 #   bash examples/pain-point-demos/04-memory-reuse/run.sh
-#   bash examples/pain-point-demos/04-memory-reuse/verify.sh
 # Then: vhs docs/assets/tapes/hero-memory-recall.tape
 
 Output docs/assets/hero-memory-recall.gif
@@ -28,34 +26,27 @@ Show
 
 Sleep 600ms
 
-# Beat 1: prior decision is queryable, not lost
-Type "ait memory recall 'auth retry'"
-Sleep 200ms
-Enter
-Sleep 2400ms
-
-Screenshot docs/assets/hero-memory-recall-1.png
-
-# Beat 2: Claude's original finding
-Type "cat notes/auth-retry.md 2>/dev/null || \\"
-Enter
-Type '  find ../../../.ait/workspaces -name auth-retry.md -exec cat {} \;'
-Sleep 200ms
-Enter
-Sleep 2000ms
-
-# Beat 3: Codex (later run) referenced the same proof through memory
-Type 'find ../../../.ait/workspaces -name context-proof.txt -exec cat {} \;'
+# Beat 1: Claude's original finding
+Type 'find .ait/workspaces -name auth-retry.md -exec grep -H AIT_PROOF_AUTH_RETRY {} \;'
 Sleep 200ms
 Enter
 Sleep 2200ms
 
-Screenshot docs/assets/hero-memory-recall-2.png
+Screenshot docs/assets/hero-memory-recall-1.png
 
-Type "echo  # Same decision, two agents, different sessions."
+# Beat 2: hero moment — Codex referenced the same proof through memory
+Type 'find .ait/workspaces -name context-proof.txt -exec grep -H AIT_PROOF_AUTH_RETRY {} \;'
 Sleep 200ms
 Enter
-Sleep 2000ms
+Sleep 2400ms
+
+Screenshot docs/assets/hero-memory-recall-2.png
+
+# Beat 3: caption
+Type "echo  # Same decision. Two agents. Different sessions."
+Sleep 200ms
+Enter
+Sleep 2200ms
 
 Screenshot docs/assets/hero-memory-recall-3.png
 
