@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import json
 import os
 from pathlib import Path
+import subprocess
 
 
 LEASE_SCHEMA_VERSION = 1
@@ -26,6 +27,15 @@ class WorkspaceLease:
     state: str
     cleanup_policy: str
     preserve_reason: str | None
+    # P1 fix: PID alone is not sufficient to prove the owner is still
+    # alive. Linux and macOS reuse PIDs aggressively after long
+    # uptime, so a stale lease whose owner died can be misread as
+    # "still active" if a new unrelated process inherited the PID.
+    # We additionally record the wall-clock start time of the owning
+    # process. Defaults to None for backward compatibility with lease
+    # files written before this field existed; on those leases we
+    # fall back to PID-only liveness with a known caveat.
+    owner_started_at: str | None = None
 
 
 def workspace_lease_path(workspace_ref: str | Path) -> Path:
@@ -52,6 +62,7 @@ def create_workspace_lease(
     preserve_reason: str | None = None,
 ) -> WorkspaceLease:
     now = _utc_now()
+    owner_pid = os.getpid()
     lease = WorkspaceLease(
         schema_version=LEASE_SCHEMA_VERSION,
         attempt_id=attempt_id,
@@ -62,11 +73,12 @@ def create_workspace_lease(
         base_ref_name=base_ref_name,
         created_at=now,
         last_touched_at=now,
-        owner_pid=os.getpid(),
+        owner_pid=owner_pid,
         owner_command=owner_command,
         state=state,
         cleanup_policy=cleanup_policy,
         preserve_reason=preserve_reason,
+        owner_started_at=_pid_started_at(owner_pid),
     )
     write_workspace_lease(lease)
     return lease
@@ -132,6 +144,10 @@ def update_workspace_lease(
         values["base_ref_name"] = base_ref_name
     if owner_pid is not None:
         values["owner_pid"] = owner_pid
+        # When the owning PID is reassigned (e.g. the daemon hand-off),
+        # refresh the recorded start time so the liveness check stays
+        # consistent.
+        values["owner_started_at"] = _pid_started_at(owner_pid)
     if owner_command is not None:
         values["owner_command"] = owner_command
     if state is not None:
@@ -154,13 +170,103 @@ def remove_workspace_lease(workspace_ref: str | Path) -> None:
 
 
 def lease_owner_alive(lease: WorkspaceLease) -> bool:
+    """Whether the lease's owning process is still alive.
+
+    P1 fix: a bare ``os.kill(pid, 0)`` check is vulnerable to PID
+    reuse on long-uptime hosts — the original owner exits, another
+    unrelated process gets the same PID, and the lease is incorrectly
+    treated as held. When the lease records an ``owner_started_at``
+    timestamp, we verify the current process with that PID has the
+    same start time. Mismatch ⇒ the PID was reused ⇒ owner is dead.
+
+    Leases written before ``owner_started_at`` existed (or on
+    platforms where we cannot determine the start time) fall back to
+    the original PID-only check.
+    """
     if lease.owner_pid is None:
         return False
     try:
         os.kill(lease.owner_pid, 0)
     except OSError:
         return False
-    return True
+    if lease.owner_started_at is None:
+        return True
+    current_started_at = _pid_started_at(lease.owner_pid)
+    if current_started_at is None:
+        # Cannot determine start time now (platform regression,
+        # permissions, etc.). Trust the PID check rather than
+        # falsely declaring the lease dead.
+        return True
+    return current_started_at == lease.owner_started_at
+
+
+def _pid_started_at(pid: int) -> str | None:
+    """Best-effort wall-clock start time of ``pid``.
+
+    Returned as an opaque string we only need to be equal for the
+    same process instance and unequal across PID reuse. Returns None
+    if we cannot determine the start time (Windows, permission
+    issues, race with process exit, etc.); callers MUST treat None
+    as "do not use for liveness".
+
+    Linux: ``/proc/<pid>/stat`` field 22 (start time in clock ticks
+    since boot) combined with ``/proc/stat`` ``btime``.
+    macOS / BSD: ``ps -o lstart= -p <pid>`` (opaque date string).
+    """
+    if pid <= 0:
+        return None
+    # Linux fast path
+    stat_path = Path("/proc") / str(pid) / "stat"
+    try:
+        if stat_path.exists():
+            content = stat_path.read_text(encoding="utf-8", errors="replace")
+            # The comm field (field 2) may contain spaces or parens;
+            # split from the right of the last ')'.
+            tail = content.rsplit(")", 1)
+            if len(tail) == 2:
+                fields = tail[1].split()
+                # fields[0] is state (field 3), fields[19] is field 22 (starttime).
+                if len(fields) > 19:
+                    ticks = int(fields[19])
+                    boot_time: int | None = None
+                    try:
+                        with open("/proc/stat", encoding="utf-8") as f:
+                            for line in f:
+                                if line.startswith("btime "):
+                                    boot_time = int(line.split()[1])
+                                    break
+                    except OSError:
+                        boot_time = None
+                    if boot_time is not None:
+                        try:
+                            hz = os.sysconf("SC_CLK_TCK")
+                        except (ValueError, OSError):
+                            hz = 100
+                        start_epoch = boot_time + (ticks / hz)
+                        return (
+                            datetime.fromtimestamp(start_epoch, tz=UTC)
+                            .replace(microsecond=0)
+                            .isoformat()
+                            .replace("+00:00", "Z")
+                        )
+    except (OSError, ValueError, IndexError):
+        pass
+    # macOS / BSD fallback
+    try:
+        result = subprocess.run(
+            ["ps", "-o", "lstart=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            timeout=1.0,
+            check=False,
+        )
+        if result.returncode == 0:
+            stamp = result.stdout.strip()
+            if stamp:
+                return stamp
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return None
 
 
 def lease_payload(workspace_ref: str | Path) -> dict[str, object] | None:
@@ -192,6 +298,7 @@ def _lease_from_payload(payload: object) -> WorkspaceLease | None:
             state=str(payload.get("state") or "orphan"),
             cleanup_policy=str(payload.get("cleanup_policy") or "auto"),
             preserve_reason=_str_or_none(payload.get("preserve_reason")),
+            owner_started_at=_str_or_none(payload.get("owner_started_at")),
         )
     except (KeyError, TypeError, ValueError):
         return None

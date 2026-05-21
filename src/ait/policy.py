@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
+import shlex
 
 from ait.config import local_config_path
 
@@ -12,12 +13,27 @@ APPLY_DIRTY_STRATEGY_VALUES = {"hold", "safe-patch"}
 APPLY_INTEGRATION_ATTEMPT_VALUES = {"manual", "auto"}
 APPLY_SEMANTIC_INTEGRATION_VALUES = {"off", "manual", "auto"}
 REVIEW_DEFAULT_MODE_VALUES = {"never", "risk-based", "light", "adversarial", "multi"}
+MEMORY_RERANKER_MODES = {"fallback", "fail-closed"}
+DEFAULT_MEMORY_RERANKER_TIMEOUT_SECONDS = 5
 
 
 @dataclass(frozen=True, slots=True)
 class EffectivePolicy:
     policy: dict[str, object]
     warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryRerankerPolicy:
+    enabled: bool = False
+    command: tuple[str, ...] = ()
+    timeout_seconds: int | float = DEFAULT_MEMORY_RERANKER_TIMEOUT_SECONDS
+    mode: str = "fallback"
+    env_allowlist: tuple[str, ...] = ()
+
+    @property
+    def available(self) -> bool:
+        return self.enabled and bool(self.command)
 
 
 def repo_policy(repo_root: str | Path) -> dict[str, object]:
@@ -113,6 +129,22 @@ def integration_auto_test_command(repo_root: str | Path) -> str | None:
     return text or None
 
 
+def integration_auto_test_shell(repo_root: str | Path) -> bool:
+    """Whether ``integration.auto_test_command`` runs through /bin/sh -lc.
+
+    Defaults to False: the command is parsed via :func:`shlex.split` and
+    executed without a shell, eliminating shell-injection risk from a
+    hostile ``policy.json`` on a shared CI runner. Set
+    ``integration.auto_test_shell: true`` in policy to opt in if the
+    command genuinely needs shell features (pipes, redirects, env
+    expansion).
+    """
+    integration = repo_policy(repo_root).get("integration")
+    if not isinstance(integration, dict):
+        return False
+    return bool(integration.get("auto_test_shell", False))
+
+
 def integration_semantic_adapter(repo_root: str | Path) -> str | None:
     if apply_semantic_integration(repo_root) == "off":
         return None
@@ -126,6 +158,16 @@ def integration_semantic_adapter(repo_root: str | Path) -> str | None:
     return text or None
 
 
+def memory_reranker_policy(repo_root: str | Path, *, mode: str | None = None) -> MemoryRerankerPolicy:
+    memory_config = repo_policy(repo_root).get("memory")
+    if not isinstance(memory_config, dict):
+        return MemoryRerankerPolicy(mode=_reranker_mode(mode))
+    reranker_config = memory_config.get("reranker")
+    if not isinstance(reranker_config, dict):
+        return MemoryRerankerPolicy(mode=_reranker_mode(mode))
+    return _memory_reranker_policy_from_mapping(reranker_config, mode_override=mode)
+
+
 def effective_policy(repo_root: str | Path) -> EffectivePolicy:
     payload = repo_policy(repo_root)
     warnings: list[str] = []
@@ -133,6 +175,8 @@ def effective_policy(repo_root: str | Path) -> EffectivePolicy:
     run_config = _section(payload, "run", warnings)
     apply_config = _section(payload, "apply", warnings)
     integration_config = _section(payload, "integration", warnings)
+    memory_config = _section(payload, "memory", warnings)
+    memory_reranker_config = _section(memory_config, "reranker", warnings, display_name="memory.reranker")
     review_config = _section(payload, "review", warnings)
     review_baseline_config = _section(review_config, "baseline", warnings, display_name="review.baseline")
     review_adapters_config = _section(review_config, "adapters", warnings, display_name="review.adapters")
@@ -193,7 +237,15 @@ def effective_policy(repo_root: str | Path) -> EffectivePolicy:
                 "allow_binary_merge": _bool_value(integration_config, "allow_binary_merge", False),
                 "allow_delete_merge": _bool_value(integration_config, "allow_delete_merge", False),
                 "auto_test_command": _optional_str(integration_config.get("auto_test_command")),
+                "auto_test_shell": _bool_value(integration_config, "auto_test_shell", False),
                 "semantic_adapter": None if semantic == "off" else _optional_str(integration_config.get("semantic_adapter")),
+            },
+            "memory": {
+                "reranker": _memory_reranker_effective_value(
+                    memory_reranker_config,
+                    warnings,
+                    "memory.reranker",
+                ),
             },
             "review": {
                 "default_mode": review_default_mode,
@@ -302,6 +354,91 @@ def _optional_str(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _reranker_mode(value: str | None) -> str:
+    if value is None:
+        return "fallback"
+    text = str(value).strip().lower()
+    return text if text in MEMORY_RERANKER_MODES else "fallback"
+
+
+def _memory_reranker_policy_from_mapping(
+    raw_config: dict[str, object],
+    *,
+    mode_override: str | None = None,
+) -> MemoryRerankerPolicy:
+    enabled = raw_config.get("enabled")
+    if enabled is not True:
+        return MemoryRerankerPolicy(mode=_reranker_mode(mode_override))
+    command = _reranker_command_tuple(raw_config)
+    if not command:
+        return MemoryRerankerPolicy(mode=_reranker_mode(mode_override))
+    timeout = raw_config.get("timeout_seconds", DEFAULT_MEMORY_RERANKER_TIMEOUT_SECONDS)
+    if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or timeout <= 0:
+        timeout = DEFAULT_MEMORY_RERANKER_TIMEOUT_SECONDS
+    env_allowlist = raw_config.get("env_allowlist")
+    mode = _reranker_mode(mode_override or _optional_str(raw_config.get("mode")))
+    return MemoryRerankerPolicy(
+        enabled=True,
+        command=command,
+        timeout_seconds=timeout,
+        mode=mode,
+        env_allowlist=tuple(str(item) for item in env_allowlist if str(item).strip())
+        if isinstance(env_allowlist, list)
+        else (),
+    )
+
+
+def _reranker_command_tuple(raw_config: dict[str, object]) -> tuple[str, ...]:
+    command_text = _optional_str(raw_config.get("command"))
+    if command_text is None:
+        return ()
+    try:
+        command = tuple(shlex.split(command_text))
+    except ValueError:
+        return ()
+    if not command:
+        return ()
+    args = raw_config.get("args")
+    if isinstance(args, list):
+        command = (*command, *(str(item) for item in args))
+    return command
+
+
+def _memory_reranker_effective_value(
+    raw_config: dict[str, object],
+    warnings: list[str],
+    warning_key: str,
+) -> dict[str, object]:
+    enabled = _bool_config_value(raw_config, "enabled", False, warnings, f"{warning_key}.enabled")
+    command = _reranker_command_tuple(raw_config) if enabled else ()
+    if enabled and not command:
+        warnings.append(f"{warning_key}.command missing or invalid; disabling reranker")
+        enabled = False
+    timeout = raw_config.get("timeout_seconds", DEFAULT_MEMORY_RERANKER_TIMEOUT_SECONDS)
+    if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or timeout <= 0:
+        warnings.append(
+            f"{warning_key}.timeout_seconds invalid; using {DEFAULT_MEMORY_RERANKER_TIMEOUT_SECONDS}"
+        )
+        timeout = DEFAULT_MEMORY_RERANKER_TIMEOUT_SECONDS
+    mode = _optional_str(raw_config.get("mode")) or "fallback"
+    if mode not in MEMORY_RERANKER_MODES:
+        warnings.append(f"{warning_key}.mode invalid; using fallback")
+        mode = "fallback"
+    env_allowlist = raw_config.get("env_allowlist")
+    if env_allowlist is not None and not isinstance(env_allowlist, list):
+        warnings.append(f"{warning_key}.env_allowlist invalid; using []")
+        env_allowlist = []
+    return {
+        "enabled": enabled,
+        "command": list(command) if enabled else [],
+        "timeout_seconds": timeout,
+        "mode": mode,
+        "env_allowlist": [str(item) for item in env_allowlist]
+        if isinstance(env_allowlist, list)
+        else [],
+    }
 
 
 def _string_list_value(

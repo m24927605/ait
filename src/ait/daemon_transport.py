@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import socket
 from typing import BinaryIO
@@ -62,10 +63,29 @@ def bind_unix_socket(
         else:
             raise TransportError(f"socket path already exists and is not a socket: {path}")
 
-    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    # P1 fix: the previous form had a TOCTOU window between `bind()` and
+    # `chmod(0o600)` — an attacker with a foothold on the host could
+    # `connect()` to the socket during that race. We close the window two
+    # ways: tighten the parent directory to mode 0o700 (so the socket
+    # inode is unreachable via directory traversal regardless of its own
+    # mode), and constrain the umask across `bind()` so the inode is
+    # created mode 0o600 atomically. The trailing `chmod` becomes
+    # belt-and-braces for filesystems that ignored the umask.
     try:
-        server.bind(str(path))
-        path.chmod(0o600)
+        path.parent.chmod(0o700)
+    except OSError:
+        pass
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    old_umask = os.umask(0o177)
+    try:
+        try:
+            server.bind(str(path))
+        finally:
+            os.umask(old_umask)
+        try:
+            path.chmod(0o600)
+        except OSError:
+            pass
         server.listen(backlog)
     except Exception:
         server.close()
