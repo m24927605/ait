@@ -22,6 +22,7 @@ from ait.run_report import refresh_run_reports
 from ait.runner_context import AIT_CONTEXT_BUDGET_CHARS, _write_context_file
 from ait.runner_pty import _run_command_with_pty_transcript, _stdio_is_tty
 from ait.runner_semantics import _semantic_exit_code
+from ait.runner_subprocess import run_command_with_budget_and_timeout
 from ait.runner_transcript import (
     AIT_TRANSCRIPT_FIELD_BUDGET_CHARS,
     _fit_transcript_field_budget,
@@ -222,18 +223,21 @@ def run_agent_command(
                 completed = _run_command_with_pty_transcript(command, cwd=workspace, env=env)
                 raw_trace_text = completed.stdout or ""
             else:
-                subprocess_kwargs: dict[str, object] = {
-                    "cwd": workspace,
-                    "env": env,
-                    "check": False,
-                    "text": True,
-                    "capture_output": should_capture_output,
-                }
-                if command_stdin is not None:
-                    subprocess_kwargs["input"] = command_stdin
-                elif stdin_mode == "none":
-                    subprocess_kwargs["stdin"] = subprocess.DEVNULL
-                completed = subprocess.run(command, **subprocess_kwargs)
+                # P0 fix: was `subprocess.run(capture_output=...)` which
+                # (a) buffered entire stdout/stderr in RAM (OOM risk on
+                # chatty agents) and (b) lacked start_new_session=True
+                # so Ctrl-C / timeout could not killpg the child tree.
+                # `run_command_with_budget_and_timeout` streams with a
+                # byte budget, escalates SIGINT/SIGKILL on the process
+                # group, and honors AIT_RUN_TIMEOUT_SECONDS.
+                completed = run_command_with_budget_and_timeout(
+                    command,
+                    cwd=workspace,
+                    env=env,
+                    capture_output=should_capture_output,
+                    command_stdin=command_stdin,
+                    stdin_mode=stdin_mode,
+                )
                 if should_capture_output:
                     raw_trace_text = "\n".join([completed.stdout or "", completed.stderr or ""])
                     if not capture_command_output and adapter.name != "cursor":
