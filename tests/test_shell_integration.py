@@ -22,6 +22,11 @@ class ShellIntegrationTests(unittest.TestCase):
         self.assertIn("_ait_auto_path", snippet)
         self.assertIn("add-zsh-hook -d chpwd _ait_auto_path", snippet)
         self.assertIn("add-zsh-hook chpwd _ait_auto_path", snippet)
+        self.assertIn("_ait_continue_should_cd", snippet)
+        self.assertIn("_ait_continue_reminder", snippet)
+        self.assertIn("--shell-hook", snippet)
+        self.assertIn("--shell-reminder", snippet)
+        self.assertIn("ait() {", snippet)
         self.assertIn(END_MARKER, snippet)
 
     def test_bash_snippet_uses_prompt_command(self) -> None:
@@ -51,6 +56,21 @@ class ShellIntegrationTests(unittest.TestCase):
     def test_unsupported_shell_raises_clear_error(self) -> None:
         with self.assertRaises(ShellIntegrationError):
             shell_snippet("fish")
+
+    def test_install_replaces_old_hook_block(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            rc_path = Path(tmp) / ".zshrc"
+            rc_path.write_text(
+                "\n".join([START_MARKER, "_ait_auto_path() { :; }", END_MARKER, ""]),
+                encoding="utf-8",
+            )
+
+            result = install_shell_integration(shell="zsh", rc_path=rc_path)
+
+            self.assertTrue(result.changed)
+            text = rc_path.read_text(encoding="utf-8")
+            self.assertEqual(1, text.count(START_MARKER))
+            self.assertIn("_ait_continue_should_cd", text)
 
 
 if __name__ == "__main__":

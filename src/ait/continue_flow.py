@@ -7,6 +7,7 @@ import shlex
 
 from ait.app import init_repo
 from ait.db import AttemptRecord, connect_db, get_attempt
+from ait.recent_activity import list_recent_activities
 from ait.recovery import RecoverError
 from ait.resume import ResumeError, ResumeResult, build_resume_result
 from ait.session_room import SessionError, SessionStore
@@ -26,6 +27,7 @@ class AgentHint:
 @dataclass(frozen=True, slots=True)
 class ContinueResult:
     selector: str
+    repo_root: str | None
     target_type: str
     command: str | None
     reason: str
@@ -41,6 +43,7 @@ class ContinueResult:
             "schema_version": 1,
             "kind": "continue_plan",
             "selector": self.selector,
+            "repo_root": self.repo_root,
             "target_type": self.target_type,
             "command": self.command,
             "reason": self.reason,
@@ -56,6 +59,7 @@ class ContinueResult:
 
 @dataclass(frozen=True, slots=True)
 class _Candidate:
+    repo_root: Path
     target_type: str
     timestamp: str
     command: str | None
@@ -71,11 +75,11 @@ def build_continue_result(
     *,
     selector: str = "latest",
 ) -> ContinueResult:
-    root = init_repo(repo_root).repo_root
-    candidates = _continue_candidates(root, selector)
+    roots, candidates = _rooted_continue_candidates(repo_root, selector=selector)
     if not candidates:
         return ContinueResult(
             selector=selector,
+            repo_root=str(roots[0]) if roots else None,
             target_type="none",
             command=None,
             reason="AIT found no active session or recoverable attempt.",
@@ -88,10 +92,11 @@ def build_continue_result(
         )
 
     chosen = _choose_candidate(candidates, selector=selector)
-    hints = _agent_hints(root, chosen)
+    hints = _agent_hints(chosen.repo_root, chosen)
     safe_actions = _safe_actions(chosen)
     return ContinueResult(
         selector=selector,
+        repo_root=str(chosen.repo_root),
         target_type=chosen.target_type,
         command=chosen.command,
         reason=chosen.reason,
@@ -102,6 +107,50 @@ def build_continue_result(
         blocking_reasons=chosen.blocking_reasons,
         limitations=_limitations(),
     )
+
+
+def _rooted_continue_candidates(
+    repo_root: str | Path,
+    *,
+    selector: str,
+) -> tuple[tuple[Path, ...], list[_Candidate]]:
+    roots: list[Path] = []
+    first_error: ValueError | None = None
+    try:
+        current_root = init_repo(repo_root).repo_root
+        roots.append(current_root)
+    except ValueError as exc:
+        first_error = exc
+
+    current_candidates = [
+        candidate
+        for root in roots
+        for candidate in _continue_candidates(root, selector)
+    ]
+    if current_candidates or selector != "latest":
+        return tuple(roots), current_candidates
+
+    seen = {str(root) for root in roots}
+    for activity in list_recent_activities():
+        if not Path(activity.repo_root).exists():
+            continue
+        try:
+            root = init_repo(activity.repo_root).repo_root
+        except ValueError:
+            continue
+        key = str(root)
+        if key in seen:
+            continue
+        roots.append(root)
+        seen.add(key)
+    if not roots and first_error is not None:
+        raise first_error
+    candidates = [
+        candidate
+        for root in roots
+        for candidate in _continue_candidates(root, selector)
+    ]
+    return tuple(roots), candidates
 
 
 def _continue_candidates(root: Path, selector: str) -> list[_Candidate]:
@@ -148,6 +197,7 @@ def _session_candidate(root: Path, session: dict[str, object]) -> _Candidate:
     timestamp = str(session.get("updated_at") or session.get("created_at") or "")
     if turn is not None and participants:
         return _Candidate(
+            repo_root=root,
             target_type="session_attach",
             timestamp=timestamp,
             command=f"ait session attach {shlex.quote(session_id)}",
@@ -160,6 +210,7 @@ def _session_candidate(root: Path, session: dict[str, object]) -> _Candidate:
     if not participants:
         blocking_reasons.append("session has no active participants")
     return _Candidate(
+        repo_root=root,
         target_type="session",
         timestamp=timestamp,
         command=f"ait session show {shlex.quote(session_id)}",
@@ -207,6 +258,7 @@ def _attempt_candidate(root: Path, selector: str) -> _Candidate | None:
             if value
         )
     return _Candidate(
+        repo_root=root,
         target_type="attempt_resume",
         timestamp=timestamp,
         command=f"ait resume {shlex.quote(resume.attempt_id)}",

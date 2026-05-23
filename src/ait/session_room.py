@@ -23,6 +23,7 @@ from ait.context_manifest import write_context_manifest
 from ait.ids import new_ulid
 from ait.memory import discover_live_memory_sources, read_live_memory_source
 from ait.memory.models import RelevantMemoryRecall
+from ait.recent_activity import record_recent_session
 from ait.redaction import redact_text
 from ait.repo import resolve_repo_root
 from ait.runner import run_agent_command
@@ -1499,6 +1500,11 @@ class SessionStore:
 
     def _write_session(self, session: dict[str, object]) -> None:
         self._write_json_ref(self._relative(self._session_dir(str(session["id"])) / "session.json"), session)
+        record_recent_session(
+            self.repo_root,
+            session_id=str(session["id"]),
+            updated_at=str(session.get("updated_at") or session.get("created_at") or utc_now()),
+        )
 
     def _append_event(self, session_id: str, event: dict[str, object]) -> None:
         event = {"schema_version": SESSION_SCHEMA_VERSION, **event}

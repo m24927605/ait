@@ -5,7 +5,7 @@ import shlex
 from ._shared import *
 
 from ait.continue_flow import ContinueResult, build_continue_result
-from ait.resume import launch_resume_shell
+from ait.resume import launch_resume_shell, resume_shell_script
 from ait.session_room import SessionError, SessionStore
 from ait.session_terminal import run_foreground_attach
 
@@ -18,6 +18,17 @@ def handle(args, repo_root: Path, parser=None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
+    if getattr(args, "shell_hook", False):
+        if result.target_type == "attempt_resume" and result.resume is not None:
+            print(resume_shell_script(result.resume), end="")
+            return 0
+        return 1
+    if getattr(args, "shell_reminder", False):
+        text = _format_shell_reminder(result)
+        if not text:
+            return 1
+        print(text)
+        return 0
     if args.format == "json":
         print(json.dumps(result.to_dict(), indent=2))
         return 0
@@ -28,7 +39,7 @@ def handle(args, repo_root: Path, parser=None) -> int:
         session_id = str(result.session["session_id"])
         print(_format_continue_entry(result), file=sys.stderr)
         try:
-            run_foreground_attach(SessionStore(repo_root), session_id, render=True)
+            run_foreground_attach(SessionStore(Path(result.repo_root or repo_root)), session_id, render=True)
         except SessionError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
@@ -86,6 +97,26 @@ def _format_continue_entry(result: ContinueResult) -> str:
             ]
         )
     return "\n".join(lines)
+
+
+def _format_shell_reminder(result: ContinueResult) -> str:
+    if result.target_type == "attempt_resume" and result.resume is not None:
+        attempt = result.resume.attempt_id.rsplit(":", 1)[-1]
+        return "\n".join(
+            [
+                f"AIT: interrupted attempt {attempt} is recoverable.",
+                "Run: ait continue",
+            ]
+        )
+    if result.target_type == "session_attach" and result.session is not None:
+        session_id = str(result.session.get("session_id") or "latest")
+        return "\n".join(
+            [
+                f"AIT: session {session_id} has an active turn.",
+                "Run: ait continue",
+            ]
+        )
+    return ""
 
 
 def _target_label(result: ContinueResult) -> str:

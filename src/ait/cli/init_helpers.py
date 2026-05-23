@@ -63,24 +63,21 @@ def _maybe_auto_install_shell_hook(
 
     Skipped (returns ``status="skipped"``) when:
     - the user passed ``--no-shell-install``
-    - no adapters were installed (nothing to wire onto PATH)
     - the user's shell is not zsh or bash (e.g. fish)
-    - the hook is already installed (idempotent no-op)
     - writing the rc file fails (filesystem permissions, etc.)
     """
     if skip:
         return {"status": "skipped", "reason": "--no-shell-install"}
-    if not installed_adapters:
-        return {"status": "skipped", "reason": "no adapters installed"}
+    del installed_adapters
     detected_shell = detect_user_shell()
     if detected_shell is None:
         return {"status": "skipped", "reason": "shell not zsh or bash"}
-    if is_shell_integration_installed(detected_shell):
-        return {"status": "already_installed", "shell": detected_shell}
     try:
         result = install_shell_integration(shell=detected_shell)
     except (ShellIntegrationError, OSError) as exc:
         return {"status": "skipped", "reason": str(exc), "shell": detected_shell}
+    if not result.changed and is_shell_integration_installed(detected_shell):
+        return {"status": "already_installed", "shell": detected_shell}
     return {
         "status": "installed",
         "shell": detected_shell,

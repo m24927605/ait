@@ -51,6 +51,10 @@ def _zsh_body() -> str:
             "autoload -Uz add-zsh-hook 2>/dev/null || true",
             "add-zsh-hook -d chpwd _ait_auto_path 2>/dev/null || true",
             "add-zsh-hook chpwd _ait_auto_path 2>/dev/null || true",
+            "",
+            *_ait_command_function_lines(),
+            "",
+            "_ait_continue_reminder",
         ]
     )
 
@@ -90,8 +94,53 @@ def _bash_body() -> str:
             '  *";_ait_auto_path;"*) ;;',
             '  *) PROMPT_COMMAND="_ait_auto_path${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;',
             "esac",
+            "",
+            *_ait_command_function_lines(),
+            "",
+            "_ait_continue_reminder",
         ]
     )
+
+
+def _ait_command_function_lines() -> list[str]:
+    return [
+        "_ait_continue_should_cd() {",
+        '  [ "${AIT_CONTINUE_AUTO_CD:-1}" = "0" ] && return 1',
+        '  [ "${1:-}" = "continue" ] || return 1',
+        "  shift",
+        "  for ait_arg in \"$@\"; do",
+        '    case "$ait_arg" in',
+        "      --format|--format=*|--json|--no-interactive|--shell-hook|--help|-h)",
+        "        return 1",
+        "        ;;",
+        "    esac",
+        "  done",
+        "  return 0",
+        "}",
+        "",
+        "_ait_continue_reminder() {",
+        '  [ "${AIT_CONTINUE_REMINDER:-1}" = "0" ] && return 0',
+        '  [ -n "${AIT_CONTINUE_REMINDER_SHOWN:-}" ] && return 0',
+        '  case "$-" in',
+        "    *i*) ;;",
+        "    *) return 0 ;;",
+        "  esac",
+        "  AIT_CONTINUE_REMINDER_SHOWN=1",
+        "  export AIT_CONTINUE_REMINDER_SHOWN",
+        "  command ait continue --shell-reminder 2>/dev/null || true",
+        "}",
+        "",
+        "ait() {",
+        '  if _ait_continue_should_cd "$@"; then',
+        "    local ait_shell_script",
+        '    if ait_shell_script="$(command ait continue "${@:2}" --shell-hook 2>/dev/null)" && [ -n "$ait_shell_script" ]; then',
+        '      eval "$ait_shell_script"',
+        "      return $?",
+        "    fi",
+        "  fi",
+        '  command ait "$@"',
+        "}",
+    ]
 
 
 def install_shell_integration(
@@ -104,6 +153,18 @@ def install_shell_integration(
     snippet = shell_snippet(shell_name)
     existing = path.read_text(encoding="utf-8") if path.exists() else ""
     if START_MARKER in existing and END_MARKER in existing:
+        start = existing.find(START_MARKER)
+        end = existing.find(END_MARKER)
+        if end > start:
+            end += len(END_MARKER)
+            if end < len(existing) and existing[end] == "\n":
+                end += 1
+            current = existing[start:end]
+            if current == snippet:
+                return ShellIntegrationResult(shell=shell_name, rc_path=str(path), changed=False, snippet=snippet)
+            updated = existing[:start] + snippet + existing[end:]
+            path.write_text(updated, encoding="utf-8")
+            return ShellIntegrationResult(shell=shell_name, rc_path=str(path), changed=True, snippet=snippet)
         return ShellIntegrationResult(shell=shell_name, rc_path=str(path), changed=False, snippet=snippet)
     path.parent.mkdir(parents=True, exist_ok=True)
     separator = "" if not existing or existing.endswith("\n") else "\n"
@@ -171,10 +232,17 @@ def _resolve_rc_path(shell: str, rc_path: str | Path | None) -> Path:
     if rc_path is not None:
         return Path(rc_path).expanduser()
     if shell == "zsh":
-        return Path.home() / ".zshrc"
+        return _home_path() / ".zshrc"
     if shell == "bash":
-        return Path.home() / ".bashrc"
+        return _home_path() / ".bashrc"
     raise ShellIntegrationError(f"unsupported shell: {shell}")
+
+
+def _home_path() -> Path:
+    home = os.environ.get("HOME")
+    if home:
+        return Path(home).expanduser()
+    return Path.home()
 
 
 def _normalize_shell(shell: str) -> str:

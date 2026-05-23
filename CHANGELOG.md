@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+## 1.1.0 - 2026-05-23
+
+### Added
+
+- Add shell-level `ait continue` recovery for interactive shells: when the AIT
+  shell hook is installed, `ait continue` now moves the current shell directly
+  into the recoverable attempt workspace and sets `AIT_RESUME_*` finish hints.
+- Add one-time new-terminal reminders for recoverable interrupted AIT work,
+  with `AIT_CONTINUE_REMINDER=0` as an opt-out.
+- Add a local recent-activity ledger so `ait continue latest` can recover the
+  most recent AIT repo/session/attempt even when a new terminal starts outside
+  the repository.
+- Add a documented versioning policy that defines patch, minor, major, Git tag,
+  and release bump rules for future releases.
+
+### Changed
+
+- Resolve `latest` recoverable attempts by recent activity
+  (`heartbeat_at`/`ended_at`/`started_at`) instead of creation order alone.
+- Install and upgrade the AIT shell hook even when no agent adapter wrapper is
+  installed, because `ait continue` recovery now depends on shell-level
+  integration as a standalone UX feature.
+- Bump the Python and npm package versions to `1.1.0`.
+
 ## 1.0.4 - 2026-05-23
 
 ### Fixed

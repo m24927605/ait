@@ -34,6 +34,7 @@ from ait.repo import (
     initialize_git_repo,
     resolve_repo_root,
 )
+from ait.recent_activity import record_recent_attempt
 from ait.verifier import verify_attempt_with_connection
 from ait.workspace import (
     create_attempt_commit,
@@ -249,6 +250,11 @@ def create_attempt(
         raise
     finally:
         conn.close()
+    record_recent_attempt(
+        init_result.repo_root,
+        attempt_id=attempt.id,
+        workspace_ref=attempt.workspace_ref,
+    )
     return AttemptResult(
         attempt_id=attempt.id,
         workspace_ref=attempt.workspace_ref,

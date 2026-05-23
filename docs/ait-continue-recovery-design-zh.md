@@ -21,6 +21,14 @@
 - JSON 或 non-interactive：只印 plan，不啟動 shell 或 PTY。
 - interactive 且 target 是 `session_attach`：執行 `ait session attach <session_id>` 等效流程。
 - interactive 且 target 是 `attempt_resume`：進入 `ait resume <attempt_id>` 的 worktree shell。
+- 已安裝 shell integration 時，互動式 `ait continue` 會在目前 shell 直接切到
+  recoverable attempt worktree，並設定 `AIT_RESUME_*` finish hints；不再需要使用者手動
+  `cd "$(ait resume latest --print)"`。
+- 已安裝 shell integration 時，新 terminal session 載入 shell hook 會自動提示最近的
+  recoverable AIT work：`AIT: interrupted attempt ... is recoverable. Run: ait continue`。
+  可用 `AIT_CONTINUE_REMINDER=0` 關閉提醒。
+- 若目前目錄不是 Git repo，或目前 repo 沒有可恢復目標，`latest` 會讀取本機 recent
+  activity ledger，嘗試回到最近的 AIT repo/session/attempt。
 - 找不到可恢復目標：印出原因與限制。
 
 `latest` 選擇規則：
@@ -28,6 +36,9 @@
 1. 同時蒐集最新 session candidate 與 recoverable attempt candidate。
 2. 以 session `updated_at` 與 attempt `heartbeat_at/ended_at/started_at` 比較時間。
 3. 同一時間下，優先順序是 `session_attach`、`attempt_resume`、`session`。
+
+Attempt selector 的 `latest` 也使用 activity time，而不是只用 attempt 建立時間；長時間
+運行或中斷的 attempt 會因 heartbeat 較新而優先被恢復。
 
 Target types：
 

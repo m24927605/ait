@@ -300,7 +300,11 @@ def _resolve_recover_selector(conn, selector: str) -> str:
     if selector == "latest":
         attempts = [
             attempt
-            for attempt in reversed(list_attempts(conn))
+            for attempt in sorted(
+                list_attempts(conn),
+                key=lambda item: _attempt_activity_timestamp(item),
+                reverse=True,
+            )
             if attempt.verified_status not in {"discarded", "promoted"}
         ]
         if attempts:
@@ -310,6 +314,14 @@ def _resolve_recover_selector(conn, selector: str) -> str:
             raise RecoverError("no attempts found")
         return all_attempts[-1].id
     return resolve_attempt_id(conn, selector)
+
+
+def _attempt_activity_timestamp(attempt) -> str:
+    return max(
+        value
+        for value in (attempt.started_at, attempt.ended_at, attempt.heartbeat_at)
+        if value
+    )
 
 
 def _recover_status(reported_status: str | None, verified_status: str | None, lease: dict[str, object] | None) -> str:

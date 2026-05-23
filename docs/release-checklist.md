@@ -152,30 +152,34 @@ git diff --check
 
 Before tagging:
 
-1. Confirm `pyproject.toml` version matches the intended tag.
-2. Confirm `CHANGELOG.md` has an entry for the intended tag.
-3. Run `git status --short`.
-4. Run `.venv/bin/pytest -q`.
-5. Run `git diff --check`.
-6. Run the Review Orchestration Release Gate if review-related files
+1. Classify the release bump using
+   [`docs/versioning-policy.md`](versioning-policy.md). Use the highest required
+   level across all shipped changes: patch, minor, or major.
+2. Confirm `pyproject.toml`, `npm/ait-vcs/package.json`, README install
+   examples, and docs/site version references match the intended tag.
+3. Confirm `CHANGELOG.md` has an entry for the intended tag.
+4. Run `git status --short`.
+5. Run `.venv/bin/pytest -q`.
+6. Run `git diff --check`.
+7. Run the Review Orchestration Release Gate if review-related files
    changed.
-7. Confirm README install and quickstart are current.
-8. Build with `.venv/bin/python -m build`.
-9. Check artifacts with `.venv/bin/python -m twine check dist/*`.
-10. Run `npm --prefix npm/ait-vcs test`.
-11. Run `(cd npm/ait-vcs && npm pack --dry-run)`.
-12. Run a fresh venv smoke test from `dist/*.whl`, including the
+8. Confirm README install and quickstart are current.
+9. Build with `.venv/bin/python -m build`.
+10. Check artifacts with `.venv/bin/python -m twine check dist/*`.
+11. Run `npm --prefix npm/ait-vcs test`.
+12. Run `(cd npm/ait-vcs && npm pack --dry-run)`.
+13. Run a fresh venv smoke test from `dist/*.whl`, including the
    plain-directory init smoke and PATH-based agent wrapper smoke below.
-13. Tag with the intended `vX.Y.Z`.
-14. Push `main` and `vX.Y.Z` to GitHub.
-15. Create a GitHub release with the built wheel and sdist.
-16. Confirm GitHub Actions CI and Publish pass.
-17. Confirm PyPI lists the new version.
-18. Run a fresh venv smoke test from PyPI, including the plain-directory
+14. Tag with the intended `vX.Y.Z`.
+15. Push `main` and `vX.Y.Z` to GitHub.
+16. Create a GitHub release with the built wheel and sdist.
+17. Confirm GitHub Actions CI and Publish pass.
+18. Confirm PyPI lists the new version.
+19. Run a fresh venv smoke test from PyPI, including the plain-directory
     init smoke and PATH-based agent wrapper smoke below.
-19. Publish the npm package from `npm/ait-vcs` after PyPI lists the same
+20. Publish the npm package from `npm/ait-vcs` after PyPI lists the same
     version.
-20. Run a fresh global npm smoke test with `npm install -g ait-vcs`.
+21. Run a fresh global npm smoke test with `npm install -g ait-vcs`.
 
 ## Plain Directory Init Smoke
 

@@ -3,6 +3,11 @@ from __future__ import annotations
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _isolate_ait_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.setenv("AIT_STATE_DIR", str(tmp_path / "ait-state"))
+
+
 _FILE_MARKS: dict[str, tuple[str, ...]] = {
     "tests/test_agent_first_workflow.py": ("slow", "integration", "subprocess", "serial"),
     "tests/test_concurrency.py": ("slow", "integration", "subprocess", "serial"),

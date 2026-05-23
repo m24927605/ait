@@ -51,13 +51,17 @@ class MaybeAutoInstallShellHookTests(unittest.TestCase):
         self.assertEqual("skipped", result["status"])
         self.assertIn("--no-shell-install", str(result["reason"]))
 
-    def test_no_adapters_returns_skipped(self) -> None:
-        result = _maybe_auto_install_shell_hook(
-            skip=False,
-            installed_adapters=[],
-        )
-        self.assertEqual("skipped", result["status"])
-        self.assertIn("no adapters", str(result["reason"]))
+    def test_no_adapters_still_installs_continue_hook(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            with patch.dict(os.environ, {"SHELL": "/bin/zsh", "HOME": str(home)}):
+                result = _maybe_auto_install_shell_hook(
+                    skip=False,
+                    installed_adapters=[],
+                )
+            self.assertEqual("installed", result["status"])
+            text = (home / ".zshrc").read_text(encoding="utf-8")
+            self.assertIn("_ait_continue_should_cd", text)
 
     def test_unsupported_shell_returns_skipped(self) -> None:
         with patch.dict(os.environ, {"SHELL": "/usr/bin/fish"}):
@@ -85,7 +89,7 @@ class MaybeAutoInstallShellHookTests(unittest.TestCase):
             self.assertIn(START_MARKER, text)
             self.assertIn(END_MARKER, text)
 
-    def test_idempotent_returns_already_installed(self) -> None:
+    def test_existing_old_hook_is_upgraded(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
             rc_path = home / ".zshrc"
@@ -98,8 +102,9 @@ class MaybeAutoInstallShellHookTests(unittest.TestCase):
                     skip=False,
                     installed_adapters=[_FakeAdapterItem("claude-code")],
                 )
-            self.assertEqual("already_installed", result["status"])
+            self.assertEqual("installed", result["status"])
             self.assertEqual("zsh", result["shell"])
+            self.assertIn("_ait_continue_should_cd", rc_path.read_text(encoding="utf-8"))
 
 
 class InitCliShellInstallE2ETests(unittest.TestCase):

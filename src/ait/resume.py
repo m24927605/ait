@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 import os
 from pathlib import Path
+import shlex
 import subprocess
 
 from ait.recovery import RecoverError, recover_attempt
@@ -73,6 +74,30 @@ def launch_resume_shell(result: ResumeResult) -> int:
         check=False,
     )
     return int(completed.returncode)
+
+
+def resume_shell_script(result: ResumeResult) -> str:
+    """Return shell code that moves the current interactive shell into a resume state."""
+    env = _resume_env(result)
+    exports = {
+        "AIT_RESUME_ATTEMPT_ID": env["AIT_RESUME_ATTEMPT_ID"],
+        "AIT_WORKSPACE_REF": env["AIT_WORKSPACE_REF"],
+        "AIT_RESUME_REPO_ROOT": env["AIT_RESUME_REPO_ROOT"],
+        "AIT_RESUME_FINISH_HINT": env["AIT_RESUME_FINISH_HINT"],
+        "PATH": env["PATH"],
+    }
+    lines = [
+        f"cd {shlex.quote(result.workspace_ref)} || return $?",
+    ]
+    lines.extend(f"export {name}={shlex.quote(value)}" for name, value in exports.items())
+    lines.extend(
+        [
+            "printf '%s\\n' "
+            f"{shlex.quote('Continuing AIT attempt ' + result.attempt_id.rsplit(':', 1)[-1])} >&2",
+            f"printf '%s\\n' {shlex.quote('Workspace: ' + result.workspace_ref)} >&2",
+        ]
+    )
+    return "\n".join(lines) + "\n"
 
 
 def _resume_env(result: ResumeResult) -> dict[str, str]:

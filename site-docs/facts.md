@@ -212,7 +212,7 @@ present, and merges hooks into the agent config files it detects
 
 ### Q: Is ait stable / production-ready?
 
-**A:** ait is alpha. The current release is `0.55.x` and is intended for local
+**A:** ait is alpha. The current release is `1.1.x` and is intended for local
 dogfooding, power users, and infra-minded engineers comfortable with Git
 workflows. Metadata is local to one repository under `.ait/`; it is not
 synchronized across machines. Public API and CLI surface are stabilizing but
@@ -251,7 +251,7 @@ documented in the [MVP spec](https://github.com/m24927605/ait/blob/main/docs/ai-
     {"@type":"Question","name":"How do I undo a failed AI agent run with ait?","acceptedAnswer":{"@type":"Answer","text":"Run ait attempt discard <id>. The attempt's worktree and metadata are removed; your root checkout is unaffected because the bad changes never touched it."}},
     {"@type":"Question","name":"How does ait pass context between different AI agents?","acceptedAnswer":{"@type":"Answer","text":"Each wrapped run receives AIT_CONTEXT_FILE, a compact repo-local handoff file built from prior attempts, prior commits, curated notes, accepted facts, review findings, and live agent memory files like CLAUDE.md, AGENTS.md, .claude/memory.md, .codex/memory.md, and .cursor/rules under local memory policy. A sibling ait.context_manifest separates trusted, advisory, and excluded memory. External files remain their own source of truth and are read live, not auto-imported. Approved or accepted facts can be trusted baseline context; candidate, stale, superseded, or policy-blocked memory remains advisory or excluded, and policy-blocked body text is not copied into the context or manifest."}},
     {"@type":"Question","name":"What does ait init do to my repo?","acceptedAnswer":{"@type":"Answer","text":"It creates .ait/ (config, database, worktrees root, agent wrappers), installs an envrc for direnv if present, and merges hooks into agent config files it detects (.claude/settings.json, .codex/hooks.json, .gemini/settings.json). It does not modify Git history."}},
-    {"@type":"Question","name":"Is ait stable or production-ready?","acceptedAnswer":{"@type":"Answer","text":"ait is alpha. The current release is 0.55.x and is intended for local dogfooding, power users, and infra-minded engineers comfortable with Git workflows. Metadata is local to one repository under .ait/ and is not synchronized across machines; metadata export/import currently provides dry-run local plans only. Public API and CLI surface are stabilizing but not frozen."}},
+    {"@type":"Question","name":"Is ait stable or production-ready?","acceptedAnswer":{"@type":"Answer","text":"ait is alpha. The current release is 1.1.x and is intended for local dogfooding, power users, and infra-minded engineers comfortable with Git workflows. Metadata is local to one repository under .ait/ and is not synchronized across machines; metadata export/import currently provides dry-run local plans only. Public API and CLI surface are stabilizing but not frozen."}},
     {"@type":"Question","name":"How do I find a prompt I wrote last month?","acceptedAnswer":{"@type":"Answer","text":"ait attempt list --query searches attempts by intent text, status, agent, time range, files touched, and commits, using a structured DSL. ait memory search also surfaces matching prior attempts and notes."}}
   ]
 }
