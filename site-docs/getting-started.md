@@ -22,7 +22,7 @@ ait --version
 Expected:
 
 ```text
-ait 1.0.3
+ait 1.0.4
 ```
 
 The package on PyPI and npm is `ait-vcs`. The installed command is `ait`.
@@ -83,7 +83,7 @@ Expected (trimmed):
 
 ```text
 AIT install:
-- version: 1.0.3
+- version: 1.0.4
 Daemon: stopped              # or: running (socket_connectable=True, pid_matches=True)
 AIT health: pass
 Memory initialized: True
@@ -171,7 +171,7 @@ python3.14 -m venv .venv
 npm install -g ait-vcs
 
 # pinned GitHub tag
-pipx install "git+https://github.com/m24927605/ait.git@v1.0.3"
+pipx install "git+https://github.com/m24927605/ait.git@v1.0.4"
 ```
 
 ### Check that the wrapper is on PATH

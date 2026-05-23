@@ -7,7 +7,6 @@ import os
 from pathlib import Path
 import pty
 import select
-import shutil
 import subprocess
 import sys
 import time
@@ -17,6 +16,7 @@ from ait.app import create_attempt, create_intent
 from ait.db import connect_db, get_attempt, utc_now
 from ait.events import process_event
 from ait.ids import new_ulid
+from ait.pty_window import current_pty_window_size, set_pty_window_size
 from ait.redaction import redact_text
 from ait.runner_transcript import _strip_terminal_control
 from ait.session_events import SessionEventStore, terminal_replay_text
@@ -439,6 +439,10 @@ def _start_pane(
         workspace_ref=workspace_ref,
     )
     master_fd, slave_fd = pty.openpty()
+    window_size = current_pty_window_size()
+    set_pty_window_size(slave_fd, window_size)
+    env["COLUMNS"] = str(window_size.cols)
+    env["LINES"] = str(window_size.rows)
     command, shell = _popen_command(participant)
     try:
         process = subprocess.Popen(
@@ -484,7 +488,6 @@ def _start_pane(
         command_ref=command_ref,
         actor={"type": "ait", "id": "session-attach"},
     )
-    size = shutil.get_terminal_size(fallback=(80, 24))
     event_store.append(
         "pty_resize",
         turn_id=turn["id"],
@@ -492,8 +495,8 @@ def _start_pane(
         participant_id=pane.participant_id,
         agent_id=pane.agent_id,
         response_id=response_id,
-        cols=size.columns,
-        rows=size.lines,
+        cols=window_size.cols,
+        rows=window_size.rows,
         actor={"type": "ait", "id": "session-attach"},
     )
     return pane

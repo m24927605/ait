@@ -145,7 +145,7 @@ Intended for local power users and infra-minded engineers comfortable with Git w
 pipx install ait-vcs            # recommended
 npm install -g ait-vcs          # alternative
 python3.14 -m venv .venv && .venv/bin/pip install ait-vcs   # venv
-pipx install "git+https://github.com/m24927605/ait.git@v1.0.3"   # pinned release
+pipx install "git+https://github.com/m24927605/ait.git@v1.0.4"   # pinned release
 ```
 
 Upgrade:

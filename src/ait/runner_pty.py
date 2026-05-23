@@ -13,6 +13,8 @@ import termios
 import time
 import tty
 
+from ait.pty_window import current_pty_window_size, set_pty_window_size
+
 
 # P0 fix: bound the PTY capture buffer. Was `output = bytearray()` with
 # no cap (line 40). A 10-minute verbose Claude Code run can emit
@@ -83,6 +85,11 @@ def _run_command_with_pty_transcript(
     env: dict[str, str],
 ) -> _PtyCompletedProcess:
     master_fd, slave_fd = pty.openpty()
+    window_size = current_pty_window_size()
+    set_pty_window_size(slave_fd, window_size)
+    child_env = dict(env)
+    child_env["COLUMNS"] = str(window_size.cols)
+    child_env["LINES"] = str(window_size.rows)
     old_stdin_attrs = None
     output = bytearray()
     # P0 fix: cap the captured buffer. Mirror-to-terminal is unaffected.
@@ -103,7 +110,7 @@ def _run_command_with_pty_transcript(
         process = subprocess.Popen(
             command,
             cwd=cwd,
-            env=env,
+            env=child_env,
             stdin=slave_fd,
             stdout=slave_fd,
             stderr=slave_fd,
@@ -127,6 +134,8 @@ def _run_command_with_pty_transcript(
     last_sigint_at: list[float] = []
     previous_handler = None
     handler_installed = False
+    previous_winch_handler = None
+    winch_handler_installed = False
 
     def _on_sigint(_signum: int, _frame: object) -> None:
         now = time.monotonic()
@@ -135,6 +144,9 @@ def _run_command_with_pty_transcript(
         else:
             _killpg_best_effort(process.pid, signal.SIGINT)
         last_sigint_at.append(now)
+
+    def _on_sigwinch(_signum: int, _frame: object) -> None:
+        set_pty_window_size(master_fd, current_pty_window_size())
 
     import threading as _threading
 
@@ -145,6 +157,12 @@ def _run_command_with_pty_transcript(
             handler_installed = True
         except (ValueError, OSError):
             handler_installed = False
+        try:
+            previous_winch_handler = signal.getsignal(signal.SIGWINCH)
+            signal.signal(signal.SIGWINCH, _on_sigwinch)
+            winch_handler_installed = True
+        except (AttributeError, ValueError, OSError):
+            winch_handler_installed = False
 
     def _append_to_buffer(data: bytes) -> None:
         nonlocal truncated
@@ -206,6 +224,11 @@ def _run_command_with_pty_transcript(
             try:
                 signal.signal(signal.SIGINT, previous_handler)
             except (ValueError, OSError):
+                pass
+        if winch_handler_installed:
+            try:
+                signal.signal(signal.SIGWINCH, previous_winch_handler)
+            except (AttributeError, ValueError, OSError):
                 pass
         if old_stdin_attrs is not None:
             termios.tcsetattr(stdin_fd, termios.TCSADRAIN, old_stdin_attrs)

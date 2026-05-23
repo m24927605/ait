@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 1.0.4 - 2026-05-23
+
+### Fixed
+
+- Preserve the terminal window size when AIT launches interactive PTY-backed
+  agents, preventing Codex from wrapping startup text one character per line.
+
+### Changed
+
+- Bump the Python and npm package versions to `1.0.4`.
+
 ## 1.0.3 - 2026-05-23
 
 ### Changed

@@ -1269,6 +1269,29 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(0, completed.returncode)
             self.assertIn("AIT_PTY_TRANSCRIPT_TOKEN", completed.stdout)
 
+    def test_pty_runner_sets_child_window_size(self) -> None:
+        code = (
+            "import fcntl, struct, sys, termios; "
+            "rows, cols, _, _ = struct.unpack("
+            "'HHHH', fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, b'\\0' * 8)"
+            "); "
+            "print(f'{rows}x{cols}')"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            with patch(
+                "ait.runner_pty.current_pty_window_size",
+                return_value=SimpleNamespace(rows=33, cols=101),
+            ):
+                completed = _run_command_with_pty_transcript(
+                    [sys.executable, "-c", code],
+                    cwd=repo_root,
+                    env={},
+                )
+
+            self.assertEqual(0, completed.returncode)
+            self.assertIn("33x101", completed.stdout)
+
     def test_run_agent_command_writes_normalized_transcript_sidecar(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

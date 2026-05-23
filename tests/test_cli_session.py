@@ -4,11 +4,13 @@ from contextlib import chdir, redirect_stderr, redirect_stdout
 import io
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from ait import cli
@@ -680,6 +682,43 @@ class CliSessionTests(unittest.TestCase):
             self.assertIn("[fake:one]", replay["text"])
             self.assertIn("[fake:two]", replay["text"])
             self.assertEqual("", _git_stdout(repo, "status", "--short"))
+
+    def test_foreground_attach_sets_child_window_size(self) -> None:
+        code = (
+            "import fcntl, struct, sys, termios; "
+            "rows, cols, _, _ = struct.unpack("
+            "'HHHH', fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, b'\\0' * 8)"
+            "); "
+            "print(f'WIN={rows}x{cols}', flush=True)"
+        )
+        command = f"{sys.executable} -c {shlex.quote(code)}"
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            _init_git_repo(repo)
+            _run_cli_json(
+                repo,
+                "session",
+                "start",
+                "Terminal size",
+                "--agents",
+                "local",
+                "--agent-command",
+                f"local={command}",
+                "--format",
+                "json",
+            )
+            _run_cli_json(repo, "session", "ask", "latest", "Report terminal size", "--format", "json")
+
+            with patch(
+                "ait.session_terminal.current_pty_window_size",
+                return_value=SimpleNamespace(rows=32, cols=120),
+            ):
+                _run_cli_text(repo, "session", "attach", "latest")
+
+            panes = _run_cli_json(repo, "session", "panes", "latest", "--format", "json")
+            raw_ref = panes["panes"][0]["provenance_refs"]["raw_trace_ref"]
+            raw_text = (repo / raw_ref).read_text(encoding="utf-8")
+            self.assertIn("WIN=32x120", raw_text)
 
     def test_terminal_replay_and_export_redact_secrets_and_strip_escape_sequences(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
