@@ -8,8 +8,8 @@ authors:
 repository-code: "https://github.com/m24927605/ait"
 url: "https://m24927605.github.io/ait/"
 license: MIT
-version: 1.0.2
-date-released: 2026-05-22
+version: 1.0.3
+date-released: 2026-05-23
 keywords:
   - "ai-coding"
   - "claude-code"

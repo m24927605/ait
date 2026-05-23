@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.0.3 - 2026-05-23
+
+### Changed
+
+- Bump the Python and npm package versions to `1.0.3`.
+
 ## 1.0.2 - 2026-05-22
 
 ### Changed

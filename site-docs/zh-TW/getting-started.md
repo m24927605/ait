@@ -41,7 +41,7 @@ ait --version
 固定 GitHub tag：
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v1.0.2"
+pipx install "git+https://github.com/m24927605/ait.git@v1.0.3"
 ```
 
 ## 初始化 repository
