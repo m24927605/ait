@@ -302,7 +302,7 @@ def _resolve_recover_selector(conn, selector: str) -> str:
             attempt
             for attempt in sorted(
                 list_attempts(conn),
-                key=lambda item: _attempt_activity_timestamp(item),
+                key=_attempt_recency_key,
                 reverse=True,
             )
             if attempt.verified_status not in {"discarded", "promoted"}
@@ -314,6 +314,10 @@ def _resolve_recover_selector(conn, selector: str) -> str:
             raise RecoverError("no attempts found")
         return all_attempts[-1].id
     return resolve_attempt_id(conn, selector)
+
+
+def _attempt_recency_key(attempt) -> tuple[str, str]:
+    return (_attempt_activity_timestamp(attempt), attempt.id.rsplit(":", 1)[-1])
 
 
 def _attempt_activity_timestamp(attempt) -> str:

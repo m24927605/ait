@@ -12,6 +12,7 @@ from unittest.mock import patch
 from ait import cli
 from ait.app import create_attempt, create_commit_for_attempt, create_intent
 from ait.cleanup import CleanupPolicy, cleanup_repo
+from ait.db import connect_db, list_attempts
 from ait.integration import classify_paths, create_integration_attempt, dirty_snapshot
 from ait.workspace_lease import read_workspace_lease
 
@@ -198,6 +199,7 @@ class IntegrationTests(unittest.TestCase):
                 with patch("sys.argv", ["ait", "recover", "latest", "--create-integration", "--debug"]):
                     with redirect_stdout(debug):
                         self.assertEqual(0, cli.main())
+                _force_same_attempt_activity_timestamp(repo)
                 with patch("sys.argv", ["ait", "recover", "latest", "--format", "json", "--debug"]):
                     with redirect_stdout(json_out):
                         self.assertEqual(0, cli.main())
@@ -257,6 +259,25 @@ def _root_fingerprint(repo_root: Path) -> dict[str, str]:
         "head": _git_stdout(repo_root, "rev-parse", "--verify", "HEAD"),
         "status": _git_stdout(repo_root, "status", "--short"),
     }
+
+
+def _force_same_attempt_activity_timestamp(repo_root: Path) -> None:
+    timestamp = "2024-01-01T00:00:00Z"
+    conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+    try:
+        attempts = list_attempts(conn)
+        for attempt in attempts:
+            conn.execute(
+                """
+                UPDATE attempts
+                SET started_at = ?, ended_at = ?, heartbeat_at = ?
+                WHERE id = ?
+                """,
+                (timestamp, timestamp, timestamp, attempt.id),
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _git(repo_root: Path, *args: str) -> None:
