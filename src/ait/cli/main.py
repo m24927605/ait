@@ -38,6 +38,7 @@ from . import (
 
 _HANDLERS = {
     "adapter": adapter.handle,
+    "agent-continue": continue_cmd.handle,
     "apply": apply.handle,
     "attempt": attempt.handle,
     "bootstrap": init.handle,

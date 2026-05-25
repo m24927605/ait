@@ -170,6 +170,39 @@ def _adapter_wrapper_script(adapter: AgentAdapter, real_binary: str) -> str:
         'if ait_wrapper_should_passthrough "$@"; then\n'
         '  exec "$AIT_WRAPPER_REAL_BINARY" "$@"\n'
         "fi\n"
+        'ait_wrapper_should_agent_continue() {\n'
+        '  case "${AIT_CONTINUE_ON_AGENT:-1}" in\n'
+        "    0|false|off|no)\n"
+        "      return 1\n"
+        "      ;;\n"
+        "  esac\n"
+        '  if [ -n "${AIT_RESUME_ATTEMPT_ID:-}" ] || [ -n "${AIT_AGENT_CONTINUE_ACTIVE:-}" ]; then\n'
+        "    return 1\n"
+        "  fi\n"
+        '  if [ "${AIT_CONTINUE_ON_AGENT:-1}" != "force" ] && { [ ! -t 0 ] || [ ! -t 1 ]; }; then\n'
+        "    return 1\n"
+        "  fi\n"
+        '  if [ "$#" -eq 0 ]; then\n'
+        "    return 0\n"
+        "  fi\n"
+        '  case "${AIT_WRAPPER_ADAPTER}:${1:-}" in\n'
+        "    claude-code:--continue|codex:resume)\n"
+        "      return 0\n"
+        "      ;;\n"
+        "  esac\n"
+        "  return 1\n"
+        "}\n"
+        'if ait_wrapper_should_agent_continue "$@"; then\n'
+        "  AIT_AGENT_CONTINUE_ACTIVE=1\n"
+        "  export AIT_AGENT_CONTINUE_ACTIVE\n"
+        "  set +e\n"
+        '  "$AIT_WRAPPER_AIT_COMMAND" agent-continue --adapter "$AIT_WRAPPER_ADAPTER" --real-binary "$AIT_WRAPPER_REAL_BINARY" -- "$@"\n'
+        "  ait_wrapper_continue_status=$?\n"
+        "  set -e\n"
+        "  if [ \"$ait_wrapper_continue_status\" -ne 75 ]; then\n"
+        "    exit \"$ait_wrapper_continue_status\"\n"
+        "  fi\n"
+        "fi\n"
         f': "${{AIT_INTENT:={intent}}}"\n'
         f': "${{AIT_COMMIT_MESSAGE:={commit_message}}}"\n'
         'if [ -t 0 ] && [ -t 1 ]; then\n'

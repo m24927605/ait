@@ -27,6 +27,11 @@
 - 已安裝 shell integration 時，新 terminal session 載入 shell hook 會自動提示最近的
   recoverable AIT work：`AIT: interrupted attempt ... is recoverable. Run: ait continue`。
   可用 `AIT_CONTINUE_REMINDER=0` 關閉提醒。
+- 已安裝 agent wrapper 時，使用者重新開 terminal 後直接輸入 bare agent command，例如
+  `codex` 或 `claude`，wrapper 會先嘗試接回最近的 active/failed/conflict AIT attempt
+  worktree，並在該 worktree 內啟動真實 agent CLI。若找不到可安全續接的 attempt，或使用者
+  帶了新任務參數，例如 `claude -p ...`、`codex exec ...`，就維持原本 `ait run` 新建
+  attempt 的行為。
 - 若目前目錄不是 Git repo，或目前 repo 沒有可恢復目標，`latest` 會讀取本機 recent
   activity ledger，嘗試回到最近的 AIT repo/session/attempt。
 - 找不到可恢復目標：印出原因與限制。
@@ -76,6 +81,14 @@ Target types：
 ## Agent Resume Hint
 
 AIT 只能保證恢復 AIT 自己管理的 session metadata 與 attempt worktree，不能保證 agent CLI 的原生 conversation 還存在。
+
+Wrapper auto-continue 是低干擾路徑，不是強制攔截所有 agent 命令：
+
+- 只在 stdin/stdout 都是 TTY 時預設啟用；測試或進階情境可用 `AIT_CONTINUE_ON_AGENT=force`。
+- `AIT_CONTINUE_ON_AGENT=0` 可關閉。
+- 已在 `AIT_RESUME_ATTEMPT_ID` 或 `AIT_AGENT_CONTINUE_ACTIVE` 環境中時不重入。
+- 只自動處理 bare command 或明確 resume command，例如 `claude --continue`、`codex resume ...`。
+- 帶新任務參數的命令會新建 attempt，避免把新任務塞進舊 worktree。
 
 目前 hint 策略：
 

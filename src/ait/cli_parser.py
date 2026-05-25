@@ -334,6 +334,11 @@ def build_parser() -> argparse.ArgumentParser:
     continue_parser.add_argument("--shell-hook", action="store_true", help=argparse.SUPPRESS)
     continue_parser.add_argument("--shell-reminder", action="store_true", help=argparse.SUPPRESS)
 
+    agent_continue_parser = subparsers.add_parser("agent-continue", help=argparse.SUPPRESS)
+    agent_continue_parser.add_argument("--adapter", required=True)
+    agent_continue_parser.add_argument("--real-binary", required=True)
+    agent_continue_parser.add_argument("agent_args", nargs=argparse.REMAINDER)
+
     review_parser = subparsers.add_parser("review", help="review an AIT attempt before apply")
     review_parser.add_argument("--format", choices=("text", "json", "markdown"), default="text")
     review_parser.add_argument("--json", action="store_true", help="alias for --format json")

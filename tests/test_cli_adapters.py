@@ -12,11 +12,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 from ait import cli
+from ait.app import create_attempt, create_intent, init_repo
 from ait.adapters import setup_adapter
 from ait.db import (
     connect_db,
     insert_attempt,
     insert_intent,
+    list_attempts,
     insert_memory_retrieval_event,
     run_migrations,
     upsert_memory_fact,
@@ -529,6 +531,120 @@ class CliAdapterTests(unittest.TestCase):
                     sources = {note.source for note in notes}
                     self.assertNotIn("agent-memory:codex:AGENTS.md", sources)
                     self.assertTrue(any(source.startswith("attempt-memory:") for source in sources))
+
+    def test_path_codex_no_args_continues_latest_active_attempt_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            _git_commit_initial(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_codex = bin_dir / "codex"
+            real_codex.write_text(
+                "#!/bin/sh\n"
+                "printf 'continued by wrapper\\n' > wrapper-continued.txt\n",
+                encoding="utf-8",
+            )
+            real_codex.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "init", "--adapter", "codex", "--format", "json"]):
+                        with redirect_stdout(io.StringIO()):
+                            init_exit_code = cli.main()
+                    intent = create_intent(repo_root, title="Interrupted", description=None, kind="demo")
+                    attempt = create_attempt(repo_root, intent_id=intent.intent_id, agent_id="codex:worker")
+                    env = {
+                        **os.environ,
+                        "AIT_CONTINUE_ON_AGENT": "force",
+                        "PATH": (
+                            str(repo_root / ".ait" / "bin")
+                            + os.pathsep
+                            + str(bin_dir)
+                            + os.pathsep
+                            + old_path
+                        ),
+                        "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
+                    }
+                    completed = subprocess.run(
+                        ["codex"],
+                        cwd=repo_root,
+                        env=env,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+                    init_result = init_repo(repo_root)
+                    conn = connect_db(init_result.db_path)
+                    try:
+                        attempts = list_attempts(conn)
+                    finally:
+                        conn.close()
+            finally:
+                os.environ["PATH"] = old_path
+
+            self.assertEqual(0, init_exit_code)
+            self.assertEqual(0, completed.returncode)
+            self.assertIn("AIT: continuing interrupted attempt", completed.stderr)
+            self.assertTrue(Path(attempt.workspace_ref, "wrapper-continued.txt").exists())
+            self.assertEqual(1, len(attempts))
+
+    def test_path_codex_with_prompt_args_starts_new_attempt_instead_of_continuing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            _git_commit_initial(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_codex = bin_dir / "codex"
+            real_codex.write_text(
+                "#!/bin/sh\n"
+                "printf 'real codex reached\\n'\n"
+                "printf 'new run\\n' > wrapper-new-run.txt\n",
+                encoding="utf-8",
+            )
+            real_codex.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "init", "--adapter", "codex", "--format", "json"]):
+                        with redirect_stdout(io.StringIO()):
+                            cli.main()
+                    intent = create_intent(repo_root, title="Interrupted", description=None, kind="demo")
+                    attempt = create_attempt(repo_root, intent_id=intent.intent_id, agent_id="codex:worker")
+                    env = {
+                        **os.environ,
+                        "AIT_CONTINUE_ON_AGENT": "force",
+                        "PATH": (
+                            str(repo_root / ".ait" / "bin")
+                            + os.pathsep
+                            + str(bin_dir)
+                            + os.pathsep
+                            + old_path
+                        ),
+                        "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
+                    }
+                    completed = subprocess.run(
+                        ["codex", "--fake-prompt"],
+                        cwd=repo_root,
+                        env=env,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+            finally:
+                os.environ["PATH"] = old_path
+
+            payload = json.loads(completed.stdout)
+
+            self.assertEqual(0, completed.returncode)
+            self.assertNotEqual(attempt.workspace_ref, payload["workspace_ref"])
+            self.assertFalse(Path(attempt.workspace_ref, "wrapper-new-run.txt").exists())
+            self.assertTrue(Path(payload["workspace_ref"], "wrapper-new-run.txt").exists())
 
     def test_init_shell_outputs_eval_safe_snippet(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

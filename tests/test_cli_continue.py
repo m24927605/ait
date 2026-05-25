@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from ait import cli
-from ait.app import create_attempt, create_intent, init_repo
+from ait.app import create_attempt, create_commit_for_attempt, create_intent, init_repo
 from ait.db import connect_db, update_attempt
 
 
@@ -200,6 +200,170 @@ class CliContinueTests(unittest.TestCase):
         self.assertEqual("attempt_resume", plan["target_type"])
         self.assertEqual(older.workspace_ref, plan["resume"]["workspace_ref"])
         self.assertNotEqual(newer.workspace_ref, plan["resume"]["workspace_ref"])
+
+    def test_agent_continue_launches_real_agent_in_latest_attempt_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            _init_git_repo(repo)
+            _git(repo, "config", "user.email", "test@example.com")
+            _git(repo, "config", "user.name", "Test User")
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_codex = bin_dir / "codex"
+            real_codex.write_text(
+                "#!/bin/sh\n"
+                "printf 'continued in %s\\n' \"$PWD\"\n"
+                "printf 'continued\\n' > continued.txt\n",
+                encoding="utf-8",
+            )
+            real_codex.chmod(0o755)
+            intent = create_intent(repo, title="Interrupted", description=None, kind="demo")
+            attempt = create_attempt(repo, intent_id=intent.intent_id, agent_id="codex:worker")
+
+            with chdir(repo):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "agent-continue",
+                        "--adapter",
+                        "codex",
+                        "--real-binary",
+                        str(real_codex),
+                    ],
+                ):
+                    exit_code = cli.main()
+
+            self.assertEqual(0, exit_code)
+            self.assertTrue(Path(attempt.workspace_ref, "continued.txt").exists())
+            self.assertEqual(
+                "codex: continue interrupted work",
+                _git(attempt.workspace_ref, "log", "-1", "--format=%s"),
+            )
+
+    def test_agent_continue_returns_no_target_for_ready_to_apply_attempt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            _init_git_repo(repo)
+            _git(repo, "config", "user.email", "test@example.com")
+            _git(repo, "config", "user.name", "Test User")
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_codex = bin_dir / "codex"
+            real_codex.write_text("#!/bin/sh\nprintf 'should not run\\n'\n", encoding="utf-8")
+            real_codex.chmod(0o755)
+            intent = create_intent(repo, title="Ready", description=None, kind="demo")
+            attempt = create_attempt(repo, intent_id=intent.intent_id, agent_id="codex:worker")
+            Path(attempt.workspace_ref, "ready.txt").write_text("ready\n", encoding="utf-8")
+            _git(attempt.workspace_ref, "add", "-A")
+            create_commit_for_attempt(repo, attempt_id=attempt.attempt_id, message="ready")
+            init_result = init_repo(repo)
+            conn = connect_db(init_result.db_path)
+            try:
+                update_attempt(
+                    conn,
+                    attempt.attempt_id,
+                    reported_status="finished",
+                    verified_status="succeeded",
+                )
+            finally:
+                conn.close()
+
+            with chdir(repo):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "agent-continue",
+                        "--adapter",
+                        "codex",
+                        "--real-binary",
+                        str(real_codex),
+                    ],
+                ):
+                    exit_code = cli.main()
+
+        self.assertEqual(75, exit_code)
+
+    def test_agent_continue_does_not_use_native_resume_for_cross_agent_handoff(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            _init_git_repo(repo)
+            _git(repo, "config", "user.email", "test@example.com")
+            _git(repo, "config", "user.name", "Test User")
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text(
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$*\" > claude-args.txt\n",
+                encoding="utf-8",
+            )
+            real_claude.chmod(0o755)
+            intent = create_intent(repo, title="Interrupted", description=None, kind="demo")
+            attempt = create_attempt(repo, intent_id=intent.intent_id, agent_id="codex:worker")
+
+            with chdir(repo):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "agent-continue",
+                        "--adapter",
+                        "claude-code",
+                        "--real-binary",
+                        str(real_claude),
+                    ],
+                ):
+                    exit_code = cli.main()
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual(
+                "\n",
+                Path(attempt.workspace_ref, "claude-args.txt").read_text(encoding="utf-8"),
+            )
+
+    def test_agent_continue_uses_native_claude_resume_for_claude_attempt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            _init_git_repo(repo)
+            _git(repo, "config", "user.email", "test@example.com")
+            _git(repo, "config", "user.name", "Test User")
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_claude = bin_dir / "claude"
+            real_claude.write_text(
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$*\" > claude-args.txt\n",
+                encoding="utf-8",
+            )
+            real_claude.chmod(0o755)
+            intent = create_intent(repo, title="Interrupted", description=None, kind="demo")
+            attempt = create_attempt(repo, intent_id=intent.intent_id, agent_id="claude-code:worker")
+
+            with chdir(repo):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "agent-continue",
+                        "--adapter",
+                        "claude-code",
+                        "--real-binary",
+                        str(real_claude),
+                    ],
+                ):
+                    exit_code = cli.main()
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual(
+                "--continue\n",
+                Path(attempt.workspace_ref, "claude-args.txt").read_text(encoding="utf-8"),
+            )
 
 
 def _run_cli_json(repo: Path, *argv: str) -> dict[str, object]:

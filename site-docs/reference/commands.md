@@ -62,6 +62,10 @@ ait merge --to main --push --json
 conflicted results.
 `ait resume latest` opens a shell inside the recoverable attempt workspace so
 you can continue interrupted work without manually copying workspace paths.
+With agent wrappers installed, a bare interactive agent command such as
+`codex` or `claude` first tries to continue the latest active recoverable AIT
+worktree. Commands that include a new task, such as `claude -p ...` or
+`codex exec ...`, still start a fresh AIT attempt.
 
 ## Agent-first control plane
 
@@ -313,3 +317,8 @@ ait shell show --shell zsh
 ait shell install --shell zsh
 ait shell uninstall --shell zsh
 ```
+
+The shell hook shows a one-time `ait continue` reminder when interrupted work
+is recoverable. Agent-wrapper continuation can be disabled with
+`AIT_CONTINUE_ON_AGENT=0`; the reminder can be disabled with
+`AIT_CONTINUE_REMINDER=0`.

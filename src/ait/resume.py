@@ -100,6 +100,11 @@ def resume_shell_script(result: ResumeResult) -> str:
     return "\n".join(lines) + "\n"
 
 
+def resume_env(result: ResumeResult) -> dict[str, str]:
+    """Return an environment suitable for continuing inside an attempt workspace."""
+    return _resume_env(result)
+
+
 def _resume_env(result: ResumeResult) -> dict[str, str]:
     env = dict(os.environ)
     env["AIT_RESUME_ATTEMPT_ID"] = result.attempt_id
