@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## 1.2.0 - 2026-05-26
+
+### Added
+
+- Add low-interruption wrapper auto-continue for bare interactive agent
+  commands: after a terminal restart, `codex` or `claude` can resume the latest
+  active recoverable AIT attempt worktree without requiring a manual `cd`.
+- Add the hidden `ait agent-continue` wrapper path that launches the real agent
+  inside the recovered workspace, updates attempt/lease state, and auto-commits
+  successful continuation edits.
+- Add safeguards so commands with new task arguments, ready-to-apply attempts,
+  nested resume environments, and cross-agent handoffs do not receive
+  inappropriate native resume arguments.
+
+### Changed
+
+- Document wrapper auto-continue behavior and opt-outs:
+  `AIT_CONTINUE_ON_AGENT=0` disables agent-wrapper continuation, while
+  `AIT_CONTINUE_REMINDER=0` disables the shell reminder.
+- Bump the Python and npm package versions to `1.2.0`.
+
 ## 1.1.1 - 2026-05-25
 
 ### Changed

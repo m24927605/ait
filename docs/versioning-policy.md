@@ -58,10 +58,9 @@ Within the `1.x` line:
   `MINOR`.
 - If a release contains any breaking change, bump `MAJOR`.
 
-For the current `ait continue` recovery UX work, the correct next release is
-`1.1.0`: it adds shell-level auto-cd, startup reminders, and cross-terminal
-recent activity recovery. Those are backward-compatible but user-visible
-capabilities.
+For wrapper-level agent auto-continue work, the correct release level is
+`MINOR`: it adds a backward-compatible, user-visible recovery workflow for
+bare interactive agent commands.
 
 ## Git Tags
 
