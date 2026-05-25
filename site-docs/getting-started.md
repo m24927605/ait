@@ -1,166 +1,54 @@
 ---
-title: Getting started with ait — the 5-minute path
+title: Getting started with ait
 description: >-
-  Install ait, initialize it in a Git repo, run one agent, inspect the
-  attempt, and apply the result. End to end in under five minutes.
+  Install ait, try the demo, initialize a repo, run one agent, inspect the
+  attempt, and apply or recover the result.
 ---
 
 # Getting started
 
-AIT is alpha. Single machine, `.ait/` stays local, expect rough edges.
+`ait` is alpha, local-first software. Metadata stays in `.ait/` on your machine.
 
-One linear path. Five minutes to read and run. Install, init, run one agent,
-inspect the attempt, apply.
+This page gives you one simple path: try the demo, initialize a repo, run one
+agent, inspect the attempt, then apply or recover.
 
-## 1. Install (30 seconds)
+## 1. Try the demo
+
+No API keys. No existing repo. No real agent required.
+
+```bash
+pipx install ait-vcs
+ait demo
+```
+
+The demo creates a temporary repo, records a few attempts, and shows a review
+gate blocking a risky change. Everything is local.
+
+Clean up demo directories:
+
+```bash
+ait demo --clean
+```
+
+## 2. Install for daily use
+
+Recommended:
 
 ```bash
 pipx install ait-vcs
 ait --version
 ```
 
-Expected:
+The package is `ait-vcs`. The command is `ait`. Requirements: Python 3.14+ and
+Git.
 
-```text
-ait 1.1.0
-```
-
-The package on PyPI and npm is `ait-vcs`. The installed command is `ait`.
-Requires Python 3.14+ and Git. On older Python, use
-`pipx install --python python3.14 ait-vcs`.
-
-## 2. Initialize the repo (30 seconds)
+If your default Python is older:
 
 ```bash
-cd your-repo
-ait init
+pipx install --python python3.14 ait-vcs
 ```
 
-Expected (trimmed):
-
-```text
-AIT initialized
-Agent wrappers: aider, claude, codex
-Next:
-- exec $SHELL  # picks up .ait/bin via the installed shell hook
-- then run claude ...
-Details:
-Git baseline: created initial commit
-Repo: /path/to/your-repo
-State: /path/to/your-repo/.ait
-Shell hook: already installed for zsh
-Memory policy: created
-```
-
-`ait init` creates `.ait/` next to `.git/`. It installs wrappers for every
-agent CLI it finds on PATH.
-
-Reload your shell so the `ait` wrapper takes effect:
-
-```bash
-exec $SHELL
-```
-
-## 3. Run one agent (2 minutes)
-
-Use Claude Code. AIT detects it and records an attempt:
-
-```bash
-claude -p --permission-mode bypassPermissions "Add a TODO comment to README.md saying we tried ait"
-```
-
-Nothing in this command is AIT-specific. The wrapper routes through `ait run
---adapter claude-code` (`src/ait/cli/run.py`). Your root checkout does not
-move while the agent works — edits land in an isolated Git worktree.
-
-## 4. Inspect what happened (1 minute)
-
-```bash
-ait status
-```
-
-Expected (trimmed):
-
-```text
-AIT install:
-- version: 1.1.0
-Daemon: stopped              # or: running (socket_connectable=True, pid_matches=True)
-AIT health: pass
-Memory initialized: True
-Latest result: <attempt-id>  ok
-```
-
-The `Latest result` line shows the attempt id. To list and inspect the full
-attempt — prompt, output, changed files, commits — pass it explicitly:
-
-```bash
-ait attempt list
-ait attempt show <attempt-id>
-```
-
-## 5. Apply (or recover) (30 seconds)
-
-If the diff is good:
-
-```bash
-ait apply latest
-```
-
-If not, recover the working state instead:
-
-```bash
-ait recover latest
-```
-
-Both `ait apply` and `ait recover` special-case the literal `latest`. Other
-attempt subcommands take a full or partial attempt id.
-
-Until you call `ait apply`, the agent's work is a proposal, not a fact. Your
-root checkout never moves on its own.
-
-That is the five-minute path. You wrapped one agent, recorded one attempt,
-applied one diff.
-
----
-
-## Next steps
-
-### Hand work to a second agent
-
-Run Claude, then Codex, on the same repo. Codex receives Claude's
-decisions through the handoff file. See
-[`examples/pain-point-demos/07-cross-agent-handoff/`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/07-cross-agent-handoff).
-
-### Run a separate reviewer agent
-
-Run a different agent against the attempt's diff before apply:
-
-```bash
-ait review attempt latest-reviewable --mode adversarial --review-adapter claude-code
-ait review finding list --severity high
-```
-
-High-severity findings hold `ait apply`. See
-[Adversarial code review](reference/adversarial-code-review.md).
-
-### Search prior decisions
-
-```bash
-ait memory recall "retry budget"
-```
-
-`ait memory recall <query>` searches prior attempts, accepted facts, and
-notes. It is a zero-touch read — it does not mutate `.ait/` or your source.
-
-### Use other agent CLIs
-
-- [Codex CLI](integrations/codex.md)
-- [Aider](integrations/aider.md)
-- [Gemini CLI](integrations/gemini.md)
-- [Cursor](integrations/cursor.md)
-- [Any shell agent](integrations/shell.md)
-
-### Other install paths
+Other install paths:
 
 ```bash
 # virtualenv
@@ -174,13 +62,96 @@ npm install -g ait-vcs
 pipx install "git+https://github.com/m24927605/ait.git@v1.1.0"
 ```
 
-### Check that the wrapper is on PATH
+## 3. Initialize a repo
+
+Run this inside a project:
+
+```bash
+cd your-repo
+ait init
+```
+
+`ait init` creates `.ait/` next to `.git/` and installs repo-local wrappers for
+supported agent CLIs it can find.
+
+If prompted, allow the shell integration:
+
+```bash
+direnv allow
+```
+
+Check that your agent command will go through `ait`:
 
 ```bash
 ait status claude-code
+ait status codex
+ait status --all
 ```
 
-`Bypass detection: wrapped` means the agent will go through AIT.
-`Bypass detection: bypass_risk` means PATH still resolves to the real
-binary; run `eval "$(ait init --shell)"` or `direnv allow`, then check
-again.
+`wrapped` means the command resolves to the repo-local `ait` wrapper.
+`bypass_risk` means your shell still resolves to the real agent binary, so `ait`
+will not capture that run. Run `direnv allow`, reload your shell, or use
+`ait repair`, then check again.
+
+## 4. Run one agent
+
+Use the agent normally:
+
+```bash
+claude -p "Add a short note to README.md saying we tried ait"
+```
+
+The wrapped run is recorded as an isolated attempt. The root checkout should not
+change until you apply the result.
+
+## 5. Inspect the attempt
+
+```bash
+ait status
+ait attempt list
+ait attempt show <attempt-id>
+```
+
+`ait attempt show` gives you the prompt, changed files, output, commits, and
+review state for that attempt.
+
+## 6. Apply or recover
+
+If the result is good:
+
+```bash
+ait apply latest
+```
+
+If the run failed, was interrupted, or needs manual inspection:
+
+```bash
+ait recover latest
+ait resume latest
+```
+
+Until `ait apply`, the agent's work is a proposal, not a fact.
+
+## Next workflows
+
+Run a separate reviewer agent:
+
+```bash
+ait review attempt latest-reviewable --mode adversarial --review-adapter claude-code
+ait review finding list --severity high
+```
+
+Search prior decisions:
+
+```bash
+ait memory recall "retry budget"
+```
+
+Use another agent:
+
+- [Claude Code](integrations/claude-code.md)
+- [Codex CLI](integrations/codex.md)
+- [Aider](integrations/aider.md)
+- [Gemini CLI](integrations/gemini.md)
+- [Cursor](integrations/cursor.md)
+- [Any shell agent](integrations/shell.md)

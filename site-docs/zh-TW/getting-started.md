@@ -1,63 +1,85 @@
 ---
 title: 開始使用 ait
 description: >-
-  在現有 Git repo 安裝 ait、初始化、第一次跑 AI coding agent，並把
-  整段執行記成 attempt provenance。
+  安裝 ait、試跑 demo、初始化 repo、第一次跑 AI coding agent，然後檢查、
+  apply 或 recover 這筆 attempt。
 ---
 
 # 開始使用
 
-## 系統需求
+`ait` 還是 alpha，而且是 local-first。Metadata 會留在你機器上的 `.ait/`。
 
-- Python 3.14 或更新
-- Git
-- SQLite（Python 標準庫內建）
-- Node.js 18+（只在用 npm 安裝時需要）
+這頁只走一條最短路徑：先跑 demo，再初始化 repo，跑一次 agent，檢查 attempt，
+最後 apply 或 recover。
 
-## 安裝
+## 1. 先跑 demo
 
-建議（pipx）：
+不用 API key。不需要現有 repo。也不會真的呼叫 agent。
+
+```bash
+pipx install ait-vcs
+ait demo
+```
+
+Demo 會建立暫存 repo，記錄幾筆 attempts，並示範 review gate 擋下一個高風險
+修改。所有東西都在本機。
+
+清掉 demo 目錄：
+
+```bash
+ait demo --clean
+```
+
+## 2. 安裝成日常指令
+
+建議使用 pipx：
 
 ```bash
 pipx install ait-vcs
 ait --version
 ```
 
-虛擬環境：
+套件名稱是 `ait-vcs`，指令是 `ait`。需求：Python 3.14+ 與 Git。
+
+如果系統預設 Python 太舊：
 
 ```bash
+pipx install --python python3.14 ait-vcs
+```
+
+其他安裝方式：
+
+```bash
+# virtualenv
 python3.14 -m venv .venv
 .venv/bin/pip install ait-vcs
-.venv/bin/ait --help
-```
 
-npm wrapper：
-
-```bash
+# npm wrapper
 npm install -g ait-vcs
-ait --version
-```
 
-固定 GitHub tag：
-
-```bash
+# 固定 GitHub tag
 pipx install "git+https://github.com/m24927605/ait.git@v1.1.0"
 ```
 
-## 初始化 repository
+## 3. 初始化 repo
 
-任何 Git repository 內：
+在專案裡執行：
 
 ```bash
 cd your-repo
 ait init
-direnv allow   # 只在被提示時才需要
 ```
 
-`ait init` 會在 `.git/` 旁建立 `.ait/` 目錄。所有 AI metadata 都留在這
-資料夾，不會跨機器同步。
+`ait init` 會在 `.git/` 旁建立 `.ait/`，並替找到的 agent CLI 安裝 repo-local
+wrapper。
 
-檢查目前 shell 會不會真的把 agent 指令導進 AIT：
+如果被提示，允許 shell integration：
+
+```bash
+direnv allow
+```
+
+確認 agent 指令會經過 `ait`：
 
 ```bash
 ait status claude-code
@@ -65,63 +87,69 @@ ait status codex
 ait status --all
 ```
 
-`Bypass detection: wrapped` 代表指令會解析到 repo-local AIT wrapper。
-`Bypass detection: bypass_risk` 代表指令會直接解析到真正的 agent binary，
-等於繞過 AIT，prompt 與失敗 evidence 都不會被捕捉。重新啟用 shell
-integration、執行 `direnv allow` 或 `ait repair`，再檢查一次 status。
+`wrapped` 代表指令會解析到 repo-local `ait` wrapper。`bypass_risk` 代表目前
+shell 還是會直接呼叫真正的 agent binary，所以 `ait` 抓不到這次 run。這時請
+執行 `direnv allow`、重開 shell，或跑 `ait repair`，再檢查一次。
 
-## 第一次跑包裝過的 agent
+## 4. 跑一次 agent
 
-任何支援的 agent CLI。`ait` 會偵測並記錄一筆 attempt：
+照常使用 agent：
 
 ```bash
-claude -p --permission-mode bypassPermissions "重構 auth 模組"
+claude -p "Add a short note to README.md saying we tried ait"
 ```
 
-檢查發生了什麼：
+被包住的 run 會被記成隔離 attempt。在你 apply 之前，root checkout 不應該被
+改動。
+
+## 5. 檢查 attempt
 
 ```bash
 ait status
+ait attempt list
+ait attempt show <attempt-id>
 ```
 
-確認後 apply：
+`ait attempt show` 會顯示這筆 attempt 的 prompt、改過的檔案、output、commit
+與 review state。
+
+## 6. Apply 或 recover
+
+如果結果可以接受：
 
 ```bash
 ait apply latest
 ```
 
-Apply 之前 root checkout 完全不變。若 run 失敗或無法安全套用，使用
-`ait recover latest`。如果 agent session 被關掉、你想回到保留的 worktree
-續修，使用 `ait resume latest`。
-
-## 即時讀取既有 agent memory
-
-既有專案如果已經有 agent memory files，先確認 AIT 可以 zero-touch 讀到什麼：
+如果 run 失敗、中斷，或你想手動檢查：
 
 ```bash
-ait memory sources
-ait memory recall "project policy"
+ait recover latest
+ait resume latest
 ```
 
-若要預覽舊的 materialization path，再執行：
-
-```bash
-ait memory backfill --dry-run
-```
-
-Dry-run 不會寫入任何東西。若要明確把 repo-local advisory memory 寫進
-`.ait/`，再執行：
-
-```bash
-ait memory backfill --import
-```
-
-`backfill --import` 是 mutation/deprecated path，live recall 不需要 import。
-Global 或 repo 外部 memory 會被忽略，除非你明確指定 `--global --path ...`。
+在 `ait apply` 之前，agent 的工作只是提案，不是事實。
 
 ## 接下來
 
-- [安全地跑 Claude Code](integrations/claude-code.md)
-- [安全地跑 Codex CLI](integrations/codex.md)
-- [跑 Aider 帶 provenance](integrations/aider.md)
-- [指令參考](reference/commands.md)
+讓另一個 agent 審查：
+
+```bash
+ait review attempt latest-reviewable --mode adversarial --review-adapter claude-code
+ait review finding list --severity high
+```
+
+找回以前的決定：
+
+```bash
+ait memory recall "retry budget"
+```
+
+使用其他 agent：
+
+- [Claude Code](integrations/claude-code.md)
+- [Codex CLI](integrations/codex.md)
+- [Aider](integrations/aider.md)
+- [Gemini CLI](integrations/gemini.md)
+- [Cursor](integrations/cursor.md)
+- [任意 shell agent](integrations/shell.md)

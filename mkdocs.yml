@@ -1,11 +1,10 @@
-site_name: ait — Local control plane for AI coding agents
+site_name: ait — Local attempt ledger for AI coding agents
 site_url: https://m24927605.github.io/ait/
 site_description: >-
-  ait is a local control plane and Git-native attempt ledger for Claude Code,
-  Codex CLI, Aider, Gemini CLI, and Cursor: repo-local memory, cross-agent
-  handoff, adversarial review, and reviewable attempts with explicit
-  apply/recover on top of Git. Open source (MIT), Python 3.14+,
-  dependency-free, no SaaS, no telemetry.
+  ait is a local attempt ledger for Claude Code, Codex CLI, Aider, Gemini CLI,
+  Cursor CLI, and other AI coding agents. It records prompts, diffs, reviews,
+  and decisions under .ait/ so another agent can review, continue, or recover
+  the work later. Open source (MIT), Python 3.14+, no SaaS, no telemetry.
 site_author: sin-chengchen
 repo_url: https://github.com/m24927605/ait
 repo_name: m24927605/ait
@@ -28,20 +27,9 @@ theme:
     - content.code.copy
     - content.action.edit
   palette:
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      primary: black
-      accent: indigo
-      toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      primary: black
-      accent: indigo
-      toggle:
-        icon: material/brightness-4
-        name: Switch to light mode
+    scheme: slate
+    primary: black
+    accent: deep orange
   icon:
     repo: fontawesome/brands/github
 
@@ -59,7 +47,7 @@ plugins:
         - locale: zh-TW
           name: 繁體中文
           build: true
-          site_name: ait — AI coding agents 的本機 control plane
+          site_name: ait — AI coding agents 的本機 attempt ledger
           nav_translations:
             Home: 首頁
             Why ait: 為什麼用 ait
@@ -95,6 +83,9 @@ markdown_extensions:
   - pymdownx.superfences
   - pymdownx.inlinehilite
   - pymdownx.snippets
+
+extra_css:
+  - assets/ait-site.css
 
 extra:
   social:

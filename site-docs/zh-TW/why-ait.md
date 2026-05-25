@@ -1,155 +1,119 @@
 ---
-title: 為什麼用 ait — ait 解決的問題
+title: 為什麼用 ait
 description: >-
-  ait 解決的 10 個 AI coding agent 痛點深入解析：blast radius、provenance、
-  失敗污染、重複調查、平行安全、apply 模糊、agent-to-agent communication、
-  強迫 SaaS、對抗式審查、prompt 搜尋。
+  用白話說明 ait 存在的原因：AI coding agent 需要本機 attempts、明確 apply、
+  跨 agent 交接、對抗式審查與 memory recall。
 ---
 
 # 為什麼用 ait
 
-AIT 的產品分類是 **AI coding agents 的本機 control plane**。它是包在
-Claude Code、Codex、Aider、Gemini CLI、Cursor 外面的 Git-native attempt
-ledger 與 review gate。
+AI coding agent 很有用，但它做過什麼很容易失去脈絡。
 
-AI coding agent 跑得快，但不同 agents 之間的共同記憶、長期記憶、溝通交接
-與審核紀律通常跟不上。`ait` 讓 agents 透過 repo-local memory 交接資訊：
-prior attempts、accepted facts、notes、review findings 與 live memory files
-會變成下一個 agent 的 handoff context。同一筆 attempt 也可以先被另一個
-reviewer agent 對抗式審查，再由你決定哪些結果可以進 working tree。
-下面是 ait 解決的每個問題的長版本，以及對應的解法。
+`ait` 給已經在用 Claude Code、Codex、Aider、Gemini CLI、Cursor CLI 或類似
+工具的工程師一個本機紀錄：每次 run 都會在 repo 裡留下可審查、可復原的
+attempt。
 
-想看可重跑證據，請看 [痛點 demo](demos/pain-point-demos.md)。
+## 簡短版
 
-## 1. Blast radius 失控
+沒有 `ait` 時，一次 agent run 通常只剩聊天紀錄，以及 working tree 裡被改過的
+東西。
 
-**痛點：** 一句送給 Claude Code 或 Codex 的 prompt 可以改 30 個檔案、
-刪整個目錄、覆蓋你正在手動編輯的內容。撤銷只能 `git stash` + `git
-reset --hard`，常常順手把自己的進行中工作也炸掉。
+有 `ait` 時，一次 agent run 會變成一筆 attempt：
 
-**解法：** 每次執行落在隔離 Git worktree。Root checkout 永遠不動。
-爛 attempt 直接 `ait attempt discard <id>` — 零波及。
+- 你問了什麼
+- agent 改了什麼
+- 另一個 agent 審查時發現什麼
+- 哪些決定之後應該被記住
+- 你有沒有明確 apply
 
-可執行範例：[`01-blast-radius`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/01-blast-radius)
+Attempt 存在 repo 的 `.ait/` 裡。本機、沒有 telemetry、沒有 SaaS。
 
-## 2. Diff 沒有 provenance
+## 問題 1：下一個 agent 從零開始
 
-**痛點：** 三天後你回不答：這段 diff 是哪個 prompt 產的？用了哪些
-context 檔？exit 0 還是 130？Shell history 不夠。
+昨天 Claude 查 bug，找到一個重要限制。今天 Codex 打開同一個 repo，因為有用
+脈絡留在已關閉的 chat 裡，只好重查一次。
 
-**解法：** 每筆 attempt 把 intent、prompt、退出狀態、變更檔案、捕捉
-output、產生的 commits 串成一筆可查的紀錄。`ait attempt show <id>`
-一次拿全。
+有 `ait` 時，下一個被包住的 agent 可以收到一份 handoff，來源包含先前
+attempts、accepted facts、notes，以及 `CLAUDE.md`、`AGENTS.md`、
+`.claude/memory.md`、`.codex/memory.md`、`.cursor/rules` 這類現場 memory 檔。
 
-可執行範例：[`02-provenance`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/02-provenance)
-
-## 3. 失敗的執行污染 working copy
-
-**痛點：** Agent 跑到一半 timeout，留下一堆雜亂 commits、半套修改、
-未追蹤檔案。手動清不乾淨還會混入下次執行。
-
-**解法：** 失敗 attempt 留在自己的 worktree 裡審或 `discard`。主分支
-從頭到尾乾淨。
-
-可執行範例：[`03-failed-run-isolation`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/03-failed-run-isolation)
-
-## 4. 同份調查付兩次錢
-
-**痛點：** 上週 Claude 已經查過 auth retry 為什麼失敗。這週 Codex 又
-從零開始查。一樣的 token 花兩遍。
-
-**解法：** Repo-local memory 把過去 attempts、commits、curated notes、
-accepted facts、review findings，以及即時讀取的 agent memory 檔
-（`CLAUDE.md`、`AGENTS.md`、`.claude/memory.md`、`.codex/memory.md`、
-`.cursor/rules`）組成一份 `AIT_CONTEXT_FILE` 餵給下一次執行。
-
-可執行範例：[`04-memory-reuse`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/04-memory-reuse)
-
-## 5. 平行 agent 互相覆蓋
-
-**痛點：** 想讓 Claude 和 Codex 同時試兩種解法、再挑一個更好的 diff？
-兩個都搶 working copy，互相破壞。
-
-**解法：** 每個 attempt 自帶 worktree。可平行跑 N 個 agent，把 attempts
-並排比較，再 apply 你信的那一個。
-
-可執行範例：[`05-parallel-agents`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/05-parallel-agents)
-
-## 6. Apply 模糊
-
-**痛點：** Agent 說「我修好了」。要不要採用 diff？直接 commit 怕髒，
-事後 revert 又是磨擦。
-
-**解法：** Apply 是顯式步驟：`ait apply latest` 或
-`ait apply <attempt-id> --mode current`。你不呼叫，agent 的工作就只是提案，
-不是事實。
-
-可執行範例：[`06-explicit-promotion`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/06-explicit-promotion)
-
-## 7. Agents 不能互相溝通
-
-**痛點：** Claude 跑了三輪，換 Aider 接手，前面的決策、死路、半套修補
-全都不見。Codex 又重查一次同一個問題，因為有用脈絡困在另一個聊天視窗。
-
-**解法：** Memory layer 在 handoff 當下即時讀 AIT-owned attempt history、
-accepted facts、notes、review findings、`CLAUDE.md`、`AGENTS.md`、
-`.claude/memory.md`、`.codex/memory.md` 與 Cursor rules。下一個 agent
-— 同一個或不同 — 會收到 `AIT_CONTEXT_FILE`，接續 policy 允許的共同 repo
-context，而不是從空白的私有聊天開始。
-
-可執行範例：[`07-cross-agent-handoff`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/07-cross-agent-handoff)
-
-## 8. Provenance 工具強迫你上雲
-
-**痛點：** 多數 agent provenance / observability 工具是 SaaS。需要把
-prompt、diff、原始碼上傳。對很多 repo 而言不可能。
-
-**解法：** 一切活在 `.git/` 旁的 `.ait/` 裡。Harness daemon 純本機 —
-Unix socket、不對外連網。沒 telemetry、沒 SaaS、沒跨機器同步。安全敏感
-的 repo 也能用。
-
-可執行範例：[`08-local-only-provenance`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/08-local-only-provenance)
-
-## 9. 看起來合理的 agent 結果仍然需要被挑戰
-
-**痛點：** Agent 產生的修改看起來可能很合理，但證據不足：沒有測試、檢查
-不完整，或用很有自信的說法掩蓋了邊界條件風險。
-
-**解法：** AIT 可以保留原本 attempt，並另外記錄一份對抗式審查。審查目標
-是一筆 AIT attempt，不是鬆散 diff；審查結果會變成可查詢 evidence。當
-review gate 開啟時，blocked review 可以 hold 住 `ait apply`。
+可以先跑 demo：
 
 ```bash
-ait query --on attempt 'review.mode="adversarial"' --format table
-ait query --on attempt 'review.status="blocked"' --format table
-ait review finding list --severity high --format text
-ait apply <attempt-id> --mode current
+ait demo
 ```
 
-可執行範例：[`09-verification-evidence`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/09-verification-evidence)、[`09-1-codex-reviewer`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/09-1-codex-reviewer)
+也可以看：[痛點 demos](demos/pain-point-demos.md)。
 
-## 10. 找舊 prompt 要 grep shell history
+## 問題 2：實作 agent 審自己的程式
 
-**痛點：** 「上個月寫的那個重構 query parser 的 prompt 在哪？」用 raw
-shell history 答不出來。
+Agent 做完後說測試都過了，這很有用，但不等於獨立審查。同一個模型、同一段
+上下文，很可能在 review 時也漏掉同一種盲點。
 
-**解法：** Attempts、intents、commits 用結構化 DSL 可查。可依 intent 文字、
-狀態、agent、時間範圍、變更檔案等等查。
-
-可執行範例：[`10-prompt-search`](https://github.com/m24927605/ait/tree/main/examples/pain-point-demos/10-prompt-search)
-
-## 那又怎樣
-
-如果上面這 10 個痛點有任何一個對你夠痛，足以讓你忍受多打一條指令
-（`ait init`），那 ait 剩下的部分就只是你原本的 agent workflow 加上
-一條安全帶。
+有 `ait` 時，可以在 apply 前叫另一個 agent 審查 attempt：
 
 ```bash
-pipx install ait-vcs    # 或 npm install -g ait-vcs
-cd your-repo
-ait init
-claude ...              # codex / aider / gemini / cursor 都一樣
+ait review attempt latest-reviewable --mode adversarial --review-adapter claude-code
+ait review finding list --severity high
 ```
 
-接著看 [開始使用](getting-started.md) 並挑你的
-[整合方式](integrations/claude-code.md)。
+這不是正確性保證。它是一道獨立審查，並且把 finding 記下來。
+
+## 問題 3：失敗 run 污染 working tree
+
+Agent 被中斷、timeout，或做出高風險修改。沒有隔離時，你可能會留下很難判斷的
+working tree 狀態。
+
+有 `ait` 時，被包住的 run 會先落在隔離 workspace。Root checkout 不應該被改動，
+直到你決定 apply：
+
+```bash
+ait apply latest
+```
+
+如果結果需要檢查：
+
+```bash
+ait recover latest
+ait resume latest
+```
+
+## 問題 4：有用的決定消失
+
+你曾經決定 retry budget 應該是三次。三週後，新 agent 提議改成五次，因為它
+沒看到之前的理由。
+
+有 `ait` 時，可以搜尋過去 attempts 與 repo memory：
+
+```bash
+ait memory recall "retry budget"
+```
+
+最後仍然由你判斷哪段脈絡該採用。`ait` 提供紀錄，不取代工程判斷。
+
+## ait 不是什麼
+
+`ait` 的範圍刻意很窄。
+
+它不是：
+
+- IDE plugin
+- autocomplete engine
+- hosted dashboard
+- 跨機器同步服務
+- Claude Code、Codex、Aider、Cursor、Cline 或 Git 的替代品
+- AI reviewer 一定抓得到所有 bug 的證明
+
+## 什麼時候值得用
+
+當「失去 agent 脈絡」的成本高於「多一層 workflow」的成本時，就值得用 `ait`。
+
+特別適合這些情境：
+
+- 你會使用多個 agent CLI
+- 你希望 apply/recover 是明確步驟，而不是直接污染 working tree
+- 高風險修改想交給第二個 agent 先審
+- 舊 prompt、diff、finding、decision 需要能查回來
+- 你偏好 local-first metadata，而不是 SaaS provenance 工具
+
+下一步：[開始使用](getting-started.md)。
