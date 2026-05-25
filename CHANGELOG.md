@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 1.1.1 - 2026-05-25
+
+### Changed
+
+- Rewrite the English and Traditional Chinese READMEs around a clearer
+  first-time GitHub visitor flow: positioning, who needs AIT, quickstart, core
+  concepts, common workflows, boundaries, and install paths.
+- Redesign the documentation site landing page and visual system around a
+  simpler local attempt ledger narrative, with matching English and Traditional
+  Chinese home pages.
+- Simplify the getting-started and why-AIT documentation so new users can try
+  `ait demo`, understand the apply gate, and see when AIT is not the right
+  tool.
+- Bump the Python and npm package versions to `1.1.1`.
+
 ## 1.1.0 - 2026-05-23
 
 ### Added
