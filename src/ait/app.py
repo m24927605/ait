@@ -10,7 +10,17 @@ from ait.config import (
     ensure_local_config,
     ensure_repo_identity,
 )
-from ait.db import NewAttempt, NewIntent, connect_db, get_intent, insert_attempt, insert_intent, run_migrations, utc_now
+from ait.db import (
+    NewAttempt,
+    NewIntent,
+    backfill_attempt_identities,
+    connect_db,
+    get_intent,
+    insert_attempt,
+    insert_intent,
+    run_migrations,
+    utc_now,
+)
 from ait.db import (
     insert_intent_edge,
     get_attempt,
@@ -132,6 +142,7 @@ def init_repo(repo_root: str | Path, *, auto_git_init: bool = False) -> InitResu
     conn = connect_db(db_path)
     try:
         run_migrations(conn)
+        backfill_attempt_identities(conn)
     finally:
         conn.close()
     install_post_rewrite_hook(root)

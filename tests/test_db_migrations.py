@@ -45,6 +45,7 @@ class MigrationTests(unittest.TestCase):
                     "attempt_reviews",
                     "attempt_review_findings",
                     "attempt_review_overrides",
+                    "attempt_identities",
                 }.issubset(tables)
             )
             self.assertEqual(str(SCHEMA_VERSION), get_meta(conn, "schema_version"))

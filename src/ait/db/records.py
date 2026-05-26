@@ -121,6 +121,18 @@ class AttemptOutcomeRecord:
     classified_at: str
 
 @dataclass(frozen=True)
+class AttemptIdentityRecord:
+    attempt_id: str
+    handle_index: int
+    handle: str
+    display_title: str
+    deterministic_description: str
+    description_source: str
+    description_fingerprint: str
+    created_at: str
+    updated_at: str
+
+@dataclass(frozen=True)
 class NewMemoryFact:
     id: str
     kind: str

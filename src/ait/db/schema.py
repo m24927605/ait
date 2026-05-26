@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 @dataclass(frozen=True)
@@ -385,6 +385,23 @@ MIGRATIONS: tuple[Migration, ...] = (
 
         CREATE INDEX IF NOT EXISTS idx_attempt_review_overrides_review
             ON attempt_review_overrides(review_id);
+        """,
+    ),
+    Migration(
+        version=9,
+        name="attempt_identities",
+        sql="""
+        CREATE TABLE IF NOT EXISTS attempt_identities (
+            attempt_id TEXT PRIMARY KEY REFERENCES attempts(id) ON DELETE CASCADE,
+            handle_index INTEGER NOT NULL UNIQUE,
+            handle TEXT NOT NULL UNIQUE,
+            display_title TEXT NOT NULL,
+            deterministic_description TEXT NOT NULL,
+            description_source TEXT NOT NULL,
+            description_fingerprint TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
         """,
     ),
 )

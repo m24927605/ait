@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 
+from datetime import UTC, datetime
 
+import hashlib
 import json
 
 import sqlite3
@@ -13,6 +15,8 @@ import uuid
 from ait.db.records import (
 
     AttemptCommitRecord,
+
+    AttemptIdentityRecord,
 
     AttemptOutcomeRecord,
 
@@ -29,6 +33,8 @@ from ait.db.records import (
 )
 
 from ait.db.schema import SCHEMA_VERSION
+
+_IDENTITY_DESCRIPTION_SOURCE = "identity-bootstrap:v1"
 
 
 
@@ -138,8 +144,161 @@ def insert_attempt(conn: sqlite3.Connection, new_attempt: NewAttempt) -> Attempt
             """,
             (f"{new_attempt.id}:evidence:{uuid.uuid4().hex}", SCHEMA_VERSION, new_attempt.id),
         )
+        ensure_attempt_identity(conn, new_attempt.id)
 
     return get_attempt(conn, new_attempt.id)
+
+def ensure_attempt_identity(conn: sqlite3.Connection, attempt_id: str) -> AttemptIdentityRecord:
+    existing = get_attempt_identity(conn, attempt_id)
+    if existing is not None:
+        return existing
+
+    started_transaction = False
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+        started_transaction = True
+    try:
+        existing = get_attempt_identity(conn, attempt_id)
+        if existing is not None:
+            if started_transaction:
+                conn.commit()
+            return existing
+
+        source = _attempt_identity_source(conn, attempt_id)
+        if source is None:
+            raise LookupError(f"attempt not found: {attempt_id}")
+        display_title = _identity_display_title(
+            attempt_id=str(source["attempt_id"]),
+            intent_title=_str_or_none(source["intent_title"]),
+        )
+        now = _utc_now()
+        handle_index = _next_handle_index(conn)
+        conn.execute(
+            """
+            INSERT INTO attempt_identities(
+                attempt_id, handle_index, handle, display_title,
+                deterministic_description, description_source,
+                description_fingerprint, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                attempt_id,
+                handle_index,
+                f"a{handle_index}",
+                display_title,
+                display_title,
+                _IDENTITY_DESCRIPTION_SOURCE,
+                _identity_fingerprint(attempt_id, display_title),
+                now,
+                now,
+            ),
+        )
+        record = get_attempt_identity(conn, attempt_id)
+        if record is None:
+            raise RuntimeError(f"attempt identity was not created: {attempt_id}")
+        if started_transaction:
+            conn.commit()
+        return record
+    except Exception:
+        if started_transaction:
+            conn.rollback()
+        raise
+
+def get_attempt_identity(
+    conn: sqlite3.Connection, attempt_id: str
+) -> AttemptIdentityRecord | None:
+    row = conn.execute(
+        "SELECT * FROM attempt_identities WHERE attempt_id = ?",
+        (attempt_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return _row_to_attempt_identity(row)
+
+def get_attempt_identity_by_handle(
+    conn: sqlite3.Connection, handle: str
+) -> AttemptIdentityRecord | None:
+    row = conn.execute(
+        "SELECT * FROM attempt_identities WHERE handle = ?",
+        (handle,),
+    ).fetchone()
+    if row is None:
+        return None
+    return _row_to_attempt_identity(row)
+
+def list_attempt_identities(
+    conn: sqlite3.Connection, attempt_ids: tuple[str, ...]
+) -> dict[str, AttemptIdentityRecord]:
+    if not attempt_ids:
+        return {}
+    placeholders = ", ".join("?" for _ in attempt_ids)
+    rows = conn.execute(
+        f"""
+        SELECT *
+        FROM attempt_identities
+        WHERE attempt_id IN ({placeholders})
+        """,
+        attempt_ids,
+    ).fetchall()
+    return {
+        str(row["attempt_id"]): _row_to_attempt_identity(row)
+        for row in rows
+    }
+
+def backfill_attempt_identities(conn: sqlite3.Connection) -> int:
+    started_transaction = False
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+        started_transaction = True
+    try:
+        rows = conn.execute(
+            """
+            SELECT a.id AS attempt_id, i.title AS intent_title
+            FROM attempts AS a
+            LEFT JOIN intents AS i ON i.id = a.intent_id
+            LEFT JOIN attempt_identities AS identity ON identity.attempt_id = a.id
+            WHERE identity.attempt_id IS NULL
+            ORDER BY a.started_at ASC, a.id ASC
+            """
+        ).fetchall()
+        next_handle_index = _next_handle_index(conn)
+        for row in rows:
+            attempt_id = str(row["attempt_id"])
+            display_title = _identity_display_title(
+                attempt_id=attempt_id,
+                intent_title=_str_or_none(row["intent_title"]),
+            )
+            now = _utc_now()
+            conn.execute(
+                """
+                INSERT INTO attempt_identities(
+                    attempt_id, handle_index, handle, display_title,
+                    deterministic_description, description_source,
+                    description_fingerprint, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    attempt_id,
+                    next_handle_index,
+                    f"a{next_handle_index}",
+                    display_title,
+                    display_title,
+                    _IDENTITY_DESCRIPTION_SOURCE,
+                    _identity_fingerprint(attempt_id, display_title),
+                    now,
+                    now,
+                ),
+            )
+            next_handle_index += 1
+        if started_transaction:
+            conn.commit()
+        return len(rows)
+    except Exception:
+        if started_transaction:
+            conn.rollback()
+        raise
 
 def get_attempt(conn: sqlite3.Connection, attempt_id: str) -> AttemptRecord | None:
     row = conn.execute("SELECT * FROM attempts WHERE id = ?", (attempt_id,)).fetchone()
@@ -398,6 +557,42 @@ def _next_attempt_ordinal(conn: sqlite3.Connection, intent_id: str) -> int:
     ).fetchone()
     return int(row["max_ordinal"]) + 1
 
+def _next_handle_index(conn: sqlite3.Connection) -> int:
+    row = conn.execute(
+        "SELECT COALESCE(MAX(handle_index), 0) + 1 AS next_handle_index FROM attempt_identities"
+    ).fetchone()
+    return int(row["next_handle_index"])
+
+def _attempt_identity_source(
+    conn: sqlite3.Connection, attempt_id: str
+) -> sqlite3.Row | None:
+    return conn.execute(
+        """
+        SELECT a.id AS attempt_id, i.title AS intent_title
+        FROM attempts AS a
+        LEFT JOIN intents AS i ON i.id = a.intent_id
+        WHERE a.id = ?
+        """,
+        (attempt_id,),
+    ).fetchone()
+
+def _identity_display_title(*, attempt_id: str, intent_title: str | None) -> str:
+    if intent_title is not None and intent_title.strip():
+        return intent_title.strip()
+    return _short_attempt_id(attempt_id)
+
+def _short_attempt_id(attempt_id: str) -> str:
+    suffix = attempt_id.rsplit(":", 1)[-1]
+    return (suffix or attempt_id)[:12]
+
+def _identity_fingerprint(attempt_id: str, display_title: str) -> str:
+    payload = f"{_IDENTITY_DESCRIPTION_SOURCE}\0{attempt_id}\0{display_title}"
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return f"sha256:{digest}"
+
+def _utc_now() -> str:
+    return datetime.now(tz=UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
 def _row_to_intent(row: sqlite3.Row) -> IntentRecord:
     return IntentRecord(
         id=str(row["id"]),
@@ -484,6 +679,19 @@ def _row_to_attempt_outcome(row: sqlite3.Row) -> AttemptOutcomeRecord:
         classified_at=str(row["classified_at"]),
     )
 
+def _row_to_attempt_identity(row: sqlite3.Row) -> AttemptIdentityRecord:
+    return AttemptIdentityRecord(
+        attempt_id=str(row["attempt_id"]),
+        handle_index=int(row["handle_index"]),
+        handle=str(row["handle"]),
+        display_title=str(row["display_title"]),
+        deterministic_description=str(row["deterministic_description"]),
+        description_source=str(row["description_source"]),
+        description_fingerprint=str(row["description_fingerprint"]),
+        created_at=str(row["created_at"]),
+        updated_at=str(row["updated_at"]),
+    )
+
 def _json_dump(value: object) -> str:
     return json.dumps(value, separators=(",", ":"), sort_keys=True)
 
@@ -518,6 +726,16 @@ __all__ = [
     "list_attempts",
 
     "insert_attempt",
+
+    "ensure_attempt_identity",
+
+    "get_attempt_identity",
+
+    "get_attempt_identity_by_handle",
+
+    "list_attempt_identities",
+
+    "backfill_attempt_identities",
 
     "get_attempt",
 
