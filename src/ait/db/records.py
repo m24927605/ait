@@ -133,6 +133,13 @@ class AttemptIdentityRecord:
     updated_at: str
 
 @dataclass(frozen=True)
+class AttemptAliasRecord:
+    alias: str
+    attempt_id: str
+    created_at: str
+    updated_at: str
+
+@dataclass(frozen=True)
 class NewMemoryFact:
     id: str
     kind: str

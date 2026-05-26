@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 
 @dataclass(frozen=True)
@@ -399,6 +399,18 @@ MIGRATIONS: tuple[Migration, ...] = (
             deterministic_description TEXT NOT NULL,
             description_source TEXT NOT NULL,
             description_fingerprint TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        """,
+    ),
+    Migration(
+        version=10,
+        name="attempt_aliases",
+        sql="""
+        CREATE TABLE IF NOT EXISTS attempt_aliases (
+            alias TEXT PRIMARY KEY,
+            attempt_id TEXT NOT NULL REFERENCES attempts(id) ON DELETE CASCADE,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );

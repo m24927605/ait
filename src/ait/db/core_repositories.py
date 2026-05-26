@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 import hashlib
 import json
 
+import re
 import sqlite3
 
 import uuid
@@ -13,6 +14,8 @@ import uuid
 
 
 from ait.db.records import (
+
+    AttemptAliasRecord,
 
     AttemptCommitRecord,
 
@@ -36,6 +39,16 @@ from ait.db.schema import SCHEMA_VERSION
 from ait.attempt_identity import build_attempt_description, load_integration_artifact
 
 _IDENTITY_DESCRIPTION_SOURCE = "identity-bootstrap:v1"
+_ALIAS_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+_RESERVED_ALIASES = {
+    "latest",
+    "latest-reviewable",
+    "review",
+    "apply",
+    "recover",
+    "resume",
+    "continue",
+}
 
 
 
@@ -228,6 +241,82 @@ def get_attempt_identity_by_handle(
     if row is None:
         return None
     return _row_to_attempt_identity(row)
+
+def get_attempt_alias(conn: sqlite3.Connection, alias: str) -> AttemptAliasRecord | None:
+    row = conn.execute(
+        "SELECT * FROM attempt_aliases WHERE alias = ?",
+        (alias,),
+    ).fetchone()
+    if row is None:
+        return None
+    return _row_to_attempt_alias(row)
+
+def set_attempt_alias(
+    conn: sqlite3.Connection,
+    *,
+    attempt_id: str,
+    alias: str,
+    force: bool = False,
+) -> AttemptAliasRecord:
+    normalized = _validate_attempt_alias(alias)
+    started_transaction = False
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+        started_transaction = True
+    try:
+        if get_attempt(conn, attempt_id) is None:
+            raise LookupError(f"attempt not found: {attempt_id}")
+        existing = get_attempt_alias(conn, normalized)
+        if existing is not None:
+            if existing.attempt_id == attempt_id:
+                if started_transaction:
+                    conn.commit()
+                return existing
+            if not force:
+                raise ValueError(f"alias already exists: {normalized}")
+            now = _utc_now()
+            conn.execute(
+                """
+                UPDATE attempt_aliases
+                SET attempt_id = ?, updated_at = ?
+                WHERE alias = ?
+                """,
+                (attempt_id, now, normalized),
+            )
+        else:
+            now = _utc_now()
+            conn.execute(
+                """
+                INSERT INTO attempt_aliases(alias, attempt_id, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (normalized, attempt_id, now, now),
+            )
+        record = get_attempt_alias(conn, normalized)
+        if record is None:
+            raise RuntimeError(f"attempt alias was not created: {normalized}")
+        if started_transaction:
+            conn.commit()
+        return record
+    except Exception:
+        if started_transaction:
+            conn.rollback()
+        raise
+
+def unset_attempt_alias(conn: sqlite3.Connection, alias: str) -> bool:
+    normalized = _normalize_attempt_alias(alias)
+    with conn:
+        cursor = conn.execute(
+            "DELETE FROM attempt_aliases WHERE alias = ?",
+            (normalized,),
+        )
+    return cursor.rowcount > 0
+
+def list_attempt_aliases(conn: sqlite3.Connection) -> list[AttemptAliasRecord]:
+    rows = conn.execute(
+        "SELECT * FROM attempt_aliases ORDER BY alias ASC"
+    ).fetchall()
+    return [_row_to_attempt_alias(row) for row in rows]
 
 def list_attempt_identities(
     conn: sqlite3.Connection, attempt_ids: tuple[str, ...]
@@ -684,6 +773,21 @@ def _identity_fingerprint(attempt_id: str, display_title: str) -> str:
     digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
     return f"sha256:{digest}"
 
+def _validate_attempt_alias(alias: str) -> str:
+    normalized = _normalize_attempt_alias(alias)
+    if ":" in normalized:
+        raise ValueError("alias must not contain ':'")
+    if not _ALIAS_PATTERN.fullmatch(normalized):
+        raise ValueError("alias must match ^[a-z0-9][a-z0-9._-]{0,63}$")
+    if normalized in _RESERVED_ALIASES:
+        raise ValueError(f"reserved attempt alias: {normalized}")
+    if re.fullmatch(r"a[0-9]+", normalized):
+        raise ValueError(f"reserved attempt handle namespace: {normalized}")
+    return normalized
+
+def _normalize_attempt_alias(alias: str) -> str:
+    return alias.strip()
+
 def _utc_now() -> str:
     return datetime.now(tz=UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
@@ -786,6 +890,14 @@ def _row_to_attempt_identity(row: sqlite3.Row) -> AttemptIdentityRecord:
         updated_at=str(row["updated_at"]),
     )
 
+def _row_to_attempt_alias(row: sqlite3.Row) -> AttemptAliasRecord:
+    return AttemptAliasRecord(
+        alias=str(row["alias"]),
+        attempt_id=str(row["attempt_id"]),
+        created_at=str(row["created_at"]),
+        updated_at=str(row["updated_at"]),
+    )
+
 def _json_dump(value: object) -> str:
     return json.dumps(value, separators=(",", ":"), sort_keys=True)
 
@@ -826,6 +938,14 @@ __all__ = [
     "get_attempt_identity",
 
     "get_attempt_identity_by_handle",
+
+    "get_attempt_alias",
+
+    "set_attempt_alias",
+
+    "unset_attempt_alias",
+
+    "list_attempt_aliases",
 
     "list_attempt_identities",
 

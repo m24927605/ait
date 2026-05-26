@@ -55,6 +55,13 @@ def resolve_attempt_selector(conn: sqlite3.Connection, given: str) -> str:
     if handle is not None:
         return str(handle["attempt_id"])
 
+    alias = conn.execute(
+        "SELECT attempt_id FROM attempt_aliases WHERE alias = ?",
+        (given,),
+    ).fetchone()
+    if alias is not None:
+        return str(alias["attempt_id"])
+
     return _resolve_fragment(conn, "attempts", "attempt", given)
 
 

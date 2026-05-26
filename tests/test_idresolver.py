@@ -13,6 +13,8 @@ from ait.db import (
     insert_attempt,
     insert_intent,
     run_migrations,
+    set_attempt_alias,
+    unset_attempt_alias,
 )
 from ait.idresolver import (
     IdResolutionError,
@@ -151,6 +153,73 @@ class IdResolverTests(unittest.TestCase):
             "repo:long-nonce:01ZZZZZZZZZZ",
             resolve_attempt_selector(self.conn, "a1"),
         )
+
+    def test_alias_set_and_resolve(self) -> None:
+        set_attempt_alias(
+            self.conn,
+            attempt_id="repo:long-nonce:01ZZZZZZZZZZ",
+            alias="fix-ci",
+        )
+
+        self.assertEqual(
+            "repo:long-nonce:01ZZZZZZZZZZ",
+            resolve_attempt_selector(self.conn, "fix-ci"),
+        )
+
+    def test_alias_rejects_reserved_names(self) -> None:
+        for alias in ("latest", "a1", "recover", "foo:bar"):
+            with self.subTest(alias=alias):
+                with self.assertRaises(ValueError):
+                    set_attempt_alias(
+                        self.conn,
+                        attempt_id="repo:long-nonce:01ZZZZZZZZZZ",
+                        alias=alias,
+                    )
+
+    def test_alias_rebind_requires_force(self) -> None:
+        insert_attempt(
+            self.conn,
+            NewAttempt(
+                id="repo:long-nonce:01YYYYYYYYYY",
+                intent_id="repo:long-nonce:01ABCDEFGHJK",
+                agent_id="codex:main",
+                workspace_ref="/tmp/b",
+                base_ref_oid="0" * 40,
+                started_at="2026-04-24T00:03:00Z",
+                ownership_token="t2",
+            ),
+        )
+        set_attempt_alias(
+            self.conn,
+            attempt_id="repo:long-nonce:01ZZZZZZZZZZ",
+            alias="fix-ci",
+        )
+
+        with self.assertRaises(ValueError):
+            set_attempt_alias(
+                self.conn,
+                attempt_id="repo:long-nonce:01YYYYYYYYYY",
+                alias="fix-ci",
+            )
+        rebound = set_attempt_alias(
+            self.conn,
+            attempt_id="repo:long-nonce:01YYYYYYYYYY",
+            alias="fix-ci",
+            force=True,
+        )
+
+        self.assertEqual("repo:long-nonce:01YYYYYYYYYY", rebound.attempt_id)
+
+    def test_alias_unset_removes_selector(self) -> None:
+        set_attempt_alias(
+            self.conn,
+            attempt_id="repo:long-nonce:01ZZZZZZZZZZ",
+            alias="fix-ci",
+        )
+
+        self.assertTrue(unset_attempt_alias(self.conn, "fix-ci"))
+        with self.assertRaises(IdResolutionError):
+            resolve_attempt_selector(self.conn, "fix-ci")
 
 
 if __name__ == "__main__":

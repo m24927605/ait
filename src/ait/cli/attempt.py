@@ -2,6 +2,15 @@ from __future__ import annotations
 
 from ._shared import *
 
+from ait.db import (
+    get_attempt_identity,
+    list_attempt_aliases,
+    list_attempt_identities,
+    set_attempt_alias,
+    unset_attempt_alias,
+)
+from ait.idresolver import resolve_attempt_selector
+
 
 def handle(args, repo_root: Path, parser=None) -> int:
     if args.command == "attempt" and args.attempt_command == "new":
@@ -81,6 +90,63 @@ def handle(args, repo_root: Path, parser=None) -> int:
             offset=args.offset,
             output_format=args.format,
         )
+    if args.command == "attempt" and args.attempt_command == "alias":
+        return _handle_attempt_alias(args, repo_root)
     if parser is not None:
         parser.print_help()
     return 1
+
+
+def _handle_attempt_alias(args, repo_root: Path) -> int:
+    init_result = init_repo(repo_root)
+    conn = connect_db(init_result.db_path)
+    try:
+        if args.attempt_alias_command == "set":
+            attempt_id = resolve_attempt_selector(conn, args.attempt_id)
+            record = set_attempt_alias(
+                conn,
+                attempt_id=attempt_id,
+                alias=args.alias,
+                force=args.force,
+            )
+            identity = get_attempt_identity(conn, record.attempt_id)
+            handle = identity.handle if identity is not None else record.attempt_id
+            print(f"Alias {record.alias} -> {handle}")
+            return 0
+        if args.attempt_alias_command == "unset":
+            removed = unset_attempt_alias(conn, args.alias)
+            if not removed:
+                print(f"error: unknown alias: {args.alias}", file=sys.stderr)
+                return 2
+            print(f"Alias {args.alias} removed")
+            return 0
+        if args.attempt_alias_command == "list":
+            print(_format_attempt_aliases(conn))
+            return 0
+    except (LookupError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    finally:
+        conn.close()
+    return 1
+
+
+def _format_attempt_aliases(conn) -> str:
+    aliases = list_attempt_aliases(conn)
+    if not aliases:
+        return "No attempt aliases."
+    identities = list_attempt_identities(
+        conn,
+        tuple(record.attempt_id for record in aliases),
+    )
+    rows = []
+    for record in aliases:
+        identity = identities.get(record.attempt_id)
+        rows.append(
+            {
+                "alias": record.alias,
+                "handle": "" if identity is None else identity.handle,
+                "attempt": record.attempt_id.rsplit(":", 1)[-1],
+            }
+        )
+    return _format_rows(rows, "table")
