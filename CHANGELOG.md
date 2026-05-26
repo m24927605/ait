@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## 1.3.0 - 2026-05-26
+
+### Added
+
+- Add persistent attempt identity records with stable automatic handles such as
+  `a1` and `a2`, including migration backfill for existing attempts.
+- Add deterministic attempt descriptions derived from intent, changed files,
+  status, and commit metadata.
+- Add attempt selector support for automatic handles and manual aliases across
+  attempt, recover, resume, apply, and related workflows.
+- Add `ait attempt alias set`, `ait attempt alias unset`, and
+  `ait attempt alias list` for user-defined attempt names.
+- Surface attempt handles and descriptions in
+  `ait attempt list/status/recover/resume/continue/apply/review`, shell
+  reminders, and additive JSON/JSONL metadata while preserving canonical full
+  attempt IDs for machine consumers and debug output.
+
+### Changed
+
+- Bump the Python and npm package versions to `1.3.0`.
+
 ## 1.2.0 - 2026-05-26
 
 ### Added
