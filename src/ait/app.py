@@ -333,10 +333,17 @@ def show_attempt(repo_root: str | Path, *, attempt_id: str) -> AttemptShowResult
         outcome = get_attempt_outcome(conn, attempt_id)
         files = list_evidence_files(conn, attempt_id)
         commits = list_attempt_commits(conn, attempt_id)
+        identity = refresh_attempt_identity(conn, attempt_id)
     finally:
         conn.close()
+    attempt_payload = {
+        **attempt.__dict__,
+        "attempt_handle": identity.handle,
+        "attempt_display_title": identity.display_title,
+        "attempt_description": identity.deterministic_description,
+    }
     return AttemptShowResult(
-        attempt=attempt.__dict__,
+        attempt=attempt_payload,
         evidence_summary=None if evidence is None else evidence.__dict__,
         outcome=None if outcome is None else outcome.__dict__,
         files=files,

@@ -23,8 +23,10 @@ from ait.daemon import daemon_status
 from ait.db import (
     connect_db,
     get_memory_fact,
+    list_attempt_identities,
     list_memory_facts,
     list_memory_retrieval_events,
+    refresh_attempt_identity,
     run_migrations,
 )
 from ait.memory import (
@@ -70,6 +72,8 @@ def _run_query_command(
             print(f"error: {exc}", file=sys.stderr)
             return 2
         rows_as_dicts = [dict(row) for row in rows]
+        if subject == "attempt":
+            _attach_attempt_identity_metadata(conn, rows_as_dicts)
         if subject == "attempt" and output_format == "table":
             rendered = _format_attempt_rows(conn, rows_as_dicts)
         else:
@@ -105,19 +109,14 @@ def _format_attempt_rows(
         return "No attempts."
 
     attempt_ids = [str(row.get("id", "")) for row in rows]
-    all_attempt_ids = [
-        str(row["id"]) for row in conn.execute("SELECT id FROM attempts").fetchall()
-    ]
-    intent_titles = _intent_titles(conn, rows)
     changed_counts = _changed_file_counts(conn, attempt_ids)
 
     compact_rows: list[dict[str, object]] = []
     for row in rows:
         attempt_id = str(row.get("id", ""))
-        intent_id = str(row.get("intent_id", ""))
         compact_rows.append(
             {
-                "attempt": _short_object_id(attempt_id, all_attempt_ids),
+                "handle": row.get("attempt_handle") or "-",
                 "status": _attempt_status(row),
                 "agent": _attempt_agent(row),
                 "exit": row.get("result_exit_code")
@@ -125,27 +124,26 @@ def _format_attempt_rows(
                 else "-",
                 "files": changed_counts.get(attempt_id, 0),
                 "started": _short_timestamp(row.get("started_at")),
-                "intent": _clip(intent_titles.get(intent_id, intent_id), 48),
+                "description": _clip(row.get("attempt_description") or "", 64),
             }
         )
     return _format_rows(compact_rows, "table")
 
 
-def _intent_titles(
+def _attach_attempt_identity_metadata(
     conn: sqlite3.Connection,
     rows: list[dict[str, object]],
-) -> dict[str, str]:
-    intent_ids = sorted({str(row.get("intent_id", "")) for row in rows if row.get("intent_id")})
-    if not intent_ids:
-        return {}
-    placeholders = ",".join("?" for _ in intent_ids)
-    return {
-        str(row["id"]): str(row["title"])
-        for row in conn.execute(
-            f"SELECT id, title FROM intents WHERE id IN ({placeholders})",
-            tuple(intent_ids),
-        ).fetchall()
-    }
+) -> None:
+    attempt_ids = tuple(str(row.get("id", "")) for row in rows if row.get("id"))
+    identities = list_attempt_identities(conn, attempt_ids)
+    missing = [attempt_id for attempt_id in attempt_ids if attempt_id not in identities]
+    for attempt_id in missing:
+        identities[attempt_id] = refresh_attempt_identity(conn, attempt_id)
+    for row in rows:
+        identity = identities.get(str(row.get("id", "")))
+        row["attempt_handle"] = "" if identity is None else identity.handle
+        row["attempt_display_title"] = "" if identity is None else identity.display_title
+        row["attempt_description"] = "" if identity is None else identity.deterministic_description
 
 
 def _changed_file_counts(
@@ -167,17 +165,6 @@ def _changed_file_counts(
             tuple(attempt_ids),
         ).fetchall()
     }
-
-
-def _short_object_id(value: str, all_values: list[str], *, min_chars: int = 8) -> str:
-    tail = value.rsplit(":", 1)[-1] or value
-    if len(tail) <= 12:
-        return tail
-    for width in range(min(min_chars, len(tail)), len(tail) + 1):
-        candidate = tail[-width:]
-        if sum(1 for item in all_values if candidate in item) == 1:
-            return candidate
-    return tail
 
 
 def _attempt_status(row: dict[str, object]) -> str:
