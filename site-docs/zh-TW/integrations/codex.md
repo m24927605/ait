@@ -42,6 +42,18 @@ codex
 ait run --adapter codex --intent "實作 parser edge cases" -- codex
 ```
 
+腳本化的 `codex exec` 建議顯式關閉 stdin：
+
+```bash
+ait run --adapter codex --stdin none -- \
+  codex exec --sandbox read-only --skip-git-repo-check -C <workspace> "<prompt>"
+```
+
+`ait run --stdin auto` 是預設值。互動式 Codex session 仍會保留 stdin；
+非互動式 `codex exec`，或 `codex exec` 的 prompt 已由 argv 傳入時，AIT
+會自動改用 `/dev/null`。如果 wrapped `codex exec` 必須讀 stdin，請顯式傳
+`--stdin inherit`。
+
 ## 修復與重整
 
 如果 wrapper 漂掉了（例如 Codex 升版後）：

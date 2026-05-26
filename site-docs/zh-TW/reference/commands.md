@@ -60,6 +60,14 @@ ait merge --to main --push --json
 interrupted、conflicted 結果的日常復原入口。
 `ait resume latest` 會直接開一個 shell 到可復原 attempt workspace，讓你不用
 手動複製 workspace path 就能續修。
+裝好 agent wrapper 後，裸的互動式 agent 指令（例如 `codex` 或 `claude`）
+會先嘗試接回最新可復原的 AIT worktree。帶有新任務的指令（例如
+`claude -p ...` 或 `codex exec ...`）仍會建立新的 AIT attempt。
+
+`ait run --stdin auto` 是預設值。互動式指令會繼承 stdin；非互動式
+`codex exec` 會自動改用 `/dev/null`，避免腳本化 review 指令等待 stdin。
+不需要 stdin 的腳本可顯式傳 `--stdin none`，wrapped command 必須讀 stdin
+時則傳 `--stdin inherit`。
 
 ## Agent-first control plane
 

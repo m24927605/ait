@@ -100,23 +100,31 @@ def run_agent_command(
     context_file_override: str | Path | None = None,
     command_stdin: str | None = None,
     extra_env: dict[str, str] | None = None,
-    stdin_mode: str = "inherit",
+    stdin_mode: str = "auto",
 ) -> RunResult:
     if not intent_title.strip():
         raise ValueError("intent title must not be empty")
     if not command:
         raise ValueError("command must not be empty")
-    if stdin_mode not in ("inherit", "none"):
-        raise ValueError(f"stdin_mode must be 'inherit' or 'none', got: {stdin_mode!r}")
+    if stdin_mode not in ("auto", "inherit", "none"):
+        raise ValueError(f"stdin_mode must be 'auto', 'inherit', or 'none', got: {stdin_mode!r}")
 
     adapter = get_adapter(adapter_name)
+    stdio_is_tty = _stdio_is_tty()
+    effective_stdin_mode = _resolve_stdin_mode(
+        adapter_name=adapter.name,
+        command=command,
+        requested_stdin_mode=stdin_mode,
+        command_stdin=command_stdin,
+        stdio_is_tty=stdio_is_tty,
+    )
     resolved_agent_id = agent_id or adapter.default_agent_id
     resolved_with_context = with_context or adapter.default_with_context
     if (
-        stdin_mode == "inherit"
+        effective_stdin_mode == "inherit"
         and command_stdin is None
         and adapter.native_hooks
-        and not _stdio_is_tty()
+        and not stdio_is_tty
     ):
         print(
             f"ait hint: stdin is not a TTY and adapter '{adapter.name}' may wait for stdin EOF; "
@@ -198,7 +206,7 @@ def run_agent_command(
         env["AIT_CONTEXT_FILE"] = str(context_file)
     completed: subprocess.CompletedProcess[str] | None = None
     effective_exit_code = 1
-    should_capture_tty = command_stdin is None and not capture_command_output and adapter.name != "cursor" and _stdio_is_tty()
+    should_capture_tty = command_stdin is None and not capture_command_output and adapter.name != "cursor" and stdio_is_tty
     should_capture_output = capture_command_output or adapter.name == "cursor" or not should_capture_tty
     raw_trace_ref: str | None = None
     raw_trace_text: str = ""
@@ -236,7 +244,7 @@ def run_agent_command(
                     env=env,
                     capture_output=should_capture_output,
                     command_stdin=command_stdin,
-                    stdin_mode=stdin_mode,
+                    stdin_mode=effective_stdin_mode,
                 )
                 if should_capture_output:
                     raw_trace_text = "\n".join([completed.stdout or "", completed.stderr or ""])
@@ -371,6 +379,89 @@ def run_agent_command(
         command_stderr=completed.stderr if completed is not None and capture_command_output else None,
         attempt=shown,
     )
+
+
+def _resolve_stdin_mode(
+    *,
+    adapter_name: str,
+    command: list[str],
+    requested_stdin_mode: str,
+    command_stdin: str | None,
+    stdio_is_tty: bool,
+) -> str:
+    if requested_stdin_mode != "auto":
+        return requested_stdin_mode
+    if command_stdin is not None:
+        return "inherit"
+    if _is_noninteractive_codex_exec(
+        adapter_name=adapter_name,
+        command=command,
+        stdio_is_tty=stdio_is_tty,
+    ):
+        return "none"
+    return "inherit"
+
+
+def _is_noninteractive_codex_exec(
+    *,
+    adapter_name: str,
+    command: list[str],
+    stdio_is_tty: bool,
+) -> bool:
+    if adapter_name != "codex":
+        return False
+    exec_index = _codex_exec_index(command)
+    if exec_index is None:
+        return False
+    return not stdio_is_tty or _codex_exec_has_argv_prompt(command[exec_index + 1 :])
+
+
+def _codex_exec_index(command: list[str]) -> int | None:
+    if len(command) >= 2 and Path(command[0]).name in {"codex", "codex.js", "codex.exe"}:
+        return 1 if command[1] == "exec" else None
+    if (
+        len(command) >= 3
+        and Path(command[0]).name in {"node", "nodejs"}
+        and Path(command[1]).name in {"codex.js", "codex"}
+    ):
+        return 2 if command[2] == "exec" else None
+    return None
+
+
+def _codex_exec_has_argv_prompt(exec_args: list[str]) -> bool:
+    options_with_value = {
+        "-C",
+        "-c",
+        "-m",
+        "-o",
+        "--cd",
+        "--config",
+        "--config-file",
+        "--model",
+        "--output-last-message",
+        "--profile",
+        "--sandbox",
+    }
+    skip_next = False
+    for index, arg in enumerate(exec_args):
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == "--":
+            return any(candidate != "-" for candidate in exec_args[index + 1 :])
+        if arg in options_with_value:
+            skip_next = True
+            continue
+        if any(
+            arg.startswith(option + "=")
+            for option in options_with_value
+            if option.startswith("--")
+        ):
+            continue
+        if arg.startswith("-"):
+            continue
+        return arg != "-"
+    return False
 
 
 def _replay_completed_output(completed: subprocess.CompletedProcess[str]) -> None:

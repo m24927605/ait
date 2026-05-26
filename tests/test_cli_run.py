@@ -1932,6 +1932,50 @@ def _init_git_repo(repo_root: Path) -> None:
     subprocess.run(["git", "commit", "-m", "init"], cwd=repo_root, check=True, capture_output=True)
 
 
+def _run_ait_cli_subprocess(
+    repo_root: Path,
+    args: list[str],
+    *,
+    stdin_text: str,
+    path_prefix: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    src_path = Path(__file__).resolve().parents[1] / "src"
+    existing_pythonpath = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = (
+        str(src_path)
+        if not existing_pythonpath
+        else str(src_path) + os.pathsep + existing_pythonpath
+    )
+    if path_prefix is not None:
+        env["PATH"] = str(path_prefix) + os.pathsep + env.get("PATH", "")
+    return subprocess.run(
+        [sys.executable, "-m", "ait.cli", *args],
+        cwd=repo_root,
+        env=env,
+        input=stdin_text,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+
+
+def _write_mock_codex(bin_dir: Path) -> Path:
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    mock_codex = bin_dir / "codex"
+    mock_codex.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "data = sys.stdin.read()\n"
+        "print('args=' + repr(sys.argv[1:]))\n"
+        "print('stdin=' + repr(data))\n",
+        encoding="utf-8",
+    )
+    mock_codex.chmod(0o755)
+    return mock_codex
+
+
 def _init_ait_and_commit_gitignore(repo_root: Path) -> None:
     init_repo(repo_root)
     gitignore = repo_root / ".gitignore"
@@ -2099,18 +2143,18 @@ def _upsert_eval_fact(
 class CliRunStdinModeTests(unittest.TestCase):
     """Tests for the --stdin flag on `ait run`.
 
-    Default 'inherit' is the prior behaviour (parent stdin passed through).
-    Explicit 'none' redirects child stdin from /dev/null so non-interactive
-    agent CLIs (e.g. `codex exec`) do not hang waiting for stdin EOF.
+    Default 'auto' preserves interactive inheritance but redirects known
+    non-interactive agent commands (e.g. `codex exec`) from /dev/null.
+    Explicit 'none' always redirects child stdin from /dev/null.
     """
 
-    def test_parser_defaults_to_inherit(self) -> None:
+    def test_parser_defaults_to_auto(self) -> None:
         from ait.cli_parser import build_parser
 
         args = build_parser().parse_args(
             ["run", "--adapter", "shell", "--", "echo", "hi"]
         )
-        self.assertEqual(args.stdin, "inherit")
+        self.assertEqual(args.stdin, "auto")
 
     def test_parser_accepts_none(self) -> None:
         from ait.cli_parser import build_parser
@@ -2166,6 +2210,130 @@ class CliRunStdinModeTests(unittest.TestCase):
                     payload.get("command_stdout") or "",
                     "cat must have seen EOF and exited cleanly; if this hangs, --stdin none is broken",
                 )
+
+    def test_auto_stdin_detects_wrapped_codex_js_exec(self) -> None:
+        from ait.runner import _resolve_stdin_mode
+
+        mode = _resolve_stdin_mode(
+            adapter_name="codex",
+            command=["/opt/codex/bin/codex.js", "exec", "prompt from argv"],
+            requested_stdin_mode="auto",
+            command_stdin=None,
+            stdio_is_tty=False,
+        )
+
+        self.assertEqual("none", mode)
+
+    def test_auto_stdin_does_not_treat_unrelated_exec_arg_as_codex_exec(self) -> None:
+        from ait.runner import _resolve_stdin_mode
+
+        mode = _resolve_stdin_mode(
+            adapter_name="codex",
+            command=["echo", "exec"],
+            requested_stdin_mode="auto",
+            command_stdin=None,
+            stdio_is_tty=False,
+        )
+
+        self.assertEqual("inherit", mode)
+
+    def test_stdin_none_gives_mock_command_eof_even_when_parent_has_input(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            completed = _run_ait_cli_subprocess(
+                repo_root,
+                [
+                    "run",
+                    "--adapter",
+                    "shell",
+                    "--stdin",
+                    "none",
+                    "--intent",
+                    "stdin none mock command",
+                    "--no-auto-commit",
+                    "--format",
+                    "json",
+                    "--",
+                    sys.executable,
+                    "-c",
+                    "import sys; print('stdin=' + repr(sys.stdin.read()))",
+                ],
+                stdin_text="parent stdin should not reach child",
+            )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(0, payload["exit_code"])
+        self.assertIn("stdin=''", payload["command_stdout"])
+
+    def test_codex_exec_auto_stdin_none_for_noninteractive_invocation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _init_git_repo(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            _write_mock_codex(bin_dir)
+            completed = _run_ait_cli_subprocess(
+                repo_root,
+                [
+                    "run",
+                    "--adapter",
+                    "codex",
+                    "--intent",
+                    "codex exec auto stdin",
+                    "--no-auto-commit",
+                    "--format",
+                    "json",
+                    "--",
+                    "codex",
+                    "exec",
+                    "prompt from argv",
+                ],
+                stdin_text="parent stdin should not reach codex exec",
+                path_prefix=bin_dir,
+            )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(0, payload["exit_code"])
+        self.assertIn("stdin=''", payload["command_stdout"])
+        self.assertIn("args=['exec', 'prompt from argv']", payload["command_stdout"])
+        self.assertNotIn("may wait for stdin EOF", completed.stderr)
+
+    def test_codex_exec_explicit_inherit_keeps_parent_stdin(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _init_git_repo(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            _write_mock_codex(bin_dir)
+            completed = _run_ait_cli_subprocess(
+                repo_root,
+                [
+                    "run",
+                    "--adapter",
+                    "codex",
+                    "--stdin",
+                    "inherit",
+                    "--intent",
+                    "codex exec inherited stdin",
+                    "--no-auto-commit",
+                    "--format",
+                    "json",
+                    "--",
+                    "codex",
+                    "exec",
+                    "prompt from argv",
+                ],
+                stdin_text="parent stdin reaches explicit inherit",
+                path_prefix=bin_dir,
+            )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(0, payload["exit_code"])
+        self.assertIn("stdin='parent stdin reaches explicit inherit'", payload["command_stdout"])
 
 
 class CliRunWrapperWarningTests(unittest.TestCase):

@@ -247,7 +247,7 @@ python3.14 -m venv .venv
 固定 GitHub release：
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v1.4.0"
+pipx install "git+https://github.com/m24927605/ait.git@v1.4.1"
 ```
 
 升級：

@@ -646,6 +646,64 @@ class CliAdapterTests(unittest.TestCase):
             self.assertFalse(Path(attempt.workspace_ref, "wrapper-new-run.txt").exists())
             self.assertTrue(Path(payload["workspace_ref"], "wrapper-new-run.txt").exists())
 
+    def test_path_codex_exec_wrapper_defaults_to_stdin_none_for_noninteractive_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            _git_commit_initial(repo_root)
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            real_codex = bin_dir / "codex"
+            real_codex.write_text(
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "data = sys.stdin.read()\n"
+                "print('args=' + repr(sys.argv[1:]))\n"
+                "print('stdin=' + repr(data))\n",
+                encoding="utf-8",
+            )
+            real_codex.chmod(0o755)
+            old_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + old_path
+            try:
+                with chdir(repo_root):
+                    with patch("sys.argv", ["ait", "init", "--adapter", "codex", "--format", "json"]):
+                        with redirect_stdout(io.StringIO()):
+                            init_exit_code = cli.main()
+                    env = {
+                        **os.environ,
+                        "PATH": (
+                            str(repo_root / ".ait" / "bin")
+                            + os.pathsep
+                            + str(bin_dir)
+                            + os.pathsep
+                            + old_path
+                        ),
+                        "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
+                    }
+                    completed = subprocess.run(
+                        ["codex", "exec", "prompt from argv"],
+                        cwd=repo_root,
+                        env=env,
+                        input="parent stdin should not reach codex exec",
+                        capture_output=True,
+                        text=True,
+                        timeout=20,
+                        check=False,
+                    )
+            finally:
+                os.environ["PATH"] = old_path
+
+            payload = json.loads(completed.stdout)
+
+            self.assertEqual(0, init_exit_code)
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            self.assertEqual(0, payload["exit_code"])
+            self.assertIn("args=['exec', 'prompt from argv']", payload["command_stdout"])
+            self.assertIn("stdin=''", payload["command_stdout"])
+            self.assertNotIn("may wait for stdin EOF", completed.stderr)
+
     def test_init_shell_outputs_eval_safe_snippet(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp) / "repo"

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 1.4.1 - 2026-05-27
+
+### Changed
+
+- Make `ait run --stdin auto` the default and automatically detach stdin for
+  non-interactive `codex exec` invocations unless `--stdin inherit` is explicit.
+- Keep the wheel release smoke isolated from the caller's `PYTHONPATH` and
+  outer virtual environment.
+
 ## 1.4.0 - 2026-05-26
 
 ### Added

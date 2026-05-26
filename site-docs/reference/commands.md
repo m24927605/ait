@@ -67,6 +67,12 @@ With agent wrappers installed, a bare interactive agent command such as
 worktree. Commands that include a new task, such as `claude -p ...` or
 `codex exec ...`, still start a fresh AIT attempt.
 
+`ait run --stdin auto` is the default. It inherits stdin for interactive
+commands, but switches non-interactive `codex exec` invocations to `/dev/null`
+so scripted review commands do not wait on stdin. Use `--stdin none` explicitly
+for scripted commands that never need stdin, and `--stdin inherit` when the
+wrapped command must consume stdin.
+
 ## Agent-first control plane
 
 ```bash

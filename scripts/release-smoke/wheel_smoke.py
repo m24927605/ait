@@ -33,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
         venv.EnvBuilder(with_pip=True).create(venv_dir)
         python = _venv_bin(venv_dir, "python")
         ait = _venv_bin(venv_dir, "ait")
-        env = {**os.environ, "HOME": str(home), "AIT_STATE_DIR": str(root / "ait-state")}
+        env = _isolated_env(home=home, state_dir=root / "ait-state")
         _run([str(python), "-m", "pip", "install", "--no-cache-dir", str(wheel)], env=env)
         _run(["git", "config", "--global", "user.email", "release-smoke@ait.test"], env=env)
         _run(["git", "config", "--global", "user.name", "AIT Release Smoke"], env=env)
@@ -87,6 +87,17 @@ def _venv_bin(venv_dir: Path, name: str) -> Path:
         suffix = ".exe" if name in {"python", "ait"} else ""
         return venv_dir / "Scripts" / f"{name}{suffix}"
     return venv_dir / "bin" / name
+
+
+def _isolated_env(*, home: Path, state_dir: Path) -> dict[str, str]:
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in {"PYTHONHOME", "PYTHONPATH", "VIRTUAL_ENV"}
+    }
+    env["HOME"] = str(home)
+    env["AIT_STATE_DIR"] = str(state_dir)
+    return env
 
 
 def _run(

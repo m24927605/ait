@@ -43,6 +43,19 @@ Or wrap explicitly with intent:
 ait run --adapter codex --intent "Implement parser edge cases" -- codex
 ```
 
+For scripted `codex exec` runs, prefer closing stdin explicitly:
+
+```bash
+ait run --adapter codex --stdin none -- \
+  codex exec --sandbox read-only --skip-git-repo-check -C <workspace> "<prompt>"
+```
+
+`ait run --stdin auto` is the default. It preserves stdin for interactive
+Codex sessions, but automatically uses `/dev/null` for non-interactive
+`codex exec` invocations, or when `codex exec` already has a prompt in argv.
+Pass `--stdin inherit` when the wrapped `codex exec` command must read from
+stdin.
+
 ## Repair and refresh
 
 If the wrapper drifts (e.g. after upgrading Codex):
