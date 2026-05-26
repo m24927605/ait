@@ -58,6 +58,8 @@ def build_parser() -> argparse.ArgumentParser:
     attempt_new.add_argument("--agent-id")
     attempt_show = attempt_subparsers.add_parser("show")
     attempt_show.add_argument("attempt_id")
+    attempt_show.add_argument("--format", choices=("text", "json"))
+    attempt_show.add_argument("--json", action="store_true", help="alias for --format json")
     attempt_commit = attempt_subparsers.add_parser("commit")
     attempt_commit.add_argument("attempt_id")
     attempt_commit.add_argument("-m", "--message", required=True)
@@ -331,9 +333,13 @@ def build_parser() -> argparse.ArgumentParser:
     resume_parser = subparsers.add_parser("resume", help="open a shell in a recoverable attempt workspace")
     resume_parser.add_argument("attempt_id", nargs="?", default="latest")
     resume_parser.add_argument("--print", action="store_true", help="print only the workspace path")
+    resume_parser.add_argument("--finish", action="store_true", help="commit resumed workspace changes and try applying the attempt")
+    resume_parser.add_argument("--finish-plan", action="store_true", help="print the safe finish command without running it")
+    resume_parser.add_argument("-m", "--message", help="commit message for --finish")
     resume_parser.add_argument("--format", choices=("text", "json"), default="text")
     resume_parser.add_argument("--json", action="store_true", help="alias for --format json")
     resume_parser.add_argument("--no-interactive", action="store_true")
+    resume_parser.add_argument("--debug", action="store_true", help="include workspace and canonical attempt details")
 
     continue_parser = subparsers.add_parser("continue", help="continue the latest interrupted AIT work")
     continue_parser.add_argument("selector", nargs="?", default="latest")
@@ -454,7 +460,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="apply policy after a successful run; defaults to repo config or never",
     )
     run_parser.add_argument("--with-context", action="store_true")
-    run_parser.add_argument("--format", choices=("json", "text"), default="json")
+    run_parser.add_argument("--format", choices=("json", "text"))
+    run_parser.add_argument("--json", action="store_true", help="alias for --format json")
     run_parser.add_argument("--port", type=int, action="append", dest="dev_ports")
     run_parser.add_argument("--check-port", type=int, action="append", dest="dev_check_ports")
     run_parser.add_argument(

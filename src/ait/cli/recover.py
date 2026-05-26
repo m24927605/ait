@@ -88,8 +88,9 @@ def _format_recover_result(result, *, debug: bool = False) -> str:
     if result.changed_files:
         lines.append(f"Changed: {len(result.changed_files)} files")
     if result.next_steps:
-        lines.append("Next:")
-        lines.extend(f"- {step}" for step in result.next_steps)
+        lines.append(f"Next: {result.next_steps[0]}")
+    if not debug and result.recoverable and result.status not in {"applied", "discarded"}:
+        lines.append(f"Debug: ait recover {label} --debug")
     if debug:
         lines.extend(
             [

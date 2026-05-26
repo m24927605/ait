@@ -1232,6 +1232,51 @@ class CliAdapterTests(unittest.TestCase):
             self.assertFalse(payload["daemon"]["socket_connectable"])
             self.assertIn("daemon.sock", payload["daemon"]["socket_path"])
 
+    def test_status_text_prioritizes_current_work(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            _git_init(repo_root)
+            _git_commit_initial(repo_root)
+            run_stdout = io.StringIO()
+            status_stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "run",
+                        "--format",
+                        "json",
+                        "--intent",
+                        "Status current work",
+                        "--",
+                        sys.executable,
+                        "-c",
+                        "from pathlib import Path; Path('agent.txt').write_text('ok\\n')",
+                    ],
+                ):
+                    with redirect_stdout(run_stdout), redirect_stderr(io.StringIO()):
+                        run_exit = cli.main()
+                with patch("sys.argv", ["ait", "status"]):
+                    with redirect_stdout(status_stdout), redirect_stderr(io.StringIO()):
+                        status_exit = cli.main()
+
+        text = status_stdout.getvalue()
+        self.assertEqual(0, run_exit)
+        self.assertEqual(0, status_exit)
+        self.assertIn("AIT Status\n", text)
+        self.assertLess(text.index("AIT Status"), text.index("Agent CLI:"))
+        self.assertLess(text.index("Latest result:"), text.index("Agent CLI:"))
+        self.assertIn("Latest result: ready_to_apply", text)
+        self.assertIn("Attempt: a1", text)
+        self.assertIn("Description: changed agent.txt", text)
+        self.assertIn("Changed: 1 files", text)
+        self.assertIn("Next: ait apply a1", text)
+        self.assertIn("Adapter health: run ait doctor for install and wrapper checks", text)
+        self.assertNotIn(".ait/workspaces", text)
+
     def test_status_reports_memory_eval_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp) / "repo"
@@ -1398,7 +1443,9 @@ class CliAdapterTests(unittest.TestCase):
 
             self.assertEqual(0, exit_code)
             self.assertEqual(0, second_exit_code)
-            self.assertTrue(stdout.getvalue().startswith("Agent CLI: run ait init --adapter claude-code\n"))
+            self.assertTrue(stdout.getvalue().startswith("AIT Status\n"))
+            self.assertLess(stdout.getvalue().index("Latest result:"), stdout.getvalue().index("Agent CLI:"))
+            self.assertIn("Agent CLI: run ait init --adapter claude-code", stdout.getvalue())
             self.assertIn("Wrapper installed: False", stdout.getvalue())
             self.assertIn("Agent CLI ready: False", stdout.getvalue())
             self.assertIn("Agent CLI detail: not ready: run ait init --adapter claude-code", stdout.getvalue())

@@ -318,6 +318,7 @@ def _format_status(payload: dict[str, object], *, debug: bool = False) -> str:
     lines = []
     if isinstance(installation, dict):
         lines.extend(_format_installation_alert_lines(installation))
+    lines.extend(_format_status_current_work(payload.get("recovery"), debug=debug))
     lines.extend([
         f"Agent CLI: {_agent_cli_summary(payload)}",
         f"Adapter: {payload['adapter']}",
@@ -389,62 +390,77 @@ def _format_status(payload: dict[str, object], *, debug: bool = False) -> str:
     if next_steps:
         lines.append("Next steps:")
         lines.extend(f"- {step}" for step in next_steps)
-    recovery = payload.get("recovery")
-    if isinstance(recovery, dict):
-        lines.append(f"Latest result: {recovery.get('status', 'unknown')}")
-        if recovery.get("attempt_handle"):
-            lines.append(f"Attempt: {recovery.get('attempt_handle')}")
-        if recovery.get("attempt_description"):
-            lines.append(f"Description: {recovery.get('attempt_description')}")
-        message = recovery.get("message")
-        if message:
-            lines.append(str(message))
-        changed_files = recovery.get("changed_files", [])
-        if isinstance(changed_files, list) and changed_files:
-            lines.append(f"Changed: {len(changed_files)} files")
-        review = recovery.get("review")
-        if isinstance(review, dict) and review:
-            lines.append(
-                "Review: "
-                f"{review.get('status', 'unknown')} "
-                f"risk={review.get('risk_level', 'unknown')} "
-                f"findings={review.get('finding_count', 0)}"
-            )
-            if review.get("overridden"):
-                lines.append("Review override: true")
-        next_step = recovery.get("next_step")
-        if next_step:
-            lines.append(f"Next: {next_step}")
-        if debug:
-            lines.append("Recovery debug:")
-            lines.append(f"  Canonical ID: {recovery.get('attempt_id')}")
-            lines.append(f"  Workspace: {recovery.get('workspace_ref')}")
-            lines.append(f"  Lease: {recovery.get('lease_path')}")
-            lines.append(f"  Apply readiness: {recovery.get('status', 'unknown')}")
-            if next_step:
-                lines.append(f"  Recover next: {next_step}")
-            dev_servers = recovery.get("dev_servers", [])
-            if isinstance(dev_servers, list) and dev_servers:
-                for server in dev_servers:
-                    if isinstance(server, dict):
-                        lines.append(
-                            "  Dev server: "
-                            f"pid={server.get('pid')} port={server.get('port')} "
-                            f"log={server.get('log_path')}"
-                        )
-            integration = recovery.get("integration")
-            if isinstance(integration, dict) and integration:
-                lines.append(f"  Base attempt: {integration.get('base_attempt_id')}")
-                lines.append(f"  Strategy: {integration.get('strategy')}")
-                lines.append(f"  Classification: {integration.get('classification')}")
-            decision = recovery.get("decision_report", {})
-            if isinstance(decision, dict):
-                reasons = decision.get("reasons", [])
-                if isinstance(reasons, (list, tuple)) and reasons:
-                    first = reasons[0]
-                    if isinstance(first, dict):
-                        lines.append(f"  Reason code: {first.get('code')}")
     return "\n".join(lines)
+
+def _format_status_current_work(recovery: object, *, debug: bool = False) -> list[str]:
+    lines = ["AIT Status"]
+    if not isinstance(recovery, dict):
+        return lines
+    lines.append(f"Latest result: {recovery.get('status', 'unknown')}")
+    if recovery.get("attempt_handle"):
+        lines.append(f"Attempt: {recovery.get('attempt_handle')}")
+    if recovery.get("attempt_description"):
+        lines.append(f"Description: {recovery.get('attempt_description')}")
+    message = recovery.get("message")
+    if message:
+        lines.append(str(message))
+    changed_files = recovery.get("changed_files", [])
+    if isinstance(changed_files, list) and changed_files:
+        lines.append(f"Changed: {len(changed_files)} files")
+    review = recovery.get("review")
+    if isinstance(review, dict) and review:
+        lines.append(
+            "Review: "
+            f"{review.get('status', 'unknown')} "
+            f"risk={review.get('risk_level', 'unknown')} "
+            f"findings={review.get('finding_count', 0)}"
+        )
+        if review.get("overridden"):
+            lines.append("Review override: true")
+    next_step = _recovery_next_step_for_text(recovery)
+    if next_step:
+        lines.append(f"Next: {next_step}")
+    lines.append("Adapter health: run ait doctor for install and wrapper checks")
+    if debug:
+        lines.append("Recovery debug:")
+        lines.append(f"  Canonical ID: {recovery.get('attempt_id')}")
+        lines.append(f"  Workspace: {recovery.get('workspace_ref')}")
+        lines.append(f"  Lease: {recovery.get('lease_path')}")
+        lines.append(f"  Apply readiness: {recovery.get('status', 'unknown')}")
+        if next_step:
+            lines.append(f"  Recover next: {next_step}")
+        dev_servers = recovery.get("dev_servers", [])
+        if isinstance(dev_servers, list) and dev_servers:
+            for server in dev_servers:
+                if isinstance(server, dict):
+                    lines.append(
+                        "  Dev server: "
+                        f"pid={server.get('pid')} port={server.get('port')} "
+                        f"log={server.get('log_path')}"
+                    )
+        integration = recovery.get("integration")
+        if isinstance(integration, dict) and integration:
+            lines.append(f"  Base attempt: {integration.get('base_attempt_id')}")
+            lines.append(f"  Strategy: {integration.get('strategy')}")
+            lines.append(f"  Classification: {integration.get('classification')}")
+        decision = recovery.get("decision_report", {})
+        if isinstance(decision, dict):
+            reasons = decision.get("reasons", [])
+            if isinstance(reasons, (list, tuple)) and reasons:
+                first = reasons[0]
+                if isinstance(first, dict):
+                    lines.append(f"  Reason code: {first.get('code')}")
+    return lines
+
+
+def _recovery_next_step_for_text(recovery: dict[str, object]) -> str | None:
+    next_step = recovery.get("next_step")
+    if not next_step:
+        return None
+    handle = recovery.get("attempt_handle")
+    if handle:
+        return str(next_step).replace(" latest", f" {handle}", 1)
+    return str(next_step)
 
 def _ait_health_payload(memory_status: dict[str, object]) -> dict[str, object]:
     report = memory_status.get("report", {})

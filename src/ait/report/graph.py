@@ -21,6 +21,7 @@ from ait.memory_policy import load_memory_policy
 from ait.repo import resolve_repo_root
 
 from ait.report.shared import _short_id
+from ait.runner_transcript import read_agent_transcript_safely
 from ait.review import latest_review_summary
 
 WORK_GRAPH_SCHEMA = "ait.work_graph"
@@ -241,25 +242,8 @@ def _query_attempts(conn: sqlite3.Connection, intent_id: str, *, repo_root: Path
     ]
 
 def _read_display_transcript(raw_trace_ref: str, *, repo_root: Path, limit: int = 20000) -> dict[str, str]:
-    if not raw_trace_ref:
-        return {"transcript": "", "transcript_mode": "none"}
-    path = Path(raw_trace_ref)
-    if not path.is_absolute():
-        path = repo_root / path
-    normalized_path = path.parent / "normalized" / path.name
-    mode = "normalized" if normalized_path.exists() else "raw"
-    if normalized_path.exists():
-        path = normalized_path
-    try:
-        text = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return {"transcript": "", "transcript_mode": "missing"}
-    if len(text) <= limit:
-        return {"transcript": text, "transcript_mode": mode}
-    return {
-        "transcript": text[:limit] + f"\n\n[truncated: {len(text) - limit} chars omitted]",
-        "transcript_mode": mode,
-    }
+    transcript = read_agent_transcript_safely(repo_root, raw_trace_ref, limit=limit)
+    return {"transcript": transcript.text, "transcript_mode": transcript.mode}
 
 def _query_files(conn: sqlite3.Connection, attempt_id: str) -> dict[str, list[str]]:
     rows = conn.execute(

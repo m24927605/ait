@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+## 1.4.0 - 2026-05-26
+
+### Added
+
+- Add redacted transcript boundaries for runner, Claude Code, and Codex
+  transcript capture so memory, reports, and review evidence consume redacted
+  transcript artifacts by default.
+- Add automated release/install smoke gates for package metadata, built wheels,
+  fresh installs, npm tarball installs, and CI publish checks.
+- Add old-version SQLite migration fixtures and rollback tests covering
+  populated v8/v9 ledgers and current query/read paths after upgrade.
+- Add docs drift tests for version consistency, pinned GitHub tags, quickstart
+  command validity, and public-claim wording.
+
+### Changed
+
+- Make first-success `ait run`, `ait status`, and `ait attempt show` output
+  handle-oriented and human-readable by default while keeping JSON output
+  additive.
+- Make apply, recover, resume, and continue next steps use stable attempt
+  handles and add `ait resume <handle> --finish` for finishing continued work.
+- Restrict local reviewer adapter subprocess environments to an allowlist-first
+  policy with explicit per-adapter opt-in for extra variables.
+- Align README, site docs, facts, and release checklist with the `1.4.0`
+  release and current local-only alpha positioning.
+- Bump the Python and npm package versions to `1.4.0`.
+
 ## 1.3.0 - 2026-05-26
 
 ### Added

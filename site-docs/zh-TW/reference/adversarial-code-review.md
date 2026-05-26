@@ -208,7 +208,7 @@ AIT 不應該在沒有證據時聲稱 adversarial review 一定比較好。現�
 implementer 漏掉的 bug、false positive rate、latency、token cost、哪些 risk
 patterns 最有效，以及何時 deterministic review 就夠、何時值得付出 LLM
 reviewer 成本。在這些數據公開前，請把 adversarial review 視為額外安全檢查，
-不是正確性保證。
+不是正確性證明。
 
 目前 baseline report 放在 repo 內的
 [`docs/review-benchmark-dogfood-report.md`](https://github.com/m24927605/ait/blob/main/docs/review-benchmark-dogfood-report.md)。

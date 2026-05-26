@@ -206,8 +206,14 @@ def risk_reason_payload(reason: RiskReason) -> dict[str, object]:
 
 
 def load_review_policy(repo_root: str | Path) -> ReviewPolicy:
-    review = repo_policy(repo_root).get("review")
+    payload = repo_policy(repo_root)
+    review = payload.get("review")
     if not isinstance(review, dict):
+        review = {}
+    adapter_config = review.get("adapters")
+    if adapter_config is None:
+        adapter_config = payload.get("review_adapters")
+    if not review and adapter_config is None:
         return ReviewPolicy()
     baseline = review.get("baseline")
     baseline_payload = baseline if isinstance(baseline, dict) else {}
@@ -236,7 +242,7 @@ def load_review_policy(repo_root: str | Path) -> ReviewPolicy:
                 baseline_payload.get("include_prior_review_findings"), True
             ),
         ),
-        adapters=_adapter_policies(review.get("adapters")),
+        adapters=_adapter_policies(adapter_config),
     )
 
 
@@ -679,10 +685,15 @@ def _adapter_policies(value: object) -> dict[str, ReviewAdapterPolicy] | None:
         if not isinstance(raw_config, dict):
             continue
         command = str(raw_config.get("command", "")).strip()
-        if not command:
+        env_allowlist = raw_config.get("env_allowlist")
+        has_env_allowlist = isinstance(env_allowlist, list)
+        has_adapter_setting = any(
+            key in raw_config
+            for key in ("args", "timeout_seconds", "env_allowlist", "cwd", "output")
+        )
+        if not command and not has_adapter_setting:
             continue
         args = raw_config.get("args")
-        env_allowlist = raw_config.get("env_allowlist")
         timeout = _positive_timeout(raw_config.get("timeout_seconds", 300))
         cwd = raw_config.get("cwd")
         output = str(raw_config.get("output", "json")).strip().lower() or "json"
@@ -691,7 +702,7 @@ def _adapter_policies(value: object) -> dict[str, ReviewAdapterPolicy] | None:
             args=tuple(str(item) for item in args) if isinstance(args, list) else (),
             timeout_seconds=timeout,
             env_allowlist=tuple(str(item) for item in env_allowlist)
-            if isinstance(env_allowlist, list)
+            if has_env_allowlist
             else (),
             cwd=None if cwd is None else str(cwd),
             output=output,

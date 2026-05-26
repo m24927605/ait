@@ -70,7 +70,7 @@ reports, false-positive reporting, latency/cost data, and fixture hashes
 following
 [`docs/review-benchmark-real-dogfood-design.md`](https://github.com/m24927605/ait/blob/main/docs/review-benchmark-real-dogfood-design.md).
 Until then, public copy should frame adversarial review as an extra safety pass,
-not a proven guarantee.
+not proven defect-detection quality.
 
 ## Release Gate For Comparison Claims
 

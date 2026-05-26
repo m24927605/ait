@@ -139,6 +139,7 @@ from ait.cli.runtime_helpers import (
     _format_daemon_lines,
     _format_run_result,
     _format_shell_integration,
+    _resolve_cli_output_format,
 )
 from ait.cli.status_helpers import (
     _ait_health_payload,

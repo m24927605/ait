@@ -60,7 +60,7 @@ ait review attempt latest-reviewable --mode adversarial --review-adapter claude-
 ait review finding list --severity high
 ```
 
-This is not a correctness guarantee. It is a separate review pass with recorded
+This is not proof of correctness. It is a separate review pass with recorded
 findings.
 
 ## Problem 3: failed runs leave debris
@@ -107,7 +107,7 @@ It is not:
 - a hosted dashboard
 - a cross-machine sync service
 - a replacement for Claude Code, Codex, Aider, Cursor, Cline, or Git
-- proof that an AI reviewer catches every bug
+- proof that an AI reviewer will find all defects
 
 ## When it is worth using
 

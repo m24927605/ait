@@ -42,3 +42,50 @@ jobs:
 
       - name: Run npm package tests
         run: npm --prefix npm/ait-vcs test
+
+  release-smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Install release smoke dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build twine pytest
+
+      - name: Check package metadata consistency
+        run: python scripts/release-smoke/check_package_metadata.py
+
+      - name: Run release smoke tests
+        run: python -m pytest tests/test_release_smoke.py -q
+
+      - name: Build distributions
+        run: python -m build
+
+      - name: Check distributions
+        run: python -m twine check dist/*
+
+      - name: Smoke installed wheel
+        run: python scripts/release-smoke/wheel_smoke.py --dist-dir dist
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Run npm package tests
+        run: npm --prefix npm/ait-vcs test
+
+      - name: Check npm package dry run
+        working-directory: npm/ait-vcs
+        run: npm pack --dry-run
+
+      - name: Smoke npm local tarball install
+        run: python scripts/release-smoke/npm_tarball_smoke.py --package-dir npm/ait-vcs --dist-dir dist

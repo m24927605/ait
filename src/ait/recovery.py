@@ -58,7 +58,7 @@ def recover_attempt(
     finally:
         conn.close()
 
-    attempt_label = identity.handle
+    attempt_label = identity.handle or attempt_id.rsplit(":", 1)[-1]
     changed_files = tuple(sorted({path for commit in commits for path in commit.touched_files}))
     workspace = Path(attempt.workspace_ref)
     lease = lease_payload(attempt.workspace_ref)
@@ -76,11 +76,11 @@ def recover_attempt(
     elif recoverable:
         status = _recover_status(attempt.reported_status, attempt.verified_status, lease)
         message = "AIT kept this result for recovery."
-        next_steps = (f"ait apply {attempt_label}", f"ait recover {attempt_label} --debug")
+        next_steps = _recover_next_steps(status, attempt_label)
     else:
         status = "missing"
         message = "AIT cannot find a recoverable workspace for this result."
-        next_steps = ("ait recover latest --debug",)
+        next_steps = (f"ait recover {attempt_label} --debug",)
     return RecoverResult(
         attempt_id=attempt_id,
         attempt_handle=identity.handle,
@@ -131,12 +131,13 @@ def discard_recoverable_attempt(
     if not result.recoverable or result.workspace_ref is None:
         return result
     workspace = Path(result.workspace_ref)
+    label = result.attempt_handle or result.attempt_id.rsplit(":", 1)[-1]
     if _git_stdout(workspace, "status", "--porcelain", "--untracked-files=no", allow_failure=True).strip():
         return _recover_action_result(
             result,
             status="held",
             message="AIT kept this result because its recovery state has local changes.",
-            next_steps=(f"ait recover {result.attempt_id} --debug",),
+            next_steps=(f"ait resume {label}",),
         )
     discard_attempt(repo_root, attempt_id=result.attempt_id)
     return _recover_action_result(
@@ -163,13 +164,13 @@ def create_integration_attempt(
         test_command=test_command,
     )
     identity = _load_attempt_identity(repo_root, result.attempt_id)
-    result_label = result.attempt_id if identity is None else identity.handle
-    base_label = base.attempt_handle or base.attempt_id
+    result_label = result.attempt_id.rsplit(":", 1)[-1] if identity is None else identity.handle
+    base_label = base.attempt_handle or base.attempt_id.rsplit(":", 1)[-1]
     if result.status == "integration_created":
         next_steps = (f"ait apply {result_label}",)
         message = "AIT created an integration attempt."
     elif result.status == "conflict":
-        next_steps = (f"ait recover {result_label} --debug",)
+        next_steps = (f"ait resume {result_label}",)
         message = "AIT created an integration attempt, but the merge needs recovery."
     else:
         next_steps = (f"ait recover {base_label} --debug",)
@@ -286,6 +287,16 @@ def _recover_reason_code(status: str) -> str:
         "succeeded": RecoverCode.READY_TO_APPLY,
         "active": RecoverCode.ACTIVE,
     }.get(status, f"recover.{status}")
+
+
+def _recover_next_steps(status: str, label: str) -> tuple[str, ...]:
+    if status == "succeeded":
+        return (f"ait apply {label}",)
+    if status in {"active", "failed", "conflict", "stale", "orphan", "held"}:
+        return (f"ait resume {label}",)
+    if status == "applied":
+        return ("ait cleanup --apply",)
+    return (f"ait recover {label} --debug",)
 
 
 def _integration_artifact_payload(repo_root: Path, attempt_id: str) -> dict[str, object] | None:

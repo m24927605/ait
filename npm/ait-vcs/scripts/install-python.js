@@ -47,12 +47,19 @@ function pythonVersion(command) {
   return parseVersion(result.stdout);
 }
 
-function findPython() {
-  for (const command of candidatePythons()) {
+function findPython(candidates = candidatePythons()) {
+  for (const command of candidates) {
     const version = pythonVersion(command);
     if (supportsPython(version)) return command;
   }
   return null;
+}
+
+function missingPythonMessage() {
+  return [
+    "ait-vcs requires Python 3.14+ on PATH as python3.14, python3, or python.",
+    "Install Python 3.14+ and rerun npm rebuild -g ait-vcs, or set AIT_PYTHON=/path/to/python3.14 before installing.",
+  ].join(" ");
 }
 
 function run(command, args, options = {}) {
@@ -82,7 +89,7 @@ function install() {
   const root = packageRoot();
   const python = findPython();
   if (!python) {
-    throw new Error("ait-vcs requires Python 3.14+ on PATH as python3.14, python3, or python");
+    throw new Error(missingPythonMessage());
   }
 
   const venv = venvPython(root);
@@ -110,6 +117,7 @@ module.exports = {
   candidatePythons,
   findPython,
   installSpec,
+  missingPythonMessage,
   parseVersion,
   supportsPython,
   venvPython,

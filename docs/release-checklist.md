@@ -18,11 +18,61 @@ Full release gate:
 PYTHONPATH=src .venv/bin/pytest -q
 ```
 
+Migration fixture gate:
+
+```bash
+uv run pytest tests/test_db_migrations.py -q
+uv run pytest tests/test_query.py tests/test_cli_attempt_list.py tests/test_review_query.py -q
+```
+
+Docs drift gate:
+
+```bash
+uv run pytest tests/test_docs_drift.py -q
+```
+
 Optional parallel smoke, when `pytest-xdist` is installed:
 
 ```bash
 PYTHONPATH=src .venv/bin/pytest -m "not serial" -n auto --dist=loadscope -q
 PYTHONPATH=src .venv/bin/pytest -m serial -q
+```
+
+## Automated Release / Install Smoke Gate
+
+GitHub CI now includes a `release-smoke` job. A release is not ready to tag
+or publish unless this job passes. The automated gate covers the must-pass
+checks that used to be manual-only:
+
+1. `pyproject.toml` and `npm/ait-vcs/package.json` metadata/version
+   consistency.
+2. `python -m build` for wheel and sdist artifacts.
+3. `python -m twine check dist/*`.
+4. Fresh virtualenv install from the built wheel, followed by:
+   - `ait --version`
+   - `ait init --no-shell-install`
+   - `ait status --no-interactive`
+   - a shell adapter `ait run`
+   - `ait apply latest`
+5. `npm --prefix npm/ait-vcs test`.
+6. `npm pack --dry-run`.
+7. npm local tarball install against the freshly built wheel via
+   `AIT_NPM_PIP_SPEC`, followed by `ait --version`.
+
+The publish workflow runs the same build/check/smoke guard before trusted
+PyPI publishing. It intentionally does not publish npm; npm publish remains
+manual until the matching PyPI version is visible.
+
+Local equivalent:
+
+```bash
+python3.14 -m build
+python3.14 -m twine check dist/*
+python3.14 scripts/release-smoke/check_package_metadata.py
+python3.14 scripts/release-smoke/wheel_smoke.py --dist-dir dist
+npm --prefix npm/ait-vcs test
+(cd npm/ait-vcs && npm pack --dry-run)
+python3.14 scripts/release-smoke/npm_tarball_smoke.py --package-dir npm/ait-vcs --dist-dir dist
 ```
 
 ## SEO Drift Audit
@@ -164,22 +214,21 @@ Before tagging:
 7. Run the Review Orchestration Release Gate if review-related files
    changed.
 8. Confirm README install and quickstart are current.
-9. Build with `.venv/bin/python -m build`.
-10. Check artifacts with `.venv/bin/python -m twine check dist/*`.
-11. Run `npm --prefix npm/ait-vcs test`.
-12. Run `(cd npm/ait-vcs && npm pack --dry-run)`.
-13. Run a fresh venv smoke test from `dist/*.whl`, including the
+9. Confirm GitHub CI `release-smoke` passed for the release commit.
+10. If validating locally, run the Automated Release / Install Smoke Gate
+    commands above.
+11. Run a fresh venv smoke test from `dist/*.whl`, including the
    plain-directory init smoke and PATH-based agent wrapper smoke below.
-14. Tag with the intended `vX.Y.Z`.
-15. Push `main` and `vX.Y.Z` to GitHub.
-16. Create a GitHub release with the built wheel and sdist.
-17. Confirm GitHub Actions CI and Publish pass.
-18. Confirm PyPI lists the new version.
-19. Run a fresh venv smoke test from PyPI, including the plain-directory
+12. Tag with the intended `vX.Y.Z`.
+13. Push `main` and `vX.Y.Z` to GitHub.
+14. Create a GitHub release with the built wheel and sdist.
+15. Confirm GitHub Actions CI and Publish pass.
+16. Confirm PyPI lists the new version.
+17. Run a fresh venv smoke test from PyPI, including the plain-directory
     init smoke and PATH-based agent wrapper smoke below.
-20. Publish the npm package from `npm/ait-vcs` after PyPI lists the same
+18. Publish the npm package from `npm/ait-vcs` after PyPI lists the same
     version.
-21. Run a fresh global npm smoke test with `npm install -g ait-vcs`.
+19. Run a fresh global npm smoke test with `npm install -g ait-vcs`.
 
 ## Plain Directory Init Smoke
 
@@ -283,11 +332,10 @@ Before uploading:
 2. Run `.venv/bin/pytest -q`.
 3. Run the Review Orchestration Release Gate if review-related files
    changed.
-4. Build with `.venv/bin/python -m build`.
-5. Check artifacts with `.venv/bin/python -m twine check dist/*`.
-6. Upload with `.venv/bin/python -m twine upload dist/*`, or publish
+4. Confirm the Automated Release / Install Smoke Gate passed.
+5. Upload with `.venv/bin/python -m twine upload dist/*`, or publish
    through GitHub trusted publishing.
-7. Smoke test with `pip install ait-vcs`.
+6. Smoke test with `pip install ait-vcs`.
 
 GitHub trusted publishing is also configured through
 `.github/workflows/publish.yml`. On PyPI, create a pending trusted
@@ -314,7 +362,7 @@ Before publishing npm:
 
 1. Confirm `npm/ait-vcs/package.json` version matches `pyproject.toml`.
 2. Confirm the matching PyPI version is already available.
-3. Run `npm --prefix npm/ait-vcs test`.
-4. Run `(cd npm/ait-vcs && npm pack --dry-run)`.
-5. From `npm/ait-vcs`, run `npm publish --access public`.
-6. Smoke test with `npm install -g ait-vcs`.
+3. Confirm the Automated Release / Install Smoke Gate passed for the same
+   commit.
+4. From `npm/ait-vcs`, run `npm publish --access public`.
+5. Smoke test with `npm install -g ait-vcs`.

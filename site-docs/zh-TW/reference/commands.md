@@ -166,7 +166,7 @@ dependency 或 lockfile、generated/binary 檔案、缺少 test evidence。它
 搭配 `fake:*` reviewers 時，`ait review benchmark run` 是本機 deterministic
 measurement path，不會呼叫真實 LLM、network、login state、API key 或 paid
 credits。Markdown report command 只格式化先前寫出的 JSON benchmark payload；
-它是 dogfood evidence，不是 review quality 保證。
+它是 dogfood evidence，不是 review quality 證明。
 
 Real reviewer benchmark dogfood 必須明確 opt-in。只傳
 `--reviewer-adapter` 但沒有 `--dogfood` 時會 fail closed。加上 `--dogfood`

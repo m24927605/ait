@@ -29,7 +29,7 @@ class CliContinueTests(unittest.TestCase):
         self.assertIn("ait session attach", plan["command"])
         self.assertEqual(2, len(plan["session"]["participants"]))
 
-    def test_continue_no_interactive_falls_back_to_resume_attempt(self) -> None:
+    def test_continue_no_interactive_uses_handle(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             _init_git_repo(repo)
@@ -40,9 +40,10 @@ class CliContinueTests(unittest.TestCase):
 
         self.assertIn("Target: AIT attempt worktree", text)
         self.assertIn("Attempt: a1", text)
-        self.assertIn(f"Workspace: {attempt.workspace_ref}", text)
-        self.assertIn("ait resume", text)
+        self.assertIn("Resume command: ait resume a1", text)
+        self.assertIn("Finish command: ait resume a1 --finish", text)
         self.assertIn("claude --continue", text)
+        self.assertNotIn(attempt.workspace_ref, text)
 
     def test_continue_latest_uses_newer_attempt_over_older_session(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -62,6 +63,7 @@ class CliContinueTests(unittest.TestCase):
             plan = _run_cli_json(repo, "continue", "--format", "json")
 
         self.assertEqual("attempt_resume", plan["target_type"])
+        self.assertEqual("ait resume a1", plan["command"])
         self.assertEqual(attempt.workspace_ref, plan["resume"]["workspace_ref"])
         self.assertEqual("a1", plan["resume"]["attempt_handle"])
         self.assertIn("no indexed changed files yet", plan["resume"]["attempt_description"])

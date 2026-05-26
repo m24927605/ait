@@ -336,6 +336,7 @@ def _hold_for_review_gate(
     workspace_ref: str,
     gate: ReviewGateDecision,
 ) -> ApplyResult:
+    label = _attempt_label_for_workspace(workspace_ref, attempt_id)
     plan = LandingPlan(
         kind="hold_for_review",
         target_ref=target_ref,
@@ -349,7 +350,7 @@ def _hold_for_review_gate(
         changed_files,
         workspace_ref,
         "AIT held the result because this repo requires review before apply.",
-        f"review gate: {gate.reason}; run `ait review attempt {attempt_id}` and retry apply",
+        f"review gate: {gate.reason}; run `ait review attempt {label}` and retry apply",
         debug={"review_gate": gate.metadata()},
         reason_code=ApplyCode.REVIEW_GATE,
     )
@@ -1019,6 +1020,8 @@ def _result(
     debug: dict[str, object] | None = None,
 ) -> ApplyResult:
     identity = _identity_for_attempt(workspace_ref, attempt_id)
+    label = None if identity is None else identity.handle
+    label = label or attempt_id.rsplit(":", 1)[-1]
     debug_payload = {
         "lease_path": str(workspace_lease_path(workspace_ref)),
         **(debug or {}),
@@ -1032,7 +1035,7 @@ def _result(
         reason_message=reason or plan.reason,
         paths=_reason_paths_for_apply(debug_payload, changed_files),
         debug=debug_payload,
-        next_steps=() if status in {"applied", "already_applied"} else (daily_step(f"ait recover {attempt_id}", "review the recoverable result"),),
+        next_steps=() if status in {"applied", "already_applied"} else (daily_step(f"ait recover {label}", "review the recoverable result"),),
         metadata={
             "landing_plan": asdict(plan),
             "changed_files_count": len(changed_files),
@@ -1061,6 +1064,13 @@ def _result(
         result_artifact_ref=result_artifact_ref,
         debug=debug_payload,
     )
+
+
+def _attempt_label_for_workspace(workspace_ref: str, attempt_id: str) -> str:
+    identity = _identity_for_attempt(workspace_ref, attempt_id)
+    if identity is not None and identity.handle:
+        return identity.handle
+    return attempt_id.rsplit(":", 1)[-1]
 
 
 def _identity_for_attempt(workspace_ref: str, attempt_id: str):

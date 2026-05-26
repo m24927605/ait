@@ -110,6 +110,36 @@ class CliAttemptListTests(unittest.TestCase):
         self.assertEqual("a1", payload["attempt"]["attempt_handle"])
         self.assertIn("changed src/calculator.js", payload["attempt"]["attempt_description"])
 
+    def test_attempt_show_text_outputs_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            attempt_id = _seed_repo_with_attempt(repo_root)
+            stdout = io.StringIO()
+
+            with (
+                chdir(repo_root),
+                patch("sys.argv", ["ait", "attempt", "show", "a1", "--format", "text"]),
+                redirect_stdout(stdout),
+            ):
+                exit_code = cli.main()
+
+        text = stdout.getvalue()
+        self.assertEqual(0, exit_code)
+        self.assertIn("Attempt: a1", text)
+        self.assertIn("Status: succeeded", text)
+        self.assertIn("Description: changed src/calculator.js and test/calculator.test.js", text)
+        self.assertIn("Changed files:", text)
+        self.assertIn("- src/calculator.js", text)
+        self.assertIn("- test/calculator.test.js", text)
+        self.assertIn("Next:", text)
+        self.assertIn("- ait apply a1", text)
+        self.assertIn("- ait review attempt a1", text)
+        self.assertNotIn(attempt_id, text)
+        self.assertNotIn("workspace_ref", text)
+        self.assertNotIn(".ait/workspaces", text)
+        self.assertNotIn("ownership_token", text)
+        self.assertNotIn("token", text)
+
     def test_attempt_list_description_clipping_does_not_break_columns(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

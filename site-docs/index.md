@@ -133,7 +133,7 @@ ait demo --clean</code></pre>
       <p>
         ait is CLI-only, alpha, single-machine, and local-first. It is not an
         IDE plugin, autocomplete engine, hosted dashboard, team sync service, or
-        guarantee that an AI reviewer catches every bug.
+        proof that an AI reviewer will find every defect.
       </p>
     </div>
     <a class="ait-button ait-button--ghost" href="why-ait/">Read the boundaries</a>

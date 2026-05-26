@@ -134,8 +134,17 @@ def run_migrations(conn: sqlite3.Connection) -> None:
 
 
 def _execute_migration_sql(conn: sqlite3.Connection, sql: str) -> None:
-    for statement in sql.split(";"):
-        statement = statement.strip()
+    pending: list[str] = []
+    for line in sql.splitlines():
+        pending.append(line)
+        statement = "\n".join(pending).strip()
         if not statement:
+            pending.clear()
             continue
+        if sqlite3.complete_statement(statement):
+            conn.execute(statement)
+            pending.clear()
+
+    statement = "\n".join(pending).strip()
+    if statement:
         conn.execute(statement)

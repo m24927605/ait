@@ -113,7 +113,7 @@ def _format_apply_result(result, *, debug: bool = False) -> str:
     elif result.worktree_cleaned:
         lines.append("Cleanup: internal workspace removed")
     if result.status not in {"applied", "already_applied"}:
-        lines.append(f"Recover: ait recover {label}")
+        lines.append(f"Next: ait recover {label}")
     if debug:
         lines.extend(
             [
@@ -132,6 +132,6 @@ def _human_apply_error(message: str) -> str:
     if "Commit or stash" in message or "uncommitted" in message:
         return (
             "AIT could not apply directly because your local edits make that unsafe. "
-            "The result was left recoverable; run `ait recover latest --debug` for details."
+            "The result was left recoverable; run `ait recover --debug` for details."
         )
     return message

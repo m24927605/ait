@@ -72,12 +72,15 @@ class CodexHookUnitTests(unittest.TestCase):
             )
             self.assertEqual(state, hook.read_state(repo_root, "abc/123"))
 
-    def test_persist_transcript_copies_existing_file(self) -> None:
+    def test_codex_hook_persists_redacted_transcript(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
             upstream = repo_root / "rollout-2026-05-04.jsonl"
+            api_key = "sk-" + ("b" * 32)
+            jwt = "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiY2xpIn0.signaturevalue456"
+            db_url = "mysql://user:pass@example.com:3306/app"
             upstream.write_text(
-                '{"role":"user","text":"hi"}\n{"role":"assistant","text":"hello"}\n',
+                f'{{"role":"user","text":"token {api_key} jwt {jwt} db {db_url}"}}\n',
                 encoding="utf-8",
             )
 
@@ -87,10 +90,22 @@ class CodexHookUnitTests(unittest.TestCase):
                 source_path=str(upstream),
             )
 
-            self.assertEqual(".ait/transcripts/attempt-aaa.jsonl", persisted)
-            copied = repo_root / ".ait" / "transcripts" / "attempt-aaa.jsonl"
-            self.assertTrue(copied.exists())
-            self.assertEqual(upstream.read_bytes(), copied.read_bytes())
+            self.assertEqual(".ait/transcripts/redacted/attempt-aaa.jsonl", persisted)
+            safe = repo_root / ".ait" / "transcripts" / "redacted" / "attempt-aaa.jsonl"
+            metadata = json.loads(
+                safe.with_name(safe.name + ".meta.json").read_text(encoding="utf-8")
+            )
+            safe_text = safe.read_text(encoding="utf-8")
+
+            self.assertTrue(safe.exists())
+            self.assertIn("[REDACTED]", safe_text)
+            self.assertNotIn(api_key, safe_text)
+            self.assertNotIn(jwt, safe_text)
+            self.assertNotIn(db_url, safe_text)
+            self.assertFalse((repo_root / ".ait" / "transcripts" / "attempt-aaa.jsonl").exists())
+            self.assertEqual("codex", metadata["source_kind"])
+            self.assertFalse(metadata["raw_retained"])
+            self.assertTrue(metadata["redacted"])
 
     def test_persist_transcript_returns_none_when_source_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -183,7 +198,7 @@ class CodexHookE2ETests(unittest.TestCase):
             attempt_id = state["attempt_id"]
             attempt = show_attempt(repo_root, attempt_id=attempt_id)
             env_text = env_file.read_text(encoding="utf-8")
-            persisted = repo_root / ".ait" / "transcripts" / f"{attempt_id}.jsonl"
+            persisted = repo_root / str(attempt.attempt["raw_trace_ref"])
             prompt_ref = attempt.evidence_summary["raw_prompt_ref"]
             prompt_text = (repo_root / prompt_ref).read_text(encoding="utf-8") if prompt_ref else ""
             persisted_exists = persisted.exists()
@@ -208,10 +223,7 @@ class CodexHookE2ETests(unittest.TestCase):
         self.assertEqual(("src/parser.py",), attempt.files["touched"])
         self.assertTrue(persisted_exists, f"expected transcript at {persisted}")
         self.assertEqual(upstream_bytes, persisted_bytes)
-        self.assertEqual(
-            f".ait/transcripts/{attempt_id}.jsonl",
-            attempt.attempt["raw_trace_ref"],
-        )
+        self.assertTrue(str(attempt.attempt["raw_trace_ref"]).startswith(".ait/transcripts/redacted/"))
 
 
 def _run_hook(

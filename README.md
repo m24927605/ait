@@ -219,7 +219,7 @@ Do not use `ait` if you need:
 - An IDE plugin or autocomplete engine.
 - A hosted dashboard, team sync service, or cross-machine ledger.
 - A production-hardened system with a stable long-term storage contract.
-- A guarantee that an AI reviewer catches every bug.
+- Proof that an AI reviewer will find all defects.
 - A tool that replaces Claude Code, Codex, Aider, Cursor, Cline, or Git.
 
 `ait` is most useful for engineers who already use agent CLIs and want local
@@ -252,7 +252,7 @@ python3.14 -m venv .venv
 Pinned GitHub release:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v1.3.0"
+pipx install "git+https://github.com/m24927605/ait.git@v1.4.0"
 ```
 
 Upgrade:
@@ -274,7 +274,7 @@ The npm package requires Node.js 18+ and installs the Python package behind the
 - No telemetry, no SaaS dashboard, no automatic push, no automatic merge.
 - Browser/HTML reporting is local; mutation still goes through CLI commands.
 - Metadata export/import is currently a dry-run planning path, not sync.
-- Adversarial review is an extra safety pass, not a correctness guarantee.
+- Adversarial review is an extra safety pass, not proof of correctness.
 - Memory recall is useful, but you still decide which recalled context matters.
 
 ## Docs and examples

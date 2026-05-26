@@ -261,7 +261,7 @@ def _attempt_candidate(root: Path, selector: str) -> _Candidate | None:
         repo_root=root,
         target_type="attempt_resume",
         timestamp=timestamp,
-        command=f"ait resume {shlex.quote(resume.attempt_id)}",
+        command=_resume_command(resume),
         reason="recoverable AIT attempt workspace is available",
         resume=resume,
         attempt=attempt,
@@ -365,6 +365,11 @@ def _safe_actions(candidate: _Candidate) -> tuple[str, ...]:
     if candidate.resume is not None:
         actions.extend(candidate.resume.finish_steps)
     return tuple(actions)
+
+
+def _resume_command(resume: ResumeResult) -> str:
+    label = resume.attempt_handle or resume.attempt_id.rsplit(":", 1)[-1]
+    return f"ait resume {shlex.quote(label)}"
 
 
 def _limitations() -> tuple[str, ...]:

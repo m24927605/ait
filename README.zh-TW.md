@@ -214,7 +214,7 @@ layer。
 - IDE plugin 或 autocomplete engine。
 - Hosted dashboard、team sync service，或跨機器共享的 ledger。
 - 已 production hardening、長期 storage contract 穩定的系統。
-- 保證 AI reviewer 一定抓得到所有 bug。
+- 證明 AI reviewer 一定找得到所有缺陷。
 - 取代 Claude Code、Codex、Aider、Cursor、Cline 或 Git 的工具。
 
 `ait` 最適合已經在用 agent CLI 的工程師：你想要本機 provenance、比較安全的
@@ -247,7 +247,7 @@ python3.14 -m venv .venv
 固定 GitHub release：
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v1.3.0"
+pipx install "git+https://github.com/m24927605/ait.git@v1.4.0"
 ```
 
 升級：
@@ -268,7 +268,7 @@ ait upgrade --dry-run
 - 沒有 telemetry、沒有 SaaS dashboard、沒有自動 push、沒有自動 merge。
 - Browser/HTML report 是本機產物；真正會改狀態的動作仍然走 CLI。
 - Metadata export/import 目前是 dry-run planning path，不是同步功能。
-- 對抗式審查是一道額外安全檢查，不是正確性保證。
+- 對抗式審查是一道額外安全檢查，不是正確性證明。
 - Memory recall 很有用，但最後仍由你判斷哪段脈絡該採用。
 
 ## 文件與範例

@@ -95,6 +95,25 @@ class LandingTests(unittest.TestCase):
             self.assertIsNotNone(result.decision_report)
             self.assertEqual("apply.dirty_overlap", result.decision_report.reasons[0].code)
             self.assertEqual(("README.md",), result.decision_report.reasons[0].paths)
+            self.assertEqual("ait recover a1", result.decision_report.next_steps[0].command)
+
+    def test_apply_held_next_step_uses_handle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            attempt_id, _workspace = _succeeded_attempt(repo_root, "Held apply", "README.md", "attempt edit\n")
+            (repo_root / "README.md").write_text("local edit\n", encoding="utf-8")
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "apply", "a1"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+            text = stdout.getvalue()
+            self.assertEqual(1, exit_code)
+            self.assertIn("Next: ait recover a1", text)
+            self.assertNotIn(attempt_id, text)
 
     def test_dirty_current_checkout_holds_when_untracked_file_would_be_overwritten(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

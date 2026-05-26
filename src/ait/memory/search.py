@@ -6,23 +6,21 @@ import sqlite3
 
 from ait.db import utc_now
 from ait.memory_policy import (
-    EXCLUDED_MARKER,
     MemoryPolicy,
     default_memory_policy,
     load_memory_policy,
 )
-from ait.redaction import has_redactions, redact_text
+from ait.redaction import redact_text
 from ait.repo import resolve_repo_root
+from ait.runner_transcript import read_agent_transcript_safely
 
 from .common import (
     _attempt_memory_note_field,
     _compact_line,
     _literal_snippet,
     _normalize_search_text,
-    _read_trace_text,
     _should_prefer_literal,
     _terms,
-    _trace_excluded,
 )
 from .models import MemorySearchResult
 from .repository import open_memory_repository
@@ -228,10 +226,7 @@ def _search_documents(
         changed_files = _changed_files(conn, attempt_id, policy=policy)
         commits = _commit_oids(conn, attempt_id)
         raw_trace_ref = str(row["raw_trace_ref"] or "")
-        trace_text = _read_trace_text(raw_trace_ref, repo_root=repo_root)
-        if _trace_excluded(trace_text, policy=policy):
-            trace_text = EXCLUDED_MARKER
-        trace_redacted = has_redactions(trace_text)
+        trace = read_agent_transcript_safely(repo_root, raw_trace_ref)
         text_parts = [
             str(row["intent_title"]),
             str(row["intent_description"] or ""),
@@ -240,7 +235,7 @@ def _search_documents(
             str(row["verified_status"]),
             " ".join(changed_files),
             " ".join(commits),
-            trace_text,
+            trace.text,
         ]
         documents.append(
             {
@@ -254,7 +249,7 @@ def _search_documents(
                     "result_exit_code": row["result_exit_code"],
                     "started_at": str(row["started_at"]),
                     "raw_trace_ref": raw_trace_ref,
-                    "redacted": trace_redacted,
+                    "redacted": trace.redacted,
                     "changed_files": list(changed_files),
                     "commit_oids": list(commits),
                 },

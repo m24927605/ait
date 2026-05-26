@@ -147,9 +147,11 @@ claude -p
 ```
 
 AIT sends the brief on stdin, runs the reviewer outside the target attempt
-worktree, and removes `ANTHROPIC_API_KEY` from the child environment. This
-prevents a silent fallback to provider API credits. If local Claude Code is
-not installed or not logged in, the review fails closed.
+worktree, and passes a minimal allowlisted environment to the child process.
+`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GITHUB_TOKEN`, and generic
+`*TOKEN*`, `*SECRET*`, `*PASSWORD*`, or `*KEY*` names are not inherited by
+default. This prevents a silent fallback to provider API credits. If local
+Claude Code is not installed or not logged in, the review fails closed.
 
 Check the local auth path:
 
@@ -172,7 +174,20 @@ ait review attempt latest-reviewable \
 
 The command receives the reviewer brief on stdin and must print the expected
 structured JSON. Named review adapters can also be configured by repository
-policy.
+policy. Reviewer commands do not inherit the full process environment; add
+specific non-secret variables only when needed:
+
+```json
+{
+  "review": {
+    "adapters": {
+      "codex": {
+        "env_allowlist": ["PATH", "HOME", "TMPDIR", "CODEX_HOME"]
+      }
+    }
+  }
+}
+```
 
 ## Risk-based run policy
 
@@ -215,8 +230,8 @@ The still-missing evidence is repeated successful real-reviewer data: how many
 bugs a reviewer found that the implementer missed, false positive rate,
 latency, token cost, which risk patterns benefit most, and when deterministic
 review is enough versus when an LLM reviewer pays off. Until that data is
-published, treat adversarial review as an explicit extra safety pass, not a
-correctness guarantee.
+published, treat adversarial review as an explicit extra safety pass, not proof
+of correctness.
 
 The current baseline report is tracked in the repository at
 [`docs/review-benchmark-dogfood-report.md`](https://github.com/m24927605/ait/blob/main/docs/review-benchmark-dogfood-report.md).
@@ -248,8 +263,8 @@ lets that evidence affect whether code can land.
 
 Adversarial review is still LLM-assisted review. It does not replace tests,
 human judgment, or domain-specific verification. AIT gives the reviewer better
-context and records the result, but a clean review is not a formal proof that
-the change is correct.
+context and records the result, but a clean review is not formal proof that the
+change is correct.
 
 AIT itself does not upload code to a SaaS. The reviewer adapter you choose
 controls where the reviewer model runs.

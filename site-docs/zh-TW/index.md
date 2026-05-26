@@ -130,8 +130,8 @@ ait demo --clean</code></pre>
       <h2 id="not-title">如果你需要 hosted product，ait 不適合。</h2>
       <p>
         ait 是 CLI-only、alpha、單機、local-first。它不是 IDE plugin、
-        autocomplete engine、hosted dashboard、team sync service，也不保證 AI
-        reviewer 一定抓得到所有 bug。
+        autocomplete engine、hosted dashboard、team sync service，也不是 AI
+        reviewer 一定找得到所有缺陷的證明。
       </p>
     </div>
     <a class="ait-button ait-button--ghost" href="why-ait/">閱讀邊界</a>

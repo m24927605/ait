@@ -33,7 +33,11 @@ def handle(args, repo_root: Path, parser=None) -> int:
         return 0
     if args.command == "attempt" and args.attempt_command == "show":
         result = show_attempt(repo_root, attempt_id=args.attempt_id)
-        print(json.dumps(asdict(result), indent=2))
+        output_format = _resolve_cli_output_format(getattr(args, "format", None))
+        if output_format == "json":
+            print(json.dumps(asdict(result), indent=2))
+        else:
+            print(_format_attempt_show(result))
         return 0
     if args.command == "attempt" and args.attempt_command == "commit":
         result = create_commit_for_attempt(
@@ -95,6 +99,44 @@ def handle(args, repo_root: Path, parser=None) -> int:
     if parser is not None:
         parser.print_help()
     return 1
+
+
+def _format_attempt_show(result) -> str:
+    attempt = result.attempt
+    handle = attempt.get("attempt_handle") or str(attempt.get("id", "")).rsplit(":", 1)[-1]
+    status = attempt.get("verified_status") or attempt.get("reported_status") or "unknown"
+    changed = tuple(result.files.get("changed", ()))
+    lines = [
+        f"Attempt: {handle}",
+        f"Status: {status}",
+    ]
+    if attempt.get("agent_id"):
+        lines.append(f"Agent: {attempt.get('agent_id')}")
+    if attempt.get("attempt_description"):
+        lines.append(f"Description: {attempt.get('attempt_description')}")
+    if changed:
+        lines.append("Changed files:")
+        lines.extend(f"- {path}" for path in changed)
+    else:
+        lines.append("Changed: 0 files")
+    outcome = result.outcome or {}
+    if outcome.get("outcome_class"):
+        lines.append(f"Outcome: {outcome.get('outcome_class')}")
+    next_steps = _attempt_show_next_steps(status, handle)
+    if next_steps:
+        lines.append("Next:")
+        lines.extend(f"- {step}" for step in next_steps)
+    else:
+        lines.append("Next: no action")
+    return "\n".join(lines)
+
+
+def _attempt_show_next_steps(status: object, handle: str) -> list[str]:
+    if status == "succeeded":
+        return [f"ait apply {handle}", f"ait review attempt {handle}"]
+    if status in {"failed", "pending"}:
+        return [f"ait recover {handle}"]
+    return []
 
 
 def _handle_attempt_alias(args, repo_root: Path) -> int:

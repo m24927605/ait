@@ -31,6 +31,11 @@ from ait.db.repositories import (
 )
 
 
+class TtyStringIO(io.StringIO):
+    def isatty(self) -> bool:
+        return True
+
+
 class CliRunTests(unittest.TestCase):
     def test_cli_main_returns_130_on_keyboard_interrupt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -58,7 +63,7 @@ class CliRunTests(unittest.TestCase):
 
         self.assertEqual(130, exit_code)
 
-    def test_run_json_format_outputs_parseable_json_with_command_output(self) -> None:
+    def test_run_json_remains_machine_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
             _init_git_repo(repo_root)
@@ -70,14 +75,19 @@ class CliRunTests(unittest.TestCase):
                     [
                         "ait",
                         "run",
-                        "--format",
-                        "json",
+                        "--json",
                         "--intent",
                         "Capture output",
                         "--",
                         sys.executable,
                         "-c",
-                        "import sys; print('agent out'); print('agent err', file=sys.stderr)",
+                        (
+                            "import sys; "
+                            "from pathlib import Path; "
+                            "Path('agent.txt').write_text('ok\\n'); "
+                            "print('agent out'); "
+                            "print('agent err', file=sys.stderr)"
+                        ),
                     ],
                 ):
                     with redirect_stdout(stdout):
@@ -90,6 +100,41 @@ class CliRunTests(unittest.TestCase):
         self.assertIn(".ait/workspaces", payload["workspace_ref"])
         self.assertEqual("agent out\n", payload["command_stdout"])
         self.assertEqual("agent err\n", payload["command_stderr"])
+        self.assertEqual("a1", payload["attempt_handle"])
+        self.assertEqual(["ait apply a1"], payload["next_steps"])
+
+    def test_run_default_tty_outputs_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            stdout = TtyStringIO()
+            stderr = io.StringIO()
+
+            with chdir(repo_root):
+                with patch(
+                    "sys.argv",
+                    [
+                        "ait",
+                        "run",
+                        "--intent",
+                        "Default TTY text",
+                        "--",
+                        sys.executable,
+                        "-c",
+                        "from pathlib import Path; Path('agent.txt').write_text('ok\\n')",
+                    ],
+                ):
+                    with redirect_stdout(stdout), redirect_stderr(stderr):
+                        exit_code = cli.main()
+
+        text = stderr.getvalue()
+        self.assertEqual(0, exit_code)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("AIT recorded the run", text)
+        self.assertIn("Attempt: a1", text)
+        self.assertIn("Next: ait apply a1", text)
+        self.assertNotIn("{", text)
+        self.assertNotIn(".ait/workspaces", text)
 
     def test_run_adapter_without_intent_uses_agent_attempt_not_dev_server(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -285,9 +330,9 @@ class CliRunTests(unittest.TestCase):
 
         self.assertEqual(0, exit_code)
         self.assertEqual("", stdout.getvalue())
-        self.assertIn("AIT run finished", stderr.getvalue())
+        self.assertIn("AIT recorded the run", stderr.getvalue())
         self.assertIn("Exit code: 0", stderr.getvalue())
-        self.assertIn("Next: ait apply latest", stderr.getvalue())
+        self.assertIn("Next: ait apply a1", stderr.getvalue())
         self.assertNotIn(".ait/workspaces", stderr.getvalue())
 
     def test_run_apply_auto_text_applies_result_without_workspace_noise(self) -> None:

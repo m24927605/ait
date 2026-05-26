@@ -14,7 +14,14 @@ from ait.app import show_attempt
 
 
 def _load_hook_module():
-    path = Path(__file__).resolve().parents[1] / "examples" / "claude_code_hook.py"
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "ait"
+        / "resources"
+        / "claude-code"
+        / "claude_code_hook.py"
+    )
     spec = importlib.util.spec_from_file_location("claude_code_hook", path)
     if spec is None or spec.loader is None:
         raise RuntimeError("could not load claude_code_hook.py")
@@ -63,12 +70,15 @@ class ClaudeCodeHookTests(unittest.TestCase):
             self.assertTrue((repo_root / ".ait" / "claude-code-hooks" / "abc_123.json").exists())
             self.assertEqual(state, hook.read_state(repo_root, "abc/123"))
 
-    def test_persist_transcript_copies_existing_file_into_ait_transcripts(self) -> None:
+    def test_claude_hook_persists_redacted_transcript(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
             upstream = repo_root / "upstream.jsonl"
+            api_key = "sk-" + ("a" * 32)
+            jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signaturevalue123"
+            db_url = "postgresql://user:pass@example.com:5432/app"
             upstream.write_text(
-                '{"role":"user","text":"hi"}\n{"role":"assistant","text":"hello"}\n',
+                f'{{"role":"user","text":"token {api_key} jwt {jwt} db {db_url}"}}\n',
                 encoding="utf-8",
             )
 
@@ -78,10 +88,22 @@ class ClaudeCodeHookTests(unittest.TestCase):
                 source_path=str(upstream),
             )
 
-            self.assertEqual(".ait/transcripts/attempt-aaa.jsonl", persisted)
-            copied = repo_root / ".ait" / "transcripts" / "attempt-aaa.jsonl"
-            self.assertTrue(copied.exists())
-            self.assertEqual(upstream.read_bytes(), copied.read_bytes())
+            self.assertEqual(".ait/transcripts/redacted/attempt-aaa.jsonl", persisted)
+            safe = repo_root / ".ait" / "transcripts" / "redacted" / "attempt-aaa.jsonl"
+            metadata = json.loads(
+                safe.with_name(safe.name + ".meta.json").read_text(encoding="utf-8")
+            )
+            safe_text = safe.read_text(encoding="utf-8")
+
+            self.assertTrue(safe.exists())
+            self.assertIn("[REDACTED]", safe_text)
+            self.assertNotIn(api_key, safe_text)
+            self.assertNotIn(jwt, safe_text)
+            self.assertNotIn(db_url, safe_text)
+            self.assertFalse((repo_root / ".ait" / "transcripts" / "attempt-aaa.jsonl").exists())
+            self.assertEqual("claude-code", metadata["source_kind"])
+            self.assertFalse(metadata["raw_retained"])
+            self.assertTrue(metadata["redacted"])
 
     def test_persist_transcript_returns_none_when_source_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -187,7 +209,7 @@ class ClaudeCodeHookTests(unittest.TestCase):
         self.assertEqual(1, attempt.evidence_summary["observed_file_writes"])
         self.assertEqual(("README.md",), attempt.files["touched"])
 
-    def test_session_end_persists_transcript_under_ait_directory(self) -> None:
+    def test_session_end_persists_redacted_transcript_under_ait_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
             _init_git_repo(repo_root)
@@ -236,17 +258,14 @@ class ClaudeCodeHookTests(unittest.TestCase):
                 ).read_text(encoding="utf-8")
             )
             attempt_id = state["attempt_id"]
-            persisted = repo_root / ".ait" / "transcripts" / f"{attempt_id}.jsonl"
+            attempt = show_attempt(repo_root, attempt_id=attempt_id)
+            persisted = repo_root / str(attempt.attempt["raw_trace_ref"])
             self.assertTrue(
                 persisted.exists(),
                 f"expected transcript at {persisted}",
             )
             self.assertEqual(upstream.read_bytes(), persisted.read_bytes())
-            attempt = show_attempt(repo_root, attempt_id=attempt_id)
-            self.assertEqual(
-                f".ait/transcripts/{attempt_id}.jsonl",
-                attempt.attempt["raw_trace_ref"],
-            )
+            self.assertTrue(str(attempt.attempt["raw_trace_ref"]).startswith(".ait/transcripts/redacted/"))
 
 
 def _run_hook(

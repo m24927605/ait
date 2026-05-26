@@ -78,7 +78,8 @@ def _format_continue_result(result: ContinueResult) -> str:
     if result.agent_hints:
         lines.append("Agent hints:")
         for hint in result.agent_hints:
-            command = f" -> {hint.command}" if hint.command else ""
+            command_text = _human_agent_hint_command(hint.command, result.resume)
+            command = f" -> {command_text}" if command_text else ""
             lines.append(f"- {hint.agent_id}: {hint.note}{command}")
     if result.blocking_reasons:
         lines.append("Blocking reasons:")
@@ -103,12 +104,8 @@ def _format_continue_entry(result: ContinueResult) -> str:
             lines.append(f"Description: {result.resume.attempt_description}")
         lines.extend(
             [
-                f"Workspace: {result.resume.workspace_ref}",
-                "",
                 "Finish from this shell:",
-                '  ait attempt commit "$AIT_RESUME_ATTEMPT_ID" -m "continue interrupted work"',
-                '  cd "$AIT_RESUME_REPO_ROOT"',
-                '  ait apply "$AIT_RESUME_ATTEMPT_ID"',
+                f"  ait resume {shlex.quote(label)} --finish",
             ]
         )
     return "\n".join(lines)
@@ -175,11 +172,20 @@ def _resume_lines(result: ContinueResult) -> list[str]:
     if resume.attempt_description:
         lines.append(f"Description: {resume.attempt_description}")
     lines.extend([
-        f"Workspace: {resume.workspace_ref}",
-        f"Workspace command: cd {shlex.quote(resume.workspace_ref)}",
         f"Resume command: ait resume {shlex.quote(label)}",
+        f"Finish command: ait resume {shlex.quote(label)} --finish",
     ])
     return lines
+
+
+def _human_agent_hint_command(command: str | None, resume: ResumeResult | None) -> str | None:
+    if not command:
+        return None
+    if " && " in command:
+        return command.split(" && ", 1)[1]
+    if resume is not None and command == f"cd {shlex.quote(resume.workspace_ref)}":
+        return f"ait resume {shlex.quote(_attempt_label(resume))}"
+    return command
 
 
 def _handle_agent_continue(args, repo_root: Path) -> int:

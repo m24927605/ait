@@ -49,15 +49,19 @@ def _format_run_result(result, *, apply_result=None) -> str:
     attempt = result.attempt.attempt
     outcome = result.attempt.outcome or {}
     changed = result.attempt.files.get("changed", ())
+    handle = attempt.get("attempt_handle") or result.attempt_id.rsplit(":", 1)[-1]
     status = apply_result.status if apply_result is not None and apply_result.status == "applied" else attempt.get("verified_status")
     lines = [
-        "AIT run finished",
+        "AIT recorded the run",
         f"Status: {status}",
         f"Exit code: {result.exit_code}",
         f"Changed: {len(changed)} files",
         f"Outcome: {outcome.get('outcome_class', 'unclassified')}",
-        f"Attempt: {result.attempt_id.rsplit(':', 1)[-1]}",
+        f"Attempt: {handle}",
     ]
+    description = attempt.get("attempt_description")
+    if description:
+        lines.append(f"Description: {description}")
     if apply_result is not None:
         if apply_result.status == "applied":
             lines.append(f"Branch: {apply_result.branch or 'current'}")
@@ -69,24 +73,31 @@ def _format_run_result(result, *, apply_result=None) -> str:
             lines.extend(
                 [
                     "Result: kept for recovery",
-                    "Next: ait recover latest",
+                    f"Next: ait recover {handle}",
                 ]
             )
     elif result.exit_code == 0 and status == "succeeded":
         lines.extend(
             [
                 "Result: ready to apply",
-                "Next: ait apply latest",
+                f"Next: ait apply {handle}",
             ]
         )
     elif status in {"failed", "pending"}:
         lines.extend(
             [
                 "Result: kept for recovery",
-                "Next: ait recover latest",
+                f"Next: ait recover {handle}",
             ]
         )
     return "\n".join(lines)
+
+def _resolve_cli_output_format(value: str | None, *, stdout=None) -> str:
+    if value:
+        return value
+    stream = sys.stdout if stdout is None else stdout
+    isatty = getattr(stream, "isatty", None)
+    return "text" if callable(isatty) and isatty() else "json"
 
 def _format_shell_integration(action: str, result) -> str:
     state = "changed" if result.changed else "already current"

@@ -25,6 +25,7 @@ from ait.app import create_attempt, create_intent
 from ait.daemon import daemon_status, start_daemon
 from ait.harness import AitHarness
 from ait.prompt_capture import record_payload_prompt
+from ait.runner_transcript import persist_agent_transcript_safely
 
 
 STATE_DIR_NAME = "codex-hooks"
@@ -197,29 +198,18 @@ def handle_session_end(payload: Mapping[str, Any]) -> None:
 def persist_transcript(
     repo_root: Path, *, attempt_id: str, source_path: str | None
 ) -> str | None:
-    """Copy the upstream Codex session jsonl into .ait/transcripts/.
+    """Persist a redacted upstream Codex session jsonl into .ait/transcripts/.
 
     Returns the repo-relative path on success so the caller can use it
     as raw_trace_ref. Returns None if the source is missing or
     unreadable so the caller can fall back to the upstream path string.
     """
-    if not source_path:
-        return None
-    src = Path(source_path)
-    if not src.is_absolute():
-        candidate = repo_root / src
-        src = candidate if candidate.exists() else src
-    if not src.exists() or not src.is_file():
-        return None
-    dest_dir = repo_root / ".ait" / "transcripts"
-    try:
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        suffix = src.suffix or ".jsonl"
-        dest = dest_dir / f"{attempt_id}{suffix}"
-        dest.write_bytes(src.read_bytes())
-    except OSError:
-        return None
-    return dest.relative_to(repo_root).as_posix()
+    return persist_agent_transcript_safely(
+        repo_root,
+        attempt_id=attempt_id,
+        source_path=source_path,
+        source_kind="codex",
+    )
 
 
 def open_harness(state: Mapping[str, Any]) -> AitHarness:

@@ -177,7 +177,7 @@ workflow.
 `ait review benchmark run` is a local deterministic measurement path when used
 with `fake:*` reviewers. It does not call a real LLM, network, login state, API
 key, or paid credits. The Markdown report command formats a previously written
-JSON benchmark payload; it is dogfood evidence, not a guarantee of review
+JSON benchmark payload; it is dogfood evidence, not proof of review
 quality.
 
 Real reviewer benchmark dogfood is opt-in. Passing `--reviewer-adapter` without

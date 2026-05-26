@@ -463,12 +463,12 @@ def _transcript_html(attempt: dict[str, object]) -> str:
     if not transcript:
         return (
             "<details><summary>Transcript</summary>"
-            f"<div class=\"trace-ref muted\">Trace: <code>{escape(raw_trace_ref)}</code> unavailable</div>"
+            "<div class=\"trace-ref muted\">Trace unavailable</div>"
             "</details>"
         )
     return (
         "<details><summary>Transcript</summary>"
-        f"<div class=\"trace-ref muted\">Trace: <code>{escape(raw_trace_ref)}</code> mode=<code>{escape(transcript_mode)}</code></div>"
+        f"<div class=\"trace-ref muted\">Trace mode=<code>{escape(transcript_mode)}</code></div>"
         f"<pre class=\"transcript\">{escape(transcript)}</pre>"
         "</details>"
     )

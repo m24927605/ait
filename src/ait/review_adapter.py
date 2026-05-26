@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from fnmatch import fnmatch
 import os
 from pathlib import Path
 import shlex
@@ -19,9 +20,33 @@ _LOCAL_CLI_REVIEW_ADAPTERS: dict[str, tuple[str, ...]] = {
     "codex": ("codex", "exec", "--sandbox", "read-only", "-"),
 }
 
+_DEFAULT_REVIEW_ADAPTER_ENV_ALLOWLIST: tuple[str, ...] = (
+    "PATH",
+    "TMPDIR",
+    "TEMP",
+    "TMP",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "LC_MESSAGES",
+)
+
+_LOCAL_CLI_REVIEW_ADAPTER_ENV_ALLOWLIST: tuple[str, ...] = (
+    *_DEFAULT_REVIEW_ADAPTER_ENV_ALLOWLIST,
+    "HOME",
+)
+
 _REVIEW_ADAPTER_ENV_BLOCKLIST: dict[str, tuple[str, ...]] = {
     "claude-code": ("ANTHROPIC_API_KEY",),
+    "codex": ("OPENAI_API_KEY",),
 }
+
+_REVIEW_ADAPTER_ENV_BLOCK_PATTERNS: tuple[str, ...] = (
+    "*TOKEN*",
+    "*SECRET*",
+    "*PASSWORD*",
+    "*KEY*",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,22 +71,25 @@ def run_review_adapter(
 ) -> ReviewAdapterResult:
     adapter_name = adapter.strip()
     local_cli_command = _LOCAL_CLI_REVIEW_ADAPTERS.get(adapter_name)
-    config = None if local_cli_command is not None else resolve_review_adapter_policy(repo_root, adapter)
+    config = resolve_review_adapter_policy(repo_root, adapter_name)
     if local_cli_command is not None:
         command = local_cli_command
         timeout = timeout_seconds
-        env_allowlist: tuple[str, ...] = ()
+        default_env_allowlist = _LOCAL_CLI_REVIEW_ADAPTER_ENV_ALLOWLIST
+        env_allowlist = () if config is None else config.env_allowlist
         env_blocklist = _REVIEW_ADAPTER_ENV_BLOCKLIST.get(adapter_name, ())
         configured_cwd: str | None = None
     elif config is None:
         command = _adapter_command(adapter)
         timeout = timeout_seconds
-        env_allowlist: tuple[str, ...] = ()
+        default_env_allowlist = _DEFAULT_REVIEW_ADAPTER_ENV_ALLOWLIST
+        env_allowlist = ()
         env_blocklist = _REVIEW_ADAPTER_ENV_BLOCKLIST.get(adapter_name, ())
         configured_cwd: str | None = None
     else:
-        command = _adapter_command(" ".join([config.command, *config.args]))
+        command = _adapter_command(" ".join([config.command, *config.args]) or adapter)
         timeout = timeout_seconds if timeout_seconds is not None else config.timeout_seconds
+        default_env_allowlist = _DEFAULT_REVIEW_ADAPTER_ENV_ALLOWLIST
         env_allowlist = config.env_allowlist
         env_blocklist = ()
         configured_cwd = config.cwd
@@ -70,10 +98,14 @@ def run_review_adapter(
     if _is_target_workspace(cwd):
         raise ReviewAdapterError("review adapter cwd must not be a target attempt workspace")
     cwd.mkdir(parents=True, exist_ok=True)
-    env = _adapter_env(env_allowlist, blocklist=env_blocklist)
-    resolved_binary_path = shutil.which(command[0], path=None if env is None else env.get("PATH"))
+    env = _adapter_env(
+        default_env_allowlist,
+        explicit_allowlist=env_allowlist,
+        blocklist=env_blocklist,
+    )
+    resolved_binary_path = shutil.which(command[0], path=env.get("PATH"))
     blocked_env = {
-        name: bool(env is not None and name in env)
+        name: bool(name in env)
         for name in env_blocklist
     }
     try:
@@ -90,7 +122,9 @@ def run_review_adapter(
     except subprocess.TimeoutExpired as exc:
         raise ReviewAdapterError(f"review adapter timed out after {timeout} seconds") from exc
     except OSError as exc:
-        raise ReviewAdapterError(str(exc)) from exc
+        raise ReviewAdapterError(
+            _adapter_start_error(adapter_name=adapter_name, command=command, exc=exc)
+        ) from exc
     return ReviewAdapterResult(
         command=command,
         cwd=str(cwd),
@@ -132,21 +166,47 @@ def _adapter_cwd(root: Path, *, review_id: str, configured_cwd: str | None) -> P
 
 
 def _adapter_env(
-    allowlist: tuple[str, ...],
+    default_allowlist: tuple[str, ...],
     *,
+    explicit_allowlist: tuple[str, ...] = (),
     blocklist: tuple[str, ...] = (),
-) -> dict[str, str] | None:
-    if not allowlist:
-        if not blocklist:
-            return None
-        env = dict(os.environ)
-        for name in blocklist:
-            env.pop(name, None)
-        return env
-    env = {name: os.environ[name] for name in allowlist if name in os.environ}
-    for name in blocklist:
-        env.pop(name, None)
+) -> dict[str, str]:
+    explicit_names = {_normalize_env_name(name) for name in explicit_allowlist}
+    env: dict[str, str] = {}
+    for raw_name in (*default_allowlist, *explicit_allowlist):
+        name = _normalize_env_name(raw_name)
+        if not name or name not in os.environ:
+            continue
+        if name not in explicit_names and _blocked_env_name(name, blocklist=blocklist):
+            continue
+        env[name] = os.environ[name]
     return env
+
+
+def _normalize_env_name(name: str) -> str:
+    return str(name).strip()
+
+
+def _blocked_env_name(name: str, *, blocklist: tuple[str, ...]) -> bool:
+    if name in blocklist:
+        return True
+    upper_name = name.upper()
+    return any(fnmatch(upper_name, pattern) for pattern in _REVIEW_ADAPTER_ENV_BLOCK_PATTERNS)
+
+
+def _adapter_start_error(
+    *,
+    adapter_name: str,
+    command: tuple[str, ...],
+    exc: OSError,
+) -> str:
+    binary = command[0] if command else adapter_name
+    return (
+        f"review adapter '{adapter_name}' could not start local command '{binary}': {exc}. "
+        "AIT passes a minimal reviewer environment and does not fall back to provider API keys. "
+        f"Install and log in with the local CLI, or add required non-secret variables to "
+        f"review.adapters.{adapter_name}.env_allowlist."
+    )
 
 
 def _is_target_workspace(path: Path) -> bool:

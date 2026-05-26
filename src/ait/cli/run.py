@@ -14,6 +14,8 @@ from ait.run_report import refresh_run_reports
 
 def handle(args, repo_root: Path, parser=None) -> int:
     if args.command == "run":
+        output_format = _resolve_cli_output_format(getattr(args, "format", None))
+        args.format = output_format
         if run_auto_prune(repo_root):
             _safe_startup_prune(repo_root)
         command = args.run_command
@@ -31,7 +33,7 @@ def handle(args, repo_root: Path, parser=None) -> int:
             except DevServerError as exc:
                 print(f"error: {exc}", file=sys.stderr)
                 return 2
-            if args.format == "json":
+            if output_format == "json":
                 print(json.dumps([asdict(item) for item in records], indent=2))
             else:
                 for item in records:
@@ -62,7 +64,7 @@ def handle(args, repo_root: Path, parser=None) -> int:
                 commit_message=args.commit_message,
                 auto_commit=not args.no_auto_commit,
                 with_context=args.with_context,
-                capture_command_output=args.format == "json",
+                capture_command_output=output_format == "json",
                 stdin_mode=getattr(args, "stdin", "inherit"),
             )
         except (AdapterError, WorkspaceError) as exc:
@@ -111,19 +113,23 @@ def handle(args, repo_root: Path, parser=None) -> int:
                     require_review_gate=require_review_gate,
                 )
             except (ApplyError, ValueError, WorkspaceError) as exc:
+                handle = result.attempt.attempt.get("attempt_handle") or result.attempt_id.rsplit(":", 1)[-1]
                 print(
-                    "ait warning: apply was held; run `ait recover latest --debug` "
+                    f"ait warning: apply was held; run `ait recover {handle} --debug` "
                     f"for details ({exc})",
                     file=sys.stderr,
                 )
-        if args.format == "json":
+        if output_format == "json":
             payload = asdict(result)
+            attempt_handle = result.attempt.attempt.get("attempt_handle") or result.attempt_id.rsplit(":", 1)[-1]
             payload["run_apply_policy"] = run_apply
             payload["run_review_policy"] = run_review
             payload["review"] = None if review_result is None else _review_result_payload(review_result)
             payload["review_error"] = review_error
             payload["apply"] = None if applied is None else apply_result_payload(applied, debug=True)
             payload["intent_inferred"] = intent_inferred
+            payload["attempt_handle"] = attempt_handle
+            payload["next_steps"] = _run_next_steps(result, apply_result=applied, attempt_handle=attempt_handle)
             if intent_inferred:
                 payload["inferred_intent_title"] = intent_title
             print(json.dumps(payload, indent=2))
@@ -142,6 +148,19 @@ def handle(args, repo_root: Path, parser=None) -> int:
     if parser is not None:
         parser.print_help()
     return 1
+
+
+def _run_next_steps(result, *, apply_result=None, attempt_handle: str) -> list[str]:
+    status = result.attempt.attempt.get("verified_status")
+    if apply_result is not None and apply_result.status == "applied":
+        return []
+    if apply_result is not None:
+        return [f"ait recover {attempt_handle}"]
+    if result.exit_code == 0 and status == "succeeded":
+        return [f"ait apply {attempt_handle}"]
+    if status in {"failed", "pending"}:
+        return [f"ait recover {attempt_handle}"]
+    return []
 
 
 def _apply_mode_for_policy(policy: str) -> str:

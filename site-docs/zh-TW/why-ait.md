@@ -57,7 +57,7 @@ ait review attempt latest-reviewable --mode adversarial --review-adapter claude-
 ait review finding list --severity high
 ```
 
-這不是正確性保證。它是一道獨立審查，並且把 finding 記下來。
+這不是正確性證明。它是一道獨立審查，並且把 finding 記下來。
 
 ## 問題 3：失敗 run 污染 working tree
 
@@ -102,7 +102,7 @@ ait memory recall "retry budget"
 - hosted dashboard
 - 跨機器同步服務
 - Claude Code、Codex、Aider、Cursor、Cline 或 Git 的替代品
-- AI reviewer 一定抓得到所有 bug 的證明
+- AI reviewer 一定找得到所有缺陷的證明
 
 ## 什麼時候值得用
 
