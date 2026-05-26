@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import multiprocessing
+import json
 import sys
 import tempfile
 import unittest
@@ -17,11 +18,15 @@ from ait.db import (
     connect_db,
     get_attempt_identity,
     get_attempt_identity_by_handle,
+    insert_attempt_commit,
+    insert_evidence_file,
     insert_attempt,
     insert_intent,
     list_attempt_identities,
     list_intent_attempts,
+    refresh_attempt_identity,
     run_migrations,
+    update_attempt,
 )
 from support import init_git_repo
 
@@ -63,8 +68,8 @@ class AttemptIdentityTests(unittest.TestCase):
         self.assertEqual("a1", identity.handle)
         self.assertEqual(1, identity.handle_index)
         self.assertEqual("Fix identity", identity.display_title)
-        self.assertEqual(identity.display_title, identity.deterministic_description)
-        self.assertEqual("identity-bootstrap:v1", identity.description_source)
+        self.assertIn("no indexed changed files yet", identity.deterministic_description)
+        self.assertEqual("deterministic:v1", identity.description_source)
         self.assertTrue(identity.description_fingerprint.startswith("sha256:"))
         self.assertEqual(identity, get_attempt_identity_by_handle(conn, "a1"))
 
@@ -213,6 +218,203 @@ class AttemptIdentityTests(unittest.TestCase):
 
         self.assertIsNone(get_attempt_identity(conn, attempt.id))
 
+    def test_description_prefers_intent_title(self) -> None:
+        conn = _memory_db()
+        self.addCleanup(conn.close)
+        _insert_intent(conn, intent_id="repo:intent-1", title="Intent title wins")
+        attempt = insert_attempt(
+            conn,
+            _new_attempt(
+                attempt_id="repo:attempt-1",
+                intent_id="repo:intent-1",
+                started_at="2026-05-26T00:00:00Z",
+            ),
+        )
+
+        identity = refresh_attempt_identity(conn, attempt.id)
+
+        self.assertEqual("Intent title wins", identity.display_title)
+
+    def test_description_uses_changed_files(self) -> None:
+        conn = _memory_db()
+        self.addCleanup(conn.close)
+        _insert_intent(conn, intent_id="repo:intent-1", title="Describe changed files")
+        attempt = insert_attempt(
+            conn,
+            _new_attempt(
+                attempt_id="repo:attempt-1",
+                intent_id="repo:intent-1",
+                started_at="2026-05-26T00:00:00Z",
+            ),
+        )
+        insert_evidence_file(
+            conn,
+            attempt_id=attempt.id,
+            file_path="tests/test_integration.py",
+            kind="changed",
+        )
+        insert_evidence_file(
+            conn,
+            attempt_id=attempt.id,
+            file_path="src/recovery.py",
+            kind="changed",
+        )
+
+        identity = refresh_attempt_identity(conn, attempt.id)
+
+        self.assertIn(
+            "changed src/recovery.py and tests/test_integration.py",
+            identity.deterministic_description,
+        )
+
+    def test_description_uses_status_without_overclaiming_tests(self) -> None:
+        conn = _memory_db()
+        self.addCleanup(conn.close)
+        _insert_intent(conn, intent_id="repo:intent-1", title="Status only")
+        attempt = insert_attempt(
+            conn,
+            _new_attempt(
+                attempt_id="repo:attempt-1",
+                intent_id="repo:intent-1",
+                started_at="2026-05-26T00:00:00Z",
+            ),
+        )
+        update_attempt(
+            conn,
+            attempt.id,
+            reported_status="finished",
+            verified_status="succeeded",
+            ended_at="2026-05-26T00:01:00Z",
+            result_exit_code=0,
+        )
+
+        identity = refresh_attempt_identity(conn, attempt.id)
+
+        description = identity.deterministic_description.lower()
+        self.assertIn("status succeeded", description)
+        self.assertNotIn("tests", description)
+        self.assertNotIn("passed", description)
+
+    def test_description_refresh_is_idempotent(self) -> None:
+        conn = _memory_db()
+        self.addCleanup(conn.close)
+        _insert_intent(conn, intent_id="repo:intent-1", title="Idempotent refresh")
+        attempt = insert_attempt(
+            conn,
+            _new_attempt(
+                attempt_id="repo:attempt-1",
+                intent_id="repo:intent-1",
+                started_at="2026-05-26T00:00:00Z",
+            ),
+        )
+        first = refresh_attempt_identity(conn, attempt.id)
+        sentinel_updated_at = "2000-01-01T00:00:00Z"
+        with conn:
+            conn.execute(
+                "UPDATE attempt_identities SET updated_at = ? WHERE attempt_id = ?",
+                (sentinel_updated_at, attempt.id),
+            )
+
+        second = refresh_attempt_identity(conn, attempt.id)
+
+        self.assertEqual(first.description_fingerprint, second.description_fingerprint)
+        self.assertEqual(sentinel_updated_at, second.updated_at)
+
+    def test_description_changes_after_commit_metadata_changes(self) -> None:
+        conn = _memory_db()
+        self.addCleanup(conn.close)
+        _insert_intent(conn, intent_id="repo:intent-1", title="Commit metadata")
+        attempt = insert_attempt(
+            conn,
+            _new_attempt(
+                attempt_id="repo:attempt-1",
+                intent_id="repo:intent-1",
+                started_at="2026-05-26T00:00:00Z",
+            ),
+        )
+        before = get_attempt_identity(conn, attempt.id)
+        self.assertIsNotNone(before)
+        assert before is not None
+
+        insert_evidence_file(
+            conn,
+            attempt_id=attempt.id,
+            file_path="src/app.py",
+            kind="changed",
+        )
+        insert_evidence_file(
+            conn,
+            attempt_id=attempt.id,
+            file_path="tests/test_app.py",
+            kind="changed",
+        )
+        insert_attempt_commit(
+            conn,
+            attempt_id=attempt.id,
+            commit_oid="abc123",
+            base_commit_oid="def456",
+            touched_files=("src/app.py", "tests/test_app.py"),
+            insertions=10,
+            deletions=2,
+        )
+
+        after = refresh_attempt_identity(conn, attempt.id)
+
+        self.assertNotEqual(before.description_fingerprint, after.description_fingerprint)
+        self.assertIn("changed src/app.py and tests/test_app.py", after.deterministic_description)
+        self.assertIn("+10/-2", after.deterministic_description)
+
+    def test_integration_attempt_description_mentions_classification(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            workspace = repo_root / ".ait" / "workspaces" / "attempt-integration"
+            results = repo_root / ".ait" / "results"
+            workspace.mkdir(parents=True)
+            results.mkdir(parents=True)
+            conn = _memory_db()
+            self.addCleanup(conn.close)
+            _insert_intent(
+                conn,
+                intent_id="repo:intent-1",
+                title="Integrate attempt",
+                description="Integration metadata",
+                kind="integration",
+            )
+            attempt = insert_attempt(
+                conn,
+                _new_attempt(
+                    attempt_id="repo:attempt-integration",
+                    intent_id="repo:intent-1",
+                    started_at="2026-05-26T00:00:00Z",
+                    workspace_ref=str(workspace),
+                ),
+            )
+            (results / "attempt-integration.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "attempt_id": attempt.id,
+                        "kind": "integration",
+                        "classification": "text_overlap",
+                        "strategy": "merge-file",
+                        "changed_files": ["README.md"],
+                        "decision_report": {
+                            "reasons": [{"code": "integration.text_overlap"}]
+                        },
+                    },
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            identity = refresh_attempt_identity(conn, attempt.id)
+
+            self.assertIn(
+                "integration text_overlap via merge-file",
+                identity.deterministic_description,
+            )
+
 
 def _memory_db():
     conn = connect_db(":memory:")
@@ -220,13 +422,22 @@ def _memory_db():
     return conn
 
 
-def _insert_intent(conn, *, intent_id: str, title: str) -> None:
+def _insert_intent(
+    conn,
+    *,
+    intent_id: str,
+    title: str,
+    description: str | None = None,
+    kind: str | None = None,
+) -> None:
     insert_intent(
         conn,
         NewIntent(
             id=intent_id,
             repo_id="repo",
             title=title,
+            description=description,
+            kind=kind,
             created_at="2026-05-26T00:00:00Z",
             created_by_actor_type="user",
             created_by_actor_id="test",
@@ -235,12 +446,18 @@ def _insert_intent(conn, *, intent_id: str, title: str) -> None:
     )
 
 
-def _new_attempt(*, attempt_id: str, intent_id: str, started_at: str) -> NewAttempt:
+def _new_attempt(
+    *,
+    attempt_id: str,
+    intent_id: str,
+    started_at: str,
+    workspace_ref: str | None = None,
+) -> NewAttempt:
     return NewAttempt(
         id=attempt_id,
         intent_id=intent_id,
         agent_id="codex:test",
-        workspace_ref=f"workspace-{attempt_id.rsplit(':', 1)[-1]}",
+        workspace_ref=workspace_ref or f"workspace-{attempt_id.rsplit(':', 1)[-1]}",
         base_ref_oid="0" * 40,
         started_at=started_at,
         ownership_token=f"token-{attempt_id.rsplit(':', 1)[-1]}",

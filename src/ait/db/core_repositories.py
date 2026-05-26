@@ -33,6 +33,7 @@ from ait.db.records import (
 )
 
 from ait.db.schema import SCHEMA_VERSION
+from ait.attempt_identity import build_attempt_description, load_integration_artifact
 
 _IDENTITY_DESCRIPTION_SOURCE = "identity-bootstrap:v1"
 
@@ -145,6 +146,7 @@ def insert_attempt(conn: sqlite3.Connection, new_attempt: NewAttempt) -> Attempt
             (f"{new_attempt.id}:evidence:{uuid.uuid4().hex}", SCHEMA_VERSION, new_attempt.id),
         )
         ensure_attempt_identity(conn, new_attempt.id)
+        refresh_attempt_identity(conn, new_attempt.id)
 
     return get_attempt(conn, new_attempt.id)
 
@@ -263,6 +265,7 @@ def backfill_attempt_identities(conn: sqlite3.Connection) -> int:
             """
         ).fetchall()
         next_handle_index = _next_handle_index(conn)
+        inserted_attempt_ids: list[str] = []
         for row in rows:
             attempt_id = str(row["attempt_id"])
             display_title = _identity_display_title(
@@ -292,9 +295,89 @@ def backfill_attempt_identities(conn: sqlite3.Connection) -> int:
                 ),
             )
             next_handle_index += 1
+            inserted_attempt_ids.append(attempt_id)
+        for attempt_id in inserted_attempt_ids:
+            refresh_attempt_identity(conn, attempt_id)
         if started_transaction:
             conn.commit()
         return len(rows)
+    except Exception:
+        if started_transaction:
+            conn.rollback()
+        raise
+
+def refresh_attempt_identity(conn: sqlite3.Connection, attempt_id: str) -> AttemptIdentityRecord:
+    started_transaction = False
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+        started_transaction = True
+    try:
+        identity = ensure_attempt_identity(conn, attempt_id)
+        attempt = get_attempt(conn, attempt_id)
+        if attempt is None:
+            raise LookupError(f"attempt not found: {attempt_id}")
+        description = _build_attempt_description(conn, attempt)
+        if (
+            identity.display_title == description.display_title
+            and identity.deterministic_description == description.deterministic_description
+            and identity.description_source == description.description_source
+            and identity.description_fingerprint == description.description_fingerprint
+        ):
+            if started_transaction:
+                conn.commit()
+            return identity
+
+        conn.execute(
+            """
+            UPDATE attempt_identities
+            SET display_title = ?,
+                deterministic_description = ?,
+                description_source = ?,
+                description_fingerprint = ?,
+                updated_at = ?
+            WHERE attempt_id = ?
+            """,
+            (
+                description.display_title,
+                description.deterministic_description,
+                description.description_source,
+                description.description_fingerprint,
+                _utc_now(),
+                attempt_id,
+            ),
+        )
+        refreshed = get_attempt_identity(conn, attempt_id)
+        if refreshed is None:
+            raise RuntimeError(f"attempt identity disappeared during refresh: {attempt_id}")
+        if started_transaction:
+            conn.commit()
+        return refreshed
+    except Exception:
+        if started_transaction:
+            conn.rollback()
+        raise
+
+def refresh_stale_attempt_identities(conn: sqlite3.Connection) -> int:
+    started_transaction = False
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+        started_transaction = True
+    try:
+        attempt_ids = tuple(
+            str(row["id"])
+            for row in conn.execute(
+                "SELECT id FROM attempts ORDER BY started_at ASC, id ASC"
+            ).fetchall()
+        )
+        refreshed_count = 0
+        for attempt_id in attempt_ids:
+            before = get_attempt_identity(conn, attempt_id)
+            after = refresh_attempt_identity(conn, attempt_id)
+            if before is None or before.description_fingerprint != after.description_fingerprint:
+                refreshed_count += 1
+        if started_transaction:
+            conn.commit()
+        return refreshed_count
     except Exception:
         if started_transaction:
             conn.rollback()
@@ -557,6 +640,17 @@ def _next_attempt_ordinal(conn: sqlite3.Connection, intent_id: str) -> int:
     ).fetchone()
     return int(row["max_ordinal"]) + 1
 
+def _build_attempt_description(conn: sqlite3.Connection, attempt: AttemptRecord):
+    files = list_evidence_files(conn, attempt.id)
+    return build_attempt_description(
+        attempt=attempt,
+        intent=get_intent(conn, attempt.intent_id),
+        evidence_summary=get_evidence_summary(conn, attempt.id),
+        changed_files=files.get("changed", ()),
+        commits=tuple(list_attempt_commits(conn, attempt.id)),
+        integration_artifact=load_integration_artifact(attempt),
+    )
+
 def _next_handle_index(conn: sqlite3.Connection) -> int:
     row = conn.execute(
         "SELECT COALESCE(MAX(handle_index), 0) + 1 AS next_handle_index FROM attempt_identities"
@@ -736,6 +830,10 @@ __all__ = [
     "list_attempt_identities",
 
     "backfill_attempt_identities",
+
+    "refresh_attempt_identity",
+
+    "refresh_stale_attempt_identities",
 
     "get_attempt",
 

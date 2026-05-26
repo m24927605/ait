@@ -18,6 +18,7 @@ from ait.db import (
     get_intent,
     insert_attempt,
     insert_intent,
+    refresh_stale_attempt_identities,
     run_migrations,
     utc_now,
 )
@@ -29,6 +30,7 @@ from ait.db import (
     list_attempt_commits,
     list_evidence_files,
     list_intent_attempts,
+    refresh_attempt_identity,
     update_attempt,
     update_intent_status,
 )
@@ -143,6 +145,7 @@ def init_repo(repo_root: str | Path, *, auto_git_init: bool = False) -> InitResu
     try:
         run_migrations(conn)
         backfill_attempt_identities(conn)
+        refresh_stale_attempt_identities(conn)
     finally:
         conn.close()
     install_post_rewrite_hook(root)
@@ -359,6 +362,7 @@ def discard_attempt(repo_root: str | Path, *, attempt_id: str) -> AttemptShowRes
             ended_at=utc_now(),
         )
         refresh_intent_status(conn, attempt.intent_id)
+        refresh_attempt_identity(conn, attempt_id)
     finally:
         conn.close()
     update_workspace_lease(attempt.workspace_ref, state="discarded", clear_preserve_reason=True)
@@ -397,6 +401,7 @@ def promote_attempt(
         )
         update_attempt(conn, attempt_id, result_promotion_ref=ref_name)
         verify_attempt_with_connection(conn, init_result.repo_root, attempt_id)
+        refresh_attempt_identity(conn, attempt_id)
         update_workspace_lease(
             attempt.workspace_ref,
             state="applied",
@@ -460,6 +465,7 @@ def land_attempt(
         )
         update_attempt(conn, attempt_id, result_promotion_ref=landed.ref_name)
         verify_attempt_with_connection(conn, init_result.repo_root, attempt_id)
+        refresh_attempt_identity(conn, attempt_id)
         local_artifacts = reconcile_local_artifacts(attempt.workspace_ref, init_result.repo_root)
         worktree_cleaned = False
         if local_artifacts.cleanup_allowed:
@@ -540,6 +546,7 @@ def rebase_attempt(
         )
         if attempt.reported_status == "finished":
             verify_attempt_with_connection(conn, init_result.repo_root, attempt_id)
+            refresh_attempt_identity(conn, attempt_id)
     finally:
         conn.close()
     return show_attempt(repo_root, attempt_id=attempt_id)
@@ -554,6 +561,7 @@ def verify_attempt(repo_root: str | Path, *, attempt_id: str) -> AttemptShowResu
         if attempt is None:
             raise ValueError(f"Unknown attempt: {attempt_id}")
         verify_attempt_with_connection(conn, init_result.repo_root, attempt_id)
+        refresh_attempt_identity(conn, attempt_id)
     finally:
         conn.close()
     return show_attempt(repo_root, attempt_id=attempt_id)
@@ -592,6 +600,7 @@ def create_commit_for_attempt(
             ended_at=utc_now(),
             result_exit_code=0,
         )
+        refresh_attempt_identity(conn, attempt_id)
         update_workspace_lease(
             attempt.workspace_ref,
             state="succeeded",
