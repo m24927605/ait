@@ -15,7 +15,7 @@ from ait.db import (
 )
 from ait.decision_codes import ApplyCode
 from ait.decision_report import DecisionReport, daily_step, decision_report
-from ait.idresolver import resolve_attempt_id
+from ait.idresolver import resolve_attempt_selector
 from ait.local_artifacts import scan_local_artifacts
 from ait.policy import apply_cleanup_after_apply, apply_dirty_strategy
 from ait.review_policy import ReviewGateDecision, evaluate_apply_review_gate
@@ -375,7 +375,7 @@ def _resolve_attempt_selector(conn, selector: str) -> str:
         if not attempts:
             raise ApplyError("no attempts found")
         return attempts[-1].id
-    return resolve_attempt_id(conn, selector)
+    return resolve_attempt_selector(conn, selector)
 
 
 def _target_ref_for_apply(

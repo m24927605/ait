@@ -11,7 +11,7 @@ from ait.db import connect_db, get_attempt, list_attempt_commits, list_attempts
 from ait.decision_codes import RecoverCode
 from ait.decision_report import DecisionReport, daily_step, decision_report
 from ait.dev_server import dev_servers_for_worktree
-from ait.idresolver import resolve_attempt_id
+from ait.idresolver import resolve_attempt_selector
 from ait.integration import create_integration_attempt as _create_integration_attempt
 from ait.workspace import WorkspaceError
 from ait.workspace_lease import lease_payload, workspace_lease_path
@@ -313,7 +313,7 @@ def _resolve_recover_selector(conn, selector: str) -> str:
         if not all_attempts:
             raise RecoverError("no attempts found")
         return all_attempts[-1].id
-    return resolve_attempt_id(conn, selector)
+    return resolve_attempt_selector(conn, selector)
 
 
 def _attempt_recency_key(attempt) -> tuple[str, str]:

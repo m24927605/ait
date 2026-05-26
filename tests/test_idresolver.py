@@ -17,6 +17,7 @@ from ait.db import (
 from ait.idresolver import (
     IdResolutionError,
     resolve_attempt_id,
+    resolve_attempt_selector,
     resolve_intent_id,
 )
 
@@ -113,6 +114,43 @@ class IdResolverTests(unittest.TestCase):
         # The intent ULID suffix exists in intents but not in attempts.
         with self.assertRaises(IdResolutionError):
             resolve_attempt_id(self.conn, "01ABCDEFGHJK")
+
+    def test_resolve_attempt_selector_accepts_handle(self) -> None:
+        self.assertEqual(
+            "repo:long-nonce:01ZZZZZZZZZZ",
+            resolve_attempt_selector(self.conn, "a1"),
+        )
+
+    def test_resolve_attempt_selector_keeps_full_id(self) -> None:
+        self.assertEqual(
+            "repo:long-nonce:01ZZZZZZZZZZ",
+            resolve_attempt_selector(self.conn, "repo:long-nonce:01ZZZZZZZZZZ"),
+        )
+
+    def test_resolve_attempt_selector_keeps_unique_fragment(self) -> None:
+        self.assertEqual(
+            "repo:long-nonce:01ZZZZZZZZZZ",
+            resolve_attempt_selector(self.conn, "01ZZZZZZZZZZ"),
+        )
+
+    def test_exact_handle_wins_over_fragment(self) -> None:
+        insert_attempt(
+            self.conn,
+            NewAttempt(
+                id="repo:long-nonce:attempt-with-a1-fragment",
+                intent_id="repo:long-nonce:01ABCDEFGHJK",
+                agent_id="codex:main",
+                workspace_ref="/tmp/a1-fragment",
+                base_ref_oid="0" * 40,
+                started_at="2026-04-24T00:03:00Z",
+                ownership_token="t2",
+            ),
+        )
+
+        self.assertEqual(
+            "repo:long-nonce:01ZZZZZZZZZZ",
+            resolve_attempt_selector(self.conn, "a1"),
+        )
 
 
 if __name__ == "__main__":

@@ -37,6 +37,27 @@ def resolve_attempt_id(conn: sqlite3.Connection, given: str) -> str:
     return _resolve(conn, "attempts", "attempt", given)
 
 
+def resolve_attempt_selector(conn: sqlite3.Connection, given: str) -> str:
+    if not given or not given.strip():
+        raise IdResolutionError("attempt id must not be empty")
+
+    exact = conn.execute(
+        "SELECT id FROM attempts WHERE id = ?",
+        (given,),
+    ).fetchone()
+    if exact is not None:
+        return str(exact["id"])
+
+    handle = conn.execute(
+        "SELECT attempt_id FROM attempt_identities WHERE handle = ?",
+        (given,),
+    ).fetchone()
+    if handle is not None:
+        return str(handle["attempt_id"])
+
+    return _resolve_fragment(conn, "attempts", "attempt", given)
+
+
 def _resolve(
     conn: sqlite3.Connection,
     table: str,
@@ -53,6 +74,15 @@ def _resolve(
     if exact is not None:
         return str(exact["id"])
 
+    return _resolve_fragment(conn, table, subject, given)
+
+
+def _resolve_fragment(
+    conn: sqlite3.Connection,
+    table: str,
+    subject: str,
+    given: str,
+) -> str:
     rows = conn.execute(
         f"SELECT id FROM {table} WHERE id LIKE ? ESCAPE '\\'",
         (f"%{_escape_like(given)}%",),

@@ -132,6 +132,36 @@ class LandingTests(unittest.TestCase):
             self.assertIn("ait apply", stdout.getvalue())
             self.assertNotIn(".ait/workspaces", stdout.getvalue())
 
+    def test_recover_accepts_handle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            attempt_id, _workspace = _succeeded_attempt(repo_root, "Recover handle", "recover-handle.py", "value = 1\n")
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "recover", "a1", "--format", "json"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(0, exit_code)
+            self.assertEqual(attempt_id, payload["attempt_id"])
+
+    def test_apply_accepts_handle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            attempt_id, workspace = _succeeded_attempt(repo_root, "Apply handle", "apply-handle.py", "value = 1\n")
+            _commit_ait_gitignore_if_needed(repo_root)
+
+            result = apply_attempt(repo_root, attempt_selector="a1")
+
+            self.assertEqual(attempt_id, result.attempt_id)
+            self.assertEqual("applied", result.status)
+            self.assertTrue((repo_root / "apply-handle.py").exists())
+            self.assertFalse(workspace.exists())
+
     def test_apply_json_keeps_workspace_ref_for_integrations(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
