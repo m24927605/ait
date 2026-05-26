@@ -4,7 +4,7 @@ from ._shared import *
 
 from ait.app import init_repo
 from ait.db import connect_db, list_attempts
-from ait.idresolver import resolve_attempt_id
+from ait.idresolver import resolve_attempt_selector
 from ait.landing import ApplyError, apply_attempt, apply_result_payload
 from ait.review import latest_review_summary
 from ait.team_policy import TeamPolicyEnforcementError, enforce_team_policy
@@ -90,14 +90,18 @@ def _resolve_attempt_selector_for_policy(conn, selector: str) -> str:
         if not attempts:
             return selector
         return attempts[-1].id
-    return resolve_attempt_id(conn, selector)
+    return resolve_attempt_selector(conn, selector)
 
 
 def _format_apply_result(result, *, debug: bool = False) -> str:
+    label = result.attempt_handle or result.attempt_id.rsplit(":", 1)[-1]
     lines = [
         result.message,
         f"Status: {result.status}",
+        f"Attempt: {label}",
     ]
+    if result.attempt_description:
+        lines.append(f"Description: {result.attempt_description}")
     if result.changed_files:
         lines.append(f"Changed: {len(result.changed_files)} files")
     if result.branch:
@@ -109,20 +113,18 @@ def _format_apply_result(result, *, debug: bool = False) -> str:
     elif result.worktree_cleaned:
         lines.append("Cleanup: internal workspace removed")
     if result.status not in {"applied", "already_applied"}:
-        lines.append(f"Recover: ait recover {result.attempt_id}")
+        lines.append(f"Recover: ait recover {label}")
     if debug:
         lines.extend(
             [
                 "Debug:",
-                f"  Attempt: {result.attempt_id}",
+                f"  Canonical ID: {result.attempt_id}",
                 f"  Workspace: {result.workspace_ref}",
                 f"  Plan: {result.landing_plan.kind}",
             ]
         )
         if result.lease:
             lines.append(f"  Lease: {result.lease.get('lease_path')}")
-    else:
-        lines.append(f"Attempt: {result.attempt_id.rsplit(':', 1)[-1]}")
     return "\n".join(lines)
 
 

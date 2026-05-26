@@ -30,32 +30,50 @@ def handle(args, repo_root: Path, parser=None) -> int:
 
 
 def _format_resume_result(result) -> str:
+    label = _attempt_label(result)
     lines = [
         "AIT resume workspace",
-        f"Attempt: {result.attempt_id.rsplit(':', 1)[-1]}",
-        f"Workspace: {result.workspace_ref}",
-        "Next:",
-        f"- export AIT_RESUME_ATTEMPT_ID={shlex.quote(result.attempt_id)}",
-        f"- export AIT_RESUME_REPO_ROOT={shlex.quote(result.repo_root)}",
-        f"- cd {shlex.quote(result.workspace_ref)}",
-        "- continue editing",
-        '- ait attempt commit "$AIT_RESUME_ATTEMPT_ID" -m "continue interrupted work"',
-        '- cd "$AIT_RESUME_REPO_ROOT"',
-        '- ait apply "$AIT_RESUME_ATTEMPT_ID"',
+        f"Attempt: {label}",
     ]
+    if result.attempt_description:
+        lines.append(f"Description: {result.attempt_description}")
+    lines.extend(
+        [
+            f"Workspace: {result.workspace_ref}",
+            "Next:",
+            f"- export AIT_RESUME_ATTEMPT_ID={shlex.quote(result.attempt_id)}",
+            f"- export AIT_RESUME_REPO_ROOT={shlex.quote(result.repo_root)}",
+            f"- cd {shlex.quote(result.workspace_ref)}",
+            "- continue editing",
+            '- ait attempt commit "$AIT_RESUME_ATTEMPT_ID" -m "continue interrupted work"',
+            '- cd "$AIT_RESUME_REPO_ROOT"',
+            '- ait apply "$AIT_RESUME_ATTEMPT_ID"',
+        ]
+    )
     return "\n".join(lines)
 
 
 def _format_resume_entry(result) -> str:
+    label = _attempt_label(result)
     lines = [
-        f"Entering AIT workspace for attempt {result.attempt_id.rsplit(':', 1)[-1]}",
-        f"Workspace: {result.workspace_ref}",
-        "",
-        "Finish from this shell:",
-        '  ait attempt commit "$AIT_RESUME_ATTEMPT_ID" -m "continue interrupted work"',
-        '  cd "$AIT_RESUME_REPO_ROOT"',
-        '  ait apply "$AIT_RESUME_ATTEMPT_ID"',
-        "",
-        "Exit this shell when you are done.",
+        f"Entering AIT workspace for attempt {label}",
     ]
+    if result.attempt_description:
+        lines.append(f"Description: {result.attempt_description}")
+    lines.extend(
+        [
+            f"Workspace: {result.workspace_ref}",
+            "",
+            "Finish from this shell:",
+            '  ait attempt commit "$AIT_RESUME_ATTEMPT_ID" -m "continue interrupted work"',
+            '  cd "$AIT_RESUME_REPO_ROOT"',
+            '  ait apply "$AIT_RESUME_ATTEMPT_ID"',
+            "",
+            "Exit this shell when you are done.",
+        ]
+    )
     return "\n".join(lines)
+
+
+def _attempt_label(result) -> str:
+    return result.attempt_handle or result.attempt_id.rsplit(":", 1)[-1]

@@ -7,7 +7,7 @@ import shutil
 import subprocess
 
 from ait.app import create_attempt, create_commit_for_attempt, create_intent, discard_attempt, init_repo
-from ait.db import connect_db, get_attempt, list_attempt_commits, list_attempts
+from ait.db import connect_db, get_attempt, list_attempt_commits, list_attempts, refresh_attempt_identity
 from ait.decision_codes import RecoverCode
 from ait.decision_report import DecisionReport, daily_step, decision_report
 from ait.dev_server import dev_servers_for_worktree
@@ -21,6 +21,8 @@ from ait.workspace_lease import update_workspace_lease
 @dataclass(frozen=True, slots=True)
 class RecoverResult:
     attempt_id: str
+    attempt_handle: str | None
+    attempt_description: str | None
     status: str
     reported_status: str | None
     verified_status: str | None
@@ -52,9 +54,11 @@ def recover_attempt(
         if attempt is None:
             raise RecoverError(f"Unknown attempt: {attempt_id}")
         commits = list_attempt_commits(conn, attempt_id)
+        identity = refresh_attempt_identity(conn, attempt_id)
     finally:
         conn.close()
 
+    attempt_label = identity.handle
     changed_files = tuple(sorted({path for commit in commits for path in commit.touched_files}))
     workspace = Path(attempt.workspace_ref)
     lease = lease_payload(attempt.workspace_ref)
@@ -72,13 +76,15 @@ def recover_attempt(
     elif recoverable:
         status = _recover_status(attempt.reported_status, attempt.verified_status, lease)
         message = "AIT kept this result for recovery."
-        next_steps = (f"ait apply {attempt_id}", f"ait recover {attempt_id} --debug")
+        next_steps = (f"ait apply {attempt_label}", f"ait recover {attempt_label} --debug")
     else:
         status = "missing"
         message = "AIT cannot find a recoverable workspace for this result."
         next_steps = ("ait recover latest --debug",)
     return RecoverResult(
         attempt_id=attempt_id,
+        attempt_handle=identity.handle,
+        attempt_description=identity.deterministic_description,
         status=status,
         reported_status=attempt.reported_status,
         verified_status=attempt.verified_status,
@@ -96,6 +102,7 @@ def recover_attempt(
             next_steps=next_steps,
         ),
         debug={
+            "attempt_id": attempt_id,
             "workspace_ref": attempt.workspace_ref,
             "workspace_exists": workspace.exists(),
             "lease_path": str(workspace_lease_path(attempt.workspace_ref)),
@@ -155,17 +162,22 @@ def create_integration_attempt(
         auto_integrate=auto_integrate,
         test_command=test_command,
     )
+    identity = _load_attempt_identity(repo_root, result.attempt_id)
+    result_label = result.attempt_id if identity is None else identity.handle
+    base_label = base.attempt_handle or base.attempt_id
     if result.status == "integration_created":
-        next_steps = (f"ait apply {result.attempt_id}",)
+        next_steps = (f"ait apply {result_label}",)
         message = "AIT created an integration attempt."
     elif result.status == "conflict":
-        next_steps = (f"ait recover {result.attempt_id} --debug",)
+        next_steps = (f"ait recover {result_label} --debug",)
         message = "AIT created an integration attempt, but the merge needs recovery."
     else:
-        next_steps = (f"ait recover {base.attempt_id} --debug",)
+        next_steps = (f"ait recover {base_label} --debug",)
         message = result.decision_report.reasons[0].message if result.decision_report.reasons else "AIT held integration."
     return RecoverResult(
         attempt_id=result.attempt_id,
+        attempt_handle=None if identity is None else identity.handle,
+        attempt_description=None if identity is None else identity.deterministic_description,
         status=result.status,
         reported_status=base.reported_status,
         verified_status=base.verified_status,
@@ -209,6 +221,8 @@ def _recover_action_result(
 ) -> RecoverResult:
     return RecoverResult(
         attempt_id=result.attempt_id,
+        attempt_handle=result.attempt_handle,
+        attempt_description=result.attempt_description,
         status=status,
         reported_status=result.reported_status,
         verified_status=result.verified_status,
@@ -229,6 +243,15 @@ def _recover_action_result(
         ),
         debug={**result.debug, **(debug or {})},
     )
+
+
+def _load_attempt_identity(repo_root: str | Path, attempt_id: str):
+    init_result = init_repo(repo_root)
+    conn = connect_db(init_result.db_path)
+    try:
+        return refresh_attempt_identity(conn, attempt_id)
+    finally:
+        conn.close()
 
 
 def _recover_decision_report(

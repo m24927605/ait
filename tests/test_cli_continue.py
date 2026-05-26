@@ -39,6 +39,7 @@ class CliContinueTests(unittest.TestCase):
             text = _run_cli_text(repo, "continue", "--no-interactive")
 
         self.assertIn("Target: AIT attempt worktree", text)
+        self.assertIn("Attempt: a1", text)
         self.assertIn(f"Workspace: {attempt.workspace_ref}", text)
         self.assertIn("ait resume", text)
         self.assertIn("claude --continue", text)
@@ -62,6 +63,8 @@ class CliContinueTests(unittest.TestCase):
 
         self.assertEqual("attempt_resume", plan["target_type"])
         self.assertEqual(attempt.workspace_ref, plan["resume"]["workspace_ref"])
+        self.assertEqual("a1", plan["resume"]["attempt_handle"])
+        self.assertIn("no indexed changed files yet", plan["resume"]["attempt_description"])
 
     def test_continue_json_reports_codex_native_resume_from_trace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -137,7 +140,7 @@ class CliContinueTests(unittest.TestCase):
                         exit_code = cli.main()
 
         self.assertEqual(0, exit_code)
-        self.assertIn(attempt.attempt_id.rsplit(":", 1)[-1], stdout.getvalue())
+        self.assertIn("interrupted attempt a1 is recoverable", stdout.getvalue())
         self.assertIn("Run: ait continue", stdout.getvalue())
 
     def test_continue_latest_uses_recent_activity_when_not_in_repo(self) -> None:

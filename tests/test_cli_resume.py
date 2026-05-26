@@ -62,12 +62,13 @@ class CliResumeTests(unittest.TestCase):
             stdout = io.StringIO()
 
             with chdir(repo_root):
-                with patch("sys.argv", ["ait", "resume", "latest", "--no-interactive"]):
+                with patch("sys.argv", ["ait", "resume", "a1", "--no-interactive"]):
                     with redirect_stdout(stdout):
                         exit_code = cli.main()
 
         self.assertEqual(0, exit_code)
         text = stdout.getvalue()
+        self.assertIn("Attempt: a1", text)
         self.assertIn(f"cd {attempt.workspace_ref}", text)
         self.assertIn("continue editing", text)
         self.assertIn("ait apply", text)
@@ -81,6 +82,8 @@ class CliResumeTests(unittest.TestCase):
             workspace.mkdir(parents=True)
             result = ResumeResult(
                 attempt_id="repo:01TEST",
+                attempt_handle="a1",
+                attempt_description="resume test",
                 workspace_ref=str(workspace),
                 repo_root=str(repo_root),
                 status="active",

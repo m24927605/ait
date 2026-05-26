@@ -9,6 +9,7 @@ from ait.db import (
     get_attempt_review_finding,
     insert_attempt_review_override,
     list_review_findings,
+    refresh_attempt_identity,
     update_attempt_review_finding_status,
     utc_now,
 )
@@ -163,10 +164,11 @@ def handle(args, repo_root: Path, parser=None) -> int:
                         reviewer_adapter=str(adapter),
                         budget=getattr(args, "review_budget", "standard"),
                     )
+                identity = _review_target_identity(repo_root, result.target.attempt_id)
                 if args.format == "json":
-                    print(json.dumps(_adversarial_review_payload(result), indent=2))
+                    print(json.dumps(_adversarial_review_payload(result, identity=identity), indent=2))
                 else:
-                    print(_format_adversarial_review_text(result))
+                    print(_format_adversarial_review_text(result, identity=identity))
                 return 0 if result.review.status != "failed" else 1
             result = create_deterministic_review(repo_root, args.selector)
         except NoReviewableAttemptError as exc:
@@ -178,10 +180,11 @@ def handle(args, repo_root: Path, parser=None) -> int:
             )
         except ReviewTargetError as exc:
             return _review_error(args.format, str(exc), exit_code=2)
+        identity = _review_target_identity(repo_root, result.target.attempt_id)
         if args.format == "json":
-            print(json.dumps(_phase1_review_payload(result), indent=2))
+            print(json.dumps(_phase1_review_payload(result, identity=identity), indent=2))
         else:
-            print(_format_phase1_review_text(result))
+            print(_format_phase1_review_text(result, identity=identity))
         return 0
     if parser is not None:
         parser.print_help()
@@ -211,13 +214,15 @@ def _review_error(
     return exit_code
 
 
-def _phase1_review_payload(result) -> dict[str, object]:
+def _phase1_review_payload(result, *, identity=None) -> dict[str, object]:
     target = result.target
     assessment = result.assessment
     return {
         "schema_version": 1,
         "review_id": result.review.id,
         "target_attempt_id": target.attempt_id,
+        "target_attempt_handle": None if identity is None else identity.handle,
+        "target_attempt_description": None if identity is None else identity.deterministic_description,
         "selector": target.selector,
         "verified_status": target.verified_status,
         "reported_status": target.reported_status,
@@ -236,15 +241,18 @@ def _phase1_review_payload(result) -> dict[str, object]:
     }
 
 
-def _format_phase1_review_text(result) -> str:
+def _format_phase1_review_text(result, *, identity=None) -> str:
     target = result.target
     assessment = result.assessment
+    label = target.attempt_id if identity is None else identity.handle
     lines = [
-        f"Review target: {target.attempt_id}",
+        f"Review target: {label}",
         f"Review: {result.review.id}",
         f"Risk: {assessment.risk_level} ({assessment.risk_score})",
         f"Suggested mode: {assessment.suggested_mode}",
     ]
+    if identity is not None:
+        lines.append(f"Description: {identity.deterministic_description}")
     if target.changed_files:
         lines.append(f"Changed: {len(target.changed_files)} files")
     return "\n".join(lines)
@@ -313,8 +321,8 @@ def _handle_review_finding(args, repo_root: Path) -> int:
     return 1
 
 
-def _adversarial_review_payload(result) -> dict[str, object]:
-    payload = _phase1_review_payload(result)
+def _adversarial_review_payload(result, *, identity=None) -> dict[str, object]:
+    payload = _phase1_review_payload(result, identity=identity)
     payload.update(
         {
             "mode": result.review.mode,
@@ -330,18 +338,30 @@ def _adversarial_review_payload(result) -> dict[str, object]:
     return payload
 
 
-def _format_adversarial_review_text(result) -> str:
+def _format_adversarial_review_text(result, *, identity=None) -> str:
+    label = result.target.attempt_id if identity is None else identity.handle
     lines = [
-        f"Review target: {result.target.attempt_id}",
+        f"Review target: {label}",
         f"Review: {result.review.id}",
         f"Mode: {result.review.mode}",
         f"Status: {result.review.status}",
         f"Risk: {result.assessment.risk_level} ({result.assessment.risk_score})",
         f"Findings: {len(result.findings)}",
     ]
+    if identity is not None:
+        lines.append(f"Description: {identity.deterministic_description}")
     if result.error:
         lines.append(f"Error: {result.error}")
     return "\n".join(lines)
+
+
+def _review_target_identity(repo_root: Path, attempt_id: str):
+    init_result = init_repo(repo_root)
+    conn = connect_db(init_result.db_path)
+    try:
+        return refresh_attempt_identity(conn, attempt_id)
+    finally:
+        conn.close()
 
 
 def _review_status_payload(jobs) -> dict[str, object]:

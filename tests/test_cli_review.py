@@ -77,6 +77,8 @@ class CliReviewTests(unittest.TestCase):
                 "schema_version",
                 "review_id",
                 "target_attempt_id",
+                "target_attempt_handle",
+                "target_attempt_description",
                 "selector",
                 "verified_status",
                 "reported_status",
@@ -96,6 +98,8 @@ class CliReviewTests(unittest.TestCase):
         self.assertEqual(1, payload["schema_version"])
         self.assertEqual("latest-reviewable", payload["selector"])
         self.assertEqual("repo:01ATTEMPT1", payload["target_attempt_id"])
+        self.assertEqual("a1", payload["target_attempt_handle"])
+        self.assertIn("status succeeded", payload["target_attempt_description"])
         self.assertEqual("succeeded", payload["verified_status"])
         self.assertEqual("finished", payload["reported_status"])
         self.assertEqual(["src/example.py"], payload["changed_files"])
@@ -140,7 +144,8 @@ class CliReviewTests(unittest.TestCase):
             exit_code = cli.main()
 
         self.assertEqual(0, exit_code)
-        self.assertIn("Review target: repo:01ATTEMPT1", stdout.getvalue())
+        self.assertIn("Review target: a1", stdout.getvalue())
+        self.assertIn("Description:", stdout.getvalue())
         self.assertIn("Review: review:", stdout.getvalue())
         self.assertIn("Risk: medium (20)", stdout.getvalue())
         self.assertIn("Suggested mode: light", stdout.getvalue())

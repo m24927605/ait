@@ -27,6 +27,7 @@ from ait.db import (
     list_attempts,
     list_memory_facts,
     list_memory_retrieval_events,
+    refresh_attempt_identity,
     run_migrations,
 )
 from ait.decision_codes import StatusCode
@@ -203,6 +204,7 @@ def _recovery_dashboard_payload(repo_root: str | Path) -> dict[str, object]:
             }
         attempt = attempts[-1]
         commits = list_attempt_commits(conn, attempt.id)
+        identity = refresh_attempt_identity(conn, attempt.id)
         review = latest_review_summary(conn, attempt.id)
     finally:
         conn.close()
@@ -230,6 +232,8 @@ def _recovery_dashboard_payload(repo_root: str | Path) -> dict[str, object]:
         paths=changed_files,
         debug={
             "attempt_id": attempt.id,
+            "attempt_handle": identity.handle,
+            "attempt_description": identity.deterministic_description,
             "workspace_ref": attempt.workspace_ref,
             "workspace_exists": workspace.exists(),
             "lease_path": str(workspace_lease_path(attempt.workspace_ref)),
@@ -241,6 +245,8 @@ def _recovery_dashboard_payload(repo_root: str | Path) -> dict[str, object]:
         next_steps=() if next_command is None else (daily_step(next_command, "continue the daily workflow"),),
         metadata={
             "attempt_id": attempt.id,
+            "attempt_handle": identity.handle,
+            "attempt_description": identity.deterministic_description,
             "reported_status": attempt.reported_status,
             "verified_status": attempt.verified_status,
             "workspace_exists": workspace.exists(),
@@ -253,6 +259,8 @@ def _recovery_dashboard_payload(repo_root: str | Path) -> dict[str, object]:
         "status": status,
         "message": message,
         "attempt_id": attempt.id,
+        "attempt_handle": identity.handle,
+        "attempt_description": identity.deterministic_description,
         "attempt_short_id": attempt.id.rsplit(":", 1)[-1],
         "reported_status": attempt.reported_status,
         "verified_status": attempt.verified_status,
@@ -384,6 +392,10 @@ def _format_status(payload: dict[str, object], *, debug: bool = False) -> str:
     recovery = payload.get("recovery")
     if isinstance(recovery, dict):
         lines.append(f"Latest result: {recovery.get('status', 'unknown')}")
+        if recovery.get("attempt_handle"):
+            lines.append(f"Attempt: {recovery.get('attempt_handle')}")
+        if recovery.get("attempt_description"):
+            lines.append(f"Description: {recovery.get('attempt_description')}")
         message = recovery.get("message")
         if message:
             lines.append(str(message))
@@ -405,7 +417,7 @@ def _format_status(payload: dict[str, object], *, debug: bool = False) -> str:
             lines.append(f"Next: {next_step}")
         if debug:
             lines.append("Recovery debug:")
-            lines.append(f"  Attempt: {recovery.get('attempt_id')}")
+            lines.append(f"  Canonical ID: {recovery.get('attempt_id')}")
             lines.append(f"  Workspace: {recovery.get('workspace_ref')}")
             lines.append(f"  Lease: {recovery.get('lease_path')}")
             lines.append(f"  Apply readiness: {recovery.get('status', 'unknown')}")
@@ -475,6 +487,10 @@ def _format_status_all(payload: list[dict[str, object]], *, debug: bool = False)
         if isinstance(recovery, dict):
             lines.append("AIT Recovery")
             lines.append(f"- latest: {recovery.get('status', 'unknown')}")
+            if recovery.get("attempt_handle"):
+                lines.append(f"  attempt: {recovery.get('attempt_handle')}")
+            if recovery.get("attempt_description"):
+                lines.append(f"  description: {recovery.get('attempt_description')}")
             message = recovery.get("message")
             if message:
                 lines.append(f"  detail: {message}")
@@ -495,7 +511,7 @@ def _format_status_all(payload: list[dict[str, object]], *, debug: bool = False)
             if next_step:
                 lines.append(f"  next: {next_step}")
             if debug:
-                lines.append(f"  attempt: {recovery.get('attempt_id')}")
+                lines.append(f"  canonical id: {recovery.get('attempt_id')}")
                 lines.append(f"  workspace: {recovery.get('workspace_ref')}")
                 lines.append(f"  lease: {recovery.get('lease_path')}")
                 dev_servers = recovery.get("dev_servers", [])

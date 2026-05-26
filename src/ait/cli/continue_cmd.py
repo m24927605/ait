@@ -97,6 +97,10 @@ def _format_continue_entry(result: ContinueResult) -> str:
     if result.command:
         lines.append(f"Command: {result.command}")
     if result.resume is not None:
+        label = _attempt_label(result.resume)
+        lines.append(f"Attempt: {label}")
+        if result.resume.attempt_description:
+            lines.append(f"Description: {result.resume.attempt_description}")
         lines.extend(
             [
                 f"Workspace: {result.resume.workspace_ref}",
@@ -112,7 +116,7 @@ def _format_continue_entry(result: ContinueResult) -> str:
 
 def _format_shell_reminder(result: ContinueResult) -> str:
     if result.target_type == "attempt_resume" and result.resume is not None:
-        attempt = result.resume.attempt_id.rsplit(":", 1)[-1]
+        attempt = _attempt_label(result.resume)
         return "\n".join(
             [
                 f"AIT: interrupted attempt {attempt} is recoverable.",
@@ -164,12 +168,18 @@ def _resume_lines(result: ContinueResult) -> list[str]:
     resume = result.resume
     if resume is None:
         return []
-    return [
-        f"Attempt: {resume.attempt_id.rsplit(':', 1)[-1]}",
+    label = _attempt_label(resume)
+    lines = [
+        f"Attempt: {label}",
+    ]
+    if resume.attempt_description:
+        lines.append(f"Description: {resume.attempt_description}")
+    lines.extend([
         f"Workspace: {resume.workspace_ref}",
         f"Workspace command: cd {shlex.quote(resume.workspace_ref)}",
-        f"Resume command: ait resume {shlex.quote(resume.attempt_id)}",
-    ]
+        f"Resume command: ait resume {shlex.quote(label)}",
+    ])
+    return lines
 
 
 def _handle_agent_continue(args, repo_root: Path) -> int:
@@ -223,9 +233,10 @@ def _launch_agent_in_resume_workspace(
     env["AIT_AGENT_CONTINUE_ADAPTER"] = adapter_name
     env["AIT_AGENT_CONTINUE_ATTEMPT_ID"] = resume.attempt_id
     _mark_agent_continue_running(resume, adapter_name=adapter_name)
+    label = _attempt_label(resume)
     print(
         "AIT: continuing interrupted attempt "
-        f"{resume.attempt_id.rsplit(':', 1)[-1]} in {resume.workspace_ref}",
+        f"{label} in {resume.workspace_ref}",
         file=sys.stderr,
     )
     try:
@@ -234,6 +245,10 @@ def _launch_agent_in_resume_workspace(
     except KeyboardInterrupt:
         exit_code = 130
     return _finish_agent_continue(repo_root, resume=resume, adapter_name=adapter_name, exit_code=exit_code)
+
+
+def _attempt_label(resume: ResumeResult) -> str:
+    return resume.attempt_handle or resume.attempt_id.rsplit(":", 1)[-1]
 
 
 def _agent_continue_command(

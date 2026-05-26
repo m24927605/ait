@@ -77,10 +77,14 @@ def handle(args, repo_root: Path, parser=None) -> int:
 
 
 def _format_recover_result(result, *, debug: bool = False) -> str:
+    label = result.attempt_handle or result.attempt_id.rsplit(":", 1)[-1]
     lines = [
         result.message,
         f"Status: {result.status}",
+        f"Attempt: {label}",
     ]
+    if result.attempt_description:
+        lines.append(f"Description: {result.attempt_description}")
     if result.changed_files:
         lines.append(f"Changed: {len(result.changed_files)} files")
     if result.next_steps:
@@ -90,7 +94,7 @@ def _format_recover_result(result, *, debug: bool = False) -> str:
         lines.extend(
             [
                 "Debug:",
-                f"  Attempt: {result.attempt_id}",
+                f"  Canonical ID: {result.attempt_id}",
                 f"  Workspace: {result.workspace_ref}",
             ]
         )
@@ -116,6 +120,4 @@ def _format_recover_result(result, *, debug: bool = False) -> str:
                             f"pid={server.get('pid')} port={server.get('port')} "
                             f"log={server.get('log_path')}"
                         )
-    else:
-        lines.append(f"Attempt: {result.attempt_id.rsplit(':', 1)[-1]}")
     return "\n".join(lines)

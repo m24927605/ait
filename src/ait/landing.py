@@ -12,6 +12,7 @@ from ait.db import (
     get_attempt,
     list_attempt_commits,
     list_attempts,
+    refresh_attempt_identity,
 )
 from ait.decision_codes import ApplyCode
 from ait.decision_report import DecisionReport, daily_step, decision_report
@@ -58,6 +59,8 @@ class LandingPlan:
 @dataclass(frozen=True, slots=True)
 class ApplyResult:
     attempt_id: str
+    attempt_handle: str | None
+    attempt_description: str | None
     status: str
     landing_plan: LandingPlan
     branch: str | None
@@ -1015,6 +1018,7 @@ def _result(
     result_artifact_ref: str | None = None,
     debug: dict[str, object] | None = None,
 ) -> ApplyResult:
+    identity = _identity_for_attempt(workspace_ref, attempt_id)
     debug_payload = {
         "lease_path": str(workspace_lease_path(workspace_ref)),
         **(debug or {}),
@@ -1038,6 +1042,8 @@ def _result(
     )
     return ApplyResult(
         attempt_id=attempt_id,
+        attempt_handle=None if identity is None else identity.handle,
+        attempt_description=None if identity is None else identity.deterministic_description,
         status=status,
         landing_plan=plan,
         branch=branch,
@@ -1055,6 +1061,20 @@ def _result(
         result_artifact_ref=result_artifact_ref,
         debug=debug_payload,
     )
+
+
+def _identity_for_attempt(workspace_ref: str, attempt_id: str):
+    workspace = Path(workspace_ref)
+    if workspace.parent.name != "workspaces":
+        return None
+    db_path = workspace.parent.parent / "state.sqlite3"
+    if not db_path.exists():
+        return None
+    conn = connect_db(db_path)
+    try:
+        return refresh_attempt_identity(conn, attempt_id)
+    finally:
+        conn.close()
 
 
 def apply_result_payload(result: ApplyResult, *, debug: bool = False) -> dict[str, object]:

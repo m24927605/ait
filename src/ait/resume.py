@@ -13,6 +13,8 @@ from ait.repo import resolve_repo_root
 @dataclass(frozen=True, slots=True)
 class ResumeResult:
     attempt_id: str
+    attempt_handle: str | None
+    attempt_description: str | None
     workspace_ref: str
     repo_root: str
     status: str
@@ -55,6 +57,8 @@ def build_resume_result(
     )
     return ResumeResult(
         attempt_id=recovery.attempt_id,
+        attempt_handle=recovery.attempt_handle,
+        attempt_description=recovery.attempt_description,
         workspace_ref=str(workspace),
         repo_root=str(root),
         status=recovery.status,
@@ -93,7 +97,7 @@ def resume_shell_script(result: ResumeResult) -> str:
     lines.extend(
         [
             "printf '%s\\n' "
-            f"{shlex.quote('Continuing AIT attempt ' + result.attempt_id.rsplit(':', 1)[-1])} >&2",
+            f"{shlex.quote('Continuing AIT attempt ' + _attempt_label(result))} >&2",
             f"printf '%s\\n' {shlex.quote('Workspace: ' + result.workspace_ref)} >&2",
         ]
     )
@@ -132,3 +136,7 @@ def _path_without_ait_wrappers(path: str, *, repo_root: Path, workspace: Path) -
             continue
         kept.append(entry)
     return os.pathsep.join(kept)
+
+
+def _attempt_label(result: ResumeResult) -> str:
+    return result.attempt_handle or result.attempt_id.rsplit(":", 1)[-1]

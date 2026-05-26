@@ -129,8 +129,51 @@ class LandingTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertEqual(attempt_id, result.attempt_id)
             self.assertTrue(result.recoverable)
+            self.assertIn("Attempt: a1", stdout.getvalue())
             self.assertIn("ait apply", stdout.getvalue())
             self.assertNotIn(".ait/workspaces", stdout.getvalue())
+
+    def test_recover_text_shows_handle_and_debug_keeps_full_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            attempt_id, _workspace = _succeeded_attempt(repo_root, "Recover debug", "recover-debug.py", "value = 1\n")
+            normal = io.StringIO()
+            debug = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "recover", "a1"]):
+                    with redirect_stdout(normal):
+                        normal_code = cli.main()
+                with patch("sys.argv", ["ait", "recover", "a1", "--debug"]):
+                    with redirect_stdout(debug):
+                        debug_code = cli.main()
+
+            self.assertEqual(0, normal_code)
+            self.assertEqual(0, debug_code)
+            self.assertIn("Attempt: a1", normal.getvalue())
+            self.assertNotIn(attempt_id, normal.getvalue())
+            self.assertIn(f"Canonical ID: {attempt_id}", debug.getvalue())
+            self.assertIn(".ait/workspaces", debug.getvalue())
+
+    def test_recover_json_includes_identity_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            attempt_id, _workspace = _succeeded_attempt(repo_root, "Recover JSON identity", "recover-json.py", "value = 1\n")
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "recover", "a1", "--format", "json"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(0, exit_code)
+            self.assertEqual(attempt_id, payload["attempt_id"])
+            self.assertEqual("a1", payload["attempt_handle"])
+            self.assertIn("changed recover-json.py", payload["attempt_description"])
+            self.assertIn("workspace_ref", payload)
 
     def test_recover_accepts_handle(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -199,6 +242,7 @@ class LandingTests(unittest.TestCase):
             self.assertEqual(0, normal_code)
             self.assertEqual(0, debug_code)
             self.assertIn("Latest result: ready_to_apply", normal.getvalue())
+            self.assertIn("Attempt: a1", normal.getvalue())
             self.assertNotIn(".ait/workspaces", normal.getvalue())
             self.assertIn(".ait/workspaces", debug.getvalue())
             self.assertIn("Reason code: status.ready_to_apply", debug.getvalue())
@@ -352,6 +396,24 @@ class LandingTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertIn("Status: applied", stdout.getvalue())
             self.assertTrue((repo_root / "retry.py").exists())
+            self.assertFalse(workspace.exists())
+
+    def test_apply_text_shows_handle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            _attempt_id, workspace = _succeeded_attempt(repo_root, "Apply text", "apply-text.py", "value = 1\n")
+            _commit_ait_gitignore_if_needed(repo_root)
+            stdout = io.StringIO()
+
+            with chdir(repo_root):
+                with patch("sys.argv", ["ait", "apply", "a1"]):
+                    with redirect_stdout(stdout):
+                        exit_code = cli.main()
+
+            self.assertEqual(0, exit_code)
+            self.assertIn("Attempt: a1", stdout.getvalue())
+            self.assertTrue((repo_root / "apply-text.py").exists())
             self.assertFalse(workspace.exists())
 
     def test_recover_discard_holds_dirty_recovery_state(self) -> None:
