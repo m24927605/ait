@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 1.4.2 - 2026-05-27
+
+### Fixed
+
+- Make generated Claude Code, Codex, and Gemini hook commands silent-skip
+  with exit 0 when their wrapper file is missing, instead of failing with
+  Python's "No such file or directory" — which previously blocked Claude
+  Code's `Stop` hook and trapped users in an error loop when the wrapper
+  was uninstalled, never set up, or addressed via an unset
+  `AIT_WRAPPER_REPO`. When the wrapper is present, hook behavior is
+  unchanged.
+
 ## 1.4.1 - 2026-05-27
 
 ### Changed

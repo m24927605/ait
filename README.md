@@ -252,7 +252,7 @@ python3.14 -m venv .venv
 Pinned GitHub release:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v1.4.1"
+pipx install "git+https://github.com/m24927605/ait.git@v1.4.2"
 ```
 
 Upgrade:
