@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from ait.bug_report import collector as collector_mod
 from ait.bug_report.collector import CollectedEntry
-from ait.bug_report.seen_store import load_seen
+from ait.bug_report.seen_store import load_seen, record_seen
 
 
 @dataclass
@@ -31,7 +31,9 @@ def decide_prompt(*, now: str, reprompt_days: int = 7) -> FlushDecision:
             to_prompt.append(entry)
             continue
         if e.submitted_issue_url and (e.last_known_state or "open") == "open":
-            continue  # silent
+            # Silent. Update count and last_seen_at per spec dedup table.
+            record_seen(entry.fingerprint, category=entry.category, now=now)
+            continue
         if e.submitted_issue_url and e.last_known_state in ("closed", "locked"):
             to_prompt.append(entry)  # regression re-prompt
             continue
@@ -40,5 +42,8 @@ def decide_prompt(*, now: str, reprompt_days: int = 7) -> FlushDecision:
             age = (now_dt - last).days
             if age >= reprompt_days:
                 to_prompt.append(entry)
+            else:
+                # Silent. Update count and last_seen_at per spec dedup table.
+                record_seen(entry.fingerprint, category=entry.category, now=now)
     action = "prompt" if to_prompt else "silent"
     return FlushDecision(action=action, to_prompt=to_prompt)
