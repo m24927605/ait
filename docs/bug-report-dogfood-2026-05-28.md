@@ -115,3 +115,26 @@ this iteration.
 | #4 AIT_BUG_REPORT=never | Yes | No |
 | #5 mode=always dedup | Partial (decision logic only) | Yes — real submission |
 | #6 --attempt SEND gate | Not implemented | N/A (deferred) |
+
+---
+
+## Layer 2 Instrumentation Status
+
+The spec enumerates 8 instrumentation sites for the v1 release. Currently
+**5 of 8** are wired:
+
+| # | Site | Category | Status |
+|---|------|----------|--------|
+| 1 | `daemon_transport.py` | `daemon.protocol.transport` | ✅ wired |
+| 2 | `daemon.py` main loop | `daemon.protocol.main` | ✅ wired |
+| 3 | `db/core.py` migrate | `db.operational` | ✅ wired |
+| 4 | `events.py` txn rollback | `events.txn_rollback` | ✅ wired |
+| 5 | `runner.py` memory note | `memory.note_write` | ✅ wired |
+| 6 | `hooks.py` install | `hooks.install` | ⏸️  no applicable except block — defer |
+| 7 | `reconcile.py` post-rewrite | `reconcile.post_rewrite` | ⏸️  only try/finally exists — defer |
+| 8 | `verifier.py` crash | `verifier.crash` | ⏸️  only OSError-on-ref-read exists — defer |
+
+Sites 6–8 don't have swallow-then-warn except blocks to instrument; any
+exceptions in those modules currently bubble to Layer 1 (excepthook). When
+those modules grow defensive blocks in future work, add the corresponding
+Layer 2 calls.
