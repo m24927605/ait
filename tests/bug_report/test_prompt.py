@@ -82,6 +82,16 @@ class PromptTests(unittest.TestCase):
         envs = _collect_tier3(BugReportPrefs(include_tier3=False))
         self.assertEqual(envs, {})
 
+    def test_collect_tier2_handles_missing_cwd(self):
+        # Simulate a torn-down tmp dir: os.getcwd raises FileNotFoundError.
+        import unittest.mock as mock
+        with mock.patch("pathlib.Path.cwd",
+                        side_effect=FileNotFoundError("dir gone")):
+            from ait.bug_report.prompt import _collect_tier2
+            # MUST NOT raise; should return a BuildInput slice with empty fields.
+            result = _collect_tier2(BugReportPrefs(include_tier2=True))
+            self.assertEqual(result.get("install_nonce", ""), "")
+
 
 if __name__ == "__main__":
     unittest.main()

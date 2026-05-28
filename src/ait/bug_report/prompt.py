@@ -17,7 +17,10 @@ from ait.bug_report.submitter import submit
 def _find_repo_root() -> "str | None":
     """Walk up from cwd looking for a .ait directory."""
     from pathlib import Path
-    current = Path.cwd()
+    try:
+        current = Path.cwd()
+    except (FileNotFoundError, OSError):
+        return None
     for candidate in [current, *current.parents]:
         if (candidate / ".ait").is_dir():
             return str(candidate)
