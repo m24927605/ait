@@ -270,6 +270,12 @@ def build_parser() -> argparse.ArgumentParser:
     config_subparsers = config_parser.add_subparsers(dest="config_command")
     config_show = config_subparsers.add_parser("show")
     config_show.add_argument("--format", choices=("text", "json"), default="text")
+    config_bug_report = config_subparsers.add_parser("bug-report")
+    config_bug_report.add_argument(
+        "bug_report_config_args",
+        nargs="*",
+        help="[ask|always|never] | [tier2|tier3 on|off]",
+    )
 
     policy_parser = subparsers.add_parser("policy", help="validate repo-local team policy")
     policy_subparsers = policy_parser.add_subparsers(dest="policy_command")
