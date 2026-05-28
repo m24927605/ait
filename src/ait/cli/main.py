@@ -80,21 +80,8 @@ _HANDLERS = {
 
 
 def _atexit_flush():
-    import datetime as _dt
-    import sys as _sys
-    from ait.bug_report.prompt import interactive_flush
-    now = _dt.datetime.now(_dt.timezone.utc).isoformat().replace("+00:00", "Z")
-    try:
-        is_tty = _sys.stdin.isatty() and _sys.stdout.isatty()
-    except (AttributeError, ValueError):
-        is_tty = False
-    interactive_flush(
-        input_provider=input,
-        is_tty=is_tty,
-        stdout=_sys.stdout,
-        stderr=_sys.stderr,
-        now=now,
-    )
+    import ait.bug_report.api as _api
+    _api.flush_at_exit()
 
 
 def main() -> int:

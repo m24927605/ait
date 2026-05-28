@@ -76,5 +76,21 @@ class EndToEndTests(unittest.TestCase):
         # No assertion needed: the test passes iff no exception escaped.
 
 
+    def test_atexit_handler_is_safe_wrapped(self):
+        # Importing main and calling the atexit handler directly should
+        # never propagate an exception, even when build_issue is broken.
+        from ait.cli.main import _atexit_flush
+        from ait.bug_report.config import BugReportPrefs, save_prefs
+        save_prefs(BugReportPrefs(mode="ask"))
+        try:
+            raise ValueError("integration boom")
+        except ValueError as exc:
+            from ait.bug_report.api import report_internal_error
+            report_internal_error(category="x", exc=exc)
+        with mock.patch("ait.bug_report.prompt.build_issue",
+                        side_effect=RuntimeError("synthetic")):
+            _atexit_flush()  # MUST NOT raise
+
+
 if __name__ == "__main__":
     unittest.main()
