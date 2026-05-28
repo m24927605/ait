@@ -43,14 +43,34 @@ class CollectorTests(unittest.TestCase):
 
     def test_capacity_20(self):
         c = Collector(max_entries=20)
-        # 21 distinct categories => 21 distinct entries; oldest should be dropped.
+
+        # Build 21 entries with distinct fingerprints by faking unique
+        # tracebacks. We construct a synthetic exception per iteration whose
+        # __traceback__ frames carry a unique function name. Since real frames
+        # require real call sites, the simplest reliable mechanism is to use
+        # exec() to define and call 21 differently-named functions.
+        excs = []
         for i in range(21):
-            c.record(category=f"cat-{i}", exc=_make_exc(),
+            ns: dict = {}
+            exec(
+                f"def make_{i}():\n"
+                f"    raise ValueError('boom-{i}')\n",
+                ns,
+            )
+            try:
+                ns[f"make_{i}"]()
+            except ValueError as exc:
+                excs.append(exc)
+
+        for i, exc in enumerate(excs):
+            c.record(category=f"cat-{i}", exc=exc,
                      context=None, now="2026-05-28T10:00:00Z")
+
         self.assertEqual(len(c.entries()), 20)
-        cats = {e.category for e in c.entries()}
-        self.assertNotIn("cat-0", cats)
-        self.assertIn("cat-20", cats)
+        # The oldest (first inserted) entry must have been evicted.
+        first_fp_fns = {f.function for e in c.entries() for f in e.frames}
+        self.assertNotIn("make_0", first_fp_fns)
+        self.assertIn("make_20", first_fp_fns)
         self.assertTrue(c.truncated)
 
 

@@ -36,8 +36,8 @@ def _extract_frames(exc: BaseException) -> list[Frame]:
 class Collector:
     def __init__(self, max_entries: int = 20) -> None:
         self._max = max_entries
-        self._entries: dict[tuple[str, str], CollectedEntry] = {}
-        self._order: list[tuple[str, str]] = []
+        self._entries: dict[str, CollectedEntry] = {}   # keyed by fingerprint
+        self._order: list[str] = []
         self.truncated = False
 
     def record(
@@ -51,8 +51,7 @@ class Collector:
         frames = _extract_frames(exc)
         exc_type = type(exc).__name__
         fp = fingerprint(exc_type, frames)
-        key = (category, fp)
-        existing = self._entries.get(key)
+        existing = self._entries.get(fp)
         if existing is not None:
             existing.count += 1
             existing.last_recorded_at = now
@@ -69,15 +68,14 @@ class Collector:
             last_recorded_at=now,
         )
         if len(self._entries) >= self._max:
-            # Drop oldest by insertion order.
             oldest = self._order.pop(0)
             self._entries.pop(oldest, None)
             self.truncated = True
-        self._entries[key] = entry
-        self._order.append(key)
+        self._entries[fp] = entry
+        self._order.append(fp)
 
     def entries(self) -> list[CollectedEntry]:
-        return [self._entries[key] for key in self._order]
+        return [self._entries[fp] for fp in self._order]
 
 
 _GLOBAL: Collector | None = None
