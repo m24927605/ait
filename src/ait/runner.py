@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 
+from ait.bug_report.api import report_internal_error
 from ait.adapters import doctor_automation, get_adapter
 from ait.app import AttemptShowResult, create_attempt, create_intent, show_attempt, verify_attempt
 from ait.daemon import start_daemon
@@ -475,6 +476,7 @@ def _add_attempt_memory_note_with_warning(repo_root: Path, shown: AttemptShowRes
     try:
         add_attempt_memory_note(repo_root, shown)
     except Exception as exc:
+        report_internal_error(category="memory.note_write", exc=exc)
         print(f"ait warning: add_attempt_memory_note failed: {exc}", file=sys.stderr)
 
 

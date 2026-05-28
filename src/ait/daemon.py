@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 
+from ait.bug_report.api import report_internal_error
 from ait.daemon_lifecycle import daemon_status, prune_daemon, start_daemon, stop_daemon
 from ait.daemon_models import DaemonStatus
 from ait.daemon_reaper import run_reaper_loop
@@ -195,6 +196,7 @@ def _handle_client(
         try:
             envelope = stream.read_envelope()
         except (ProtocolError, OSError) as exc:
+            report_internal_error(category="daemon.protocol.main", exc=exc)
             _write_response(client, {"ok": False, "error": str(exc)})
             return
         if envelope is None:

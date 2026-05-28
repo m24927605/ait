@@ -6,6 +6,7 @@ from pathlib import Path
 import socket
 from typing import BinaryIO
 
+from ait.bug_report.api import report_internal_error
 from ait.protocol import ProtocolEnvelope, ProtocolError, encode_ndjson_message, parse_ndjson_message
 
 DEFAULT_BACKLOG = 128
@@ -34,6 +35,7 @@ class NDJSONSocketStream:
         try:
             return parse_ndjson_message(line)
         except ProtocolError as exc:
+            report_internal_error(category="daemon.protocol.transport", exc=exc)
             raise TransportError(str(exc)) from exc
 
     def write_envelope(self, envelope: ProtocolEnvelope) -> None:

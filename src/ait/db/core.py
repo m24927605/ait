@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import sqlite3
 
+from ait.bug_report.api import report_internal_error
 from ait.db.schema import MIGRATIONS, SCHEMA_VERSION
 
 
@@ -50,6 +51,7 @@ def connect_db(
         try:
             conn.execute("PRAGMA journal_mode = WAL")
         except sqlite3.OperationalError as exc:
+            report_internal_error(category="db.operational", exc=exc)
             if "locked" not in str(exc).lower():
                 raise
         conn.execute("PRAGMA synchronous = NORMAL")

@@ -270,6 +270,12 @@ def build_parser() -> argparse.ArgumentParser:
     config_subparsers = config_parser.add_subparsers(dest="config_command")
     config_show = config_subparsers.add_parser("show")
     config_show.add_argument("--format", choices=("text", "json"), default="text")
+    config_bug_report = config_subparsers.add_parser("bug-report")
+    config_bug_report.add_argument(
+        "bug_report_config_args",
+        nargs="*",
+        help="[ask|always|never] | [tier2|tier3 on|off]",
+    )
 
     policy_parser = subparsers.add_parser("policy", help="validate repo-local team policy")
     policy_subparsers = policy_parser.add_subparsers(dest="policy_command")
@@ -737,4 +743,20 @@ def build_parser() -> argparse.ArgumentParser:
     daemon_subparsers.add_parser("prune")
     daemon_subparsers.add_parser("status")
     daemon_subparsers.add_parser("serve")
+
+    bug_report_parser = subparsers.add_parser(
+        "bug-report",
+        help="Report a bug in AIT itself (not your code or your agents).",
+    )
+    bug_report_sp = bug_report_parser.add_subparsers(dest="bug_report_cmd")
+    bug_report_sp.add_parser("list")
+    bug_report_show = bug_report_sp.add_parser("show")
+    bug_report_show.add_argument("fingerprint")
+    bug_report_clear = bug_report_sp.add_parser("clear")
+    bug_report_clear.add_argument("fingerprint", nargs="?", default=None)
+    bug_report_clear.add_argument("--all", dest="all_flag", action="store_true")
+    bug_report_replay = bug_report_sp.add_parser("replay")
+    bug_report_replay.add_argument("fingerprint", nargs="?", default=None)
+    bug_report_replay.add_argument("--all", dest="all_flag", action="store_true")
+
     return parser

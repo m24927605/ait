@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import atexit
 from pathlib import Path
 import sys
 
@@ -9,6 +10,7 @@ from . import (
     adapter,
     apply,
     attempt,
+    bug_report,
     cleanup,
     config,
     console,
@@ -39,6 +41,7 @@ from . import (
 _HANDLERS = {
     "adapter": adapter.handle,
     "agent-continue": continue_cmd.handle,
+    "bug-report": bug_report.handle,
     "apply": apply.handle,
     "attempt": attempt.handle,
     "bootstrap": init.handle,
@@ -76,7 +79,15 @@ _HANDLERS = {
 }
 
 
+def _atexit_flush():
+    import ait.bug_report.api as _api
+    _api.flush_at_exit()
+
+
 def main() -> int:
+    from ait.bug_report.api import install_excepthook
+    install_excepthook()
+    atexit.register(_atexit_flush)
     try:
         parser = build_parser()
         args = parser.parse_args()

@@ -6,6 +6,7 @@ import pytest
 @pytest.fixture(autouse=True)
 def _isolate_ait_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.setenv("AIT_STATE_DIR", str(tmp_path / "ait-state"))
+    monkeypatch.setenv("AIT_BUG_REPORT", "never")
 
 
 _FILE_MARKS: dict[str, tuple[str, ...]] = {
