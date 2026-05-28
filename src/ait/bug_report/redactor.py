@@ -5,7 +5,6 @@ import re
 
 _TOKEN_PATTERNS = (
     re.compile(r"gh[ps]_[A-Za-z0-9]{30,}"),
-    re.compile(r"ghp_[A-Za-z0-9]{30,}"),
     re.compile(r"sk-[A-Za-z0-9]{20,}"),
 )
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
@@ -16,7 +15,7 @@ def redact(text: str) -> str:
     if not text:
         return text
     home = os.path.expanduser("~")
-    if home and home in text:
+    if home and home != "~" and home in text:
         text = text.replace(home, "~")
     for pat in _TOKEN_PATTERNS:
         text = pat.sub("[REDACTED_TOKEN]", text)

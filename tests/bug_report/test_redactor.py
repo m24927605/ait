@@ -33,6 +33,16 @@ class RedactTests(unittest.TestCase):
         s = "plain stack trace line"
         self.assertEqual(redact(s), s)
 
+    def test_unset_home_does_not_replace_tildes(self):
+        saved = os.environ.pop("HOME", None)
+        try:
+            # When HOME is unset, expanduser("~") returns "~" — must NOT
+            # replace literal ~ characters in the input.
+            self.assertEqual(redact("a ~ b ~ c"), "a ~ b ~ c")
+        finally:
+            if saved is not None:
+                os.environ["HOME"] = saved
+
 
 class RedactArgvTests(unittest.TestCase):
     def test_space_separated(self):
