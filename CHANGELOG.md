@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 1.4.3 - 2026-05-28
+
+### Fixed
+
+- Stop `workspace.commit_stats` from crashing with `TypeError: unsupported
+  operand type(s) for +=: 'NoneType' and 'int'` when a commit's `git show
+  --numstat` output lists a binary file (which sets the running count to
+  `None`) before a text file. Because numstat lists paths alphabetically,
+  this fired any time a binary path sorted before a text path — notably
+  when an attempt committed a `.venv/` directory alongside source code,
+  which blocked `ait verify` and prevented `ait apply` from landing the
+  attempt. Existing semantics preserved: any binary file in the commit
+  still yields `(None, None, touched_files)` per the spec.
+
 ## 1.4.2 - 2026-05-27
 
 ### Fixed
