@@ -247,14 +247,14 @@ def commit_stats(
         if len(parts) != 3:
             continue
         add_text, del_text, file_path = parts
-        if add_text.isdigit():
-            insertions += int(add_text)
-        else:
+        if not add_text.isdigit():
             insertions = None
-        if del_text.isdigit():
-            deletions += int(del_text)
-        else:
+        elif insertions is not None:
+            insertions += int(add_text)
+        if not del_text.isdigit():
             deletions = None
+        elif deletions is not None:
+            deletions += int(del_text)
         touched_files.append(file_path)
     return insertions, deletions, tuple(touched_files)
 
