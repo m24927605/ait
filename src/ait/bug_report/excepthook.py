@@ -46,13 +46,16 @@ def reset_for_tests() -> None:
 def _hook(exc_type, exc_value, tb) -> None:
     try:
         if not isinstance(exc_value, _SKIP):
-            now = dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")
-            collector_mod.collector().record(
-                category="excepthook",
-                exc=exc_value,
-                context=None,
-                now=now,
-            )
+            # Skip third-party crashes — only AIT-internal bugs go to the report.
+            mod = type(exc_value).__module__
+            if mod and mod.startswith("ait"):
+                now = dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")
+                collector_mod.collector().record(
+                    category="excepthook",
+                    exc=exc_value,
+                    context=None,
+                    now=now,
+                )
     except Exception:
         # Never let our hook break the previous hook.
         pass

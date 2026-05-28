@@ -29,15 +29,17 @@ class ExcepthookTests(unittest.TestCase):
 
     def test_install_records_ait_exception(self):
         install()
-        # Fabricate an exception with a frame whose module looks like 'ait.x'.
+        # Fabricate an exception whose __module__ looks like 'ait.x'.
+        class _AitError(Exception):
+            pass
+        _AitError.__module__ = "ait.internal"
         try:
-            raise ValueError("from ait")
-        except ValueError as exc:
-            # Force module attribution: set exc's traceback frame globals.
+            raise _AitError("from ait")
+        except _AitError as exc:
             sys.excepthook(type(exc), exc, exc.__traceback__)
         entries = collector_mod.collector().entries()
         self.assertEqual(len(entries), 1)
-        self.assertEqual(entries[0].exc_type, "ValueError")
+        self.assertEqual(entries[0].exc_type, "_AitError")
 
     def test_install_skips_keyboard_interrupt(self):
         install()
@@ -60,6 +62,19 @@ class ExcepthookTests(unittest.TestCase):
         except ValueError as exc:
             sys.excepthook(type(exc), exc, exc.__traceback__)
         self.assertEqual(calls, ["prev"])
+
+
+    def test_third_party_exception_not_recorded(self):
+        install()
+        # Simulate an exception from a non-ait module.
+        class _Foreign(Exception):
+            pass
+        _Foreign.__module__ = "urllib.error"
+        try:
+            raise _Foreign("from third party")
+        except _Foreign as exc:
+            sys.excepthook(type(exc), exc, exc.__traceback__)
+        self.assertEqual(collector_mod.collector().entries(), [])
 
 
 if __name__ == "__main__":
