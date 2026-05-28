@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Mapping
 import sqlite3
 
+from ait.bug_report.api import report_internal_error
 from ait.db import AttemptRecord, get_attempt
 from ait.lifecycle import refresh_intent_status
 
@@ -452,7 +453,8 @@ def _mark_stale_running_attempts(
             refresh_intent_status(conn, str(intent_id))
         if started_transaction:
             conn.commit()
-    except Exception:
+    except Exception as exc:
+        report_internal_error(category="events.txn_rollback", exc=exc)
         if started_transaction:
             conn.rollback()
         raise
