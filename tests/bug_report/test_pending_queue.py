@@ -76,6 +76,30 @@ class PendingQueueTests(unittest.TestCase):
         remaining = set(list_pending())
         self.assertEqual(remaining, {"fp:new1111"})
 
+    def test_load_pending_handles_missing_field(self):
+        # Manually write a JSON file missing the 'category' field.
+        from pathlib import Path
+        d = Path(self._td.name) / "ait" / "bug_reports" / "pending"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "fp:broken01.json").write_text(
+            '{"fingerprint":"fp:broken01","title":"t","body":"b",'
+            '"created_at":"2026-05-28T10:00:00Z"}',
+            encoding="utf-8",
+        )
+        # Must not raise.
+        self.assertIsNone(load_pending("fp:broken01"))
+
+    def test_prune_old_accepts_naive_datetime(self):
+        old = (dt.datetime(2026, 5, 28, tzinfo=dt.timezone.utc)
+               - dt.timedelta(days=31)).isoformat().replace("+00:00", "Z")
+        enqueue(PendingReport(
+            fingerprint="fp:oldold02", title="t", body="b",
+            category="c", created_at=old,
+        ))
+        # Pass a naive datetime — should be normalized to UTC, not crash.
+        prune_old(now=dt.datetime(2026, 5, 28))
+        self.assertEqual(list_pending(), [])
+
 
 if __name__ == "__main__":
     unittest.main()

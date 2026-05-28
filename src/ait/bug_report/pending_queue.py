@@ -43,15 +43,15 @@ def load_pending(fingerprint: str) -> PendingReport | None:
         return None
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+        return PendingReport(
+            fingerprint=data["fingerprint"],
+            title=data["title"],
+            body=data["body"],
+            category=data["category"],
+            created_at=data["created_at"],
+        )
+    except (json.JSONDecodeError, OSError, KeyError):
         return None
-    return PendingReport(
-        fingerprint=data["fingerprint"],
-        title=data["title"],
-        body=data["body"],
-        category=data["category"],
-        created_at=data["created_at"],
-    )
 
 
 def list_pending() -> list[str]:
@@ -86,6 +86,8 @@ def clear_pending() -> int:
 
 
 def prune_old(*, now: dt.datetime, max_age_days: int = 30) -> int:
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=dt.timezone.utc)
     cutoff = now - dt.timedelta(days=max_age_days)
     pruned = 0
     for fp in list_pending():
