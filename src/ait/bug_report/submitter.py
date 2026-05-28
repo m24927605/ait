@@ -84,3 +84,28 @@ def submit(
     reason = "body_too_long_or_no_browser"
     return SubmitResult(status="deferred", method=None,
                         issue_url=None, reason=reason)
+
+
+from ait.bug_report.pending_queue import PendingReport, enqueue
+
+
+def submit_or_defer(
+    *,
+    fingerprint: str,
+    category: str,
+    title: str,
+    body: str,
+    created_at: str,
+    browser_opener: Callable[[str], bool] = webbrowser.open,
+) -> SubmitResult:
+    """Like submit() but persists to pending queue when deferred."""
+    result = submit(title=title, body=body, browser_opener=browser_opener)
+    if result.status == "deferred":
+        enqueue(PendingReport(
+            fingerprint=fingerprint,
+            title=title,
+            body=body,
+            category=category,
+            created_at=created_at,
+        ))
+    return result
