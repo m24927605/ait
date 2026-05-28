@@ -9,6 +9,7 @@ from . import (
     adapter,
     apply,
     attempt,
+    bug_report,
     cleanup,
     config,
     console,
@@ -39,6 +40,7 @@ from . import (
 _HANDLERS = {
     "adapter": adapter.handle,
     "agent-continue": continue_cmd.handle,
+    "bug-report": bug_report.handle,
     "apply": apply.handle,
     "attempt": attempt.handle,
     "bootstrap": init.handle,
