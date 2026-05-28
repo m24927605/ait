@@ -16,7 +16,8 @@ def _build_input(entries, prefs: BugReportPrefs):
     import platform
     from ait.bug_report.builder import BuildInput
     try:
-        from ait import __version__ as ait_version
+        from ait.cli_installation import package_version
+        ait_version = package_version()
     except Exception:
         ait_version = "unknown"
     return BuildInput(

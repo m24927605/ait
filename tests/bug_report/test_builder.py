@@ -101,5 +101,14 @@ class BuilderTests(unittest.TestCase):
         self.assertIn("bug in **AIT itself**", b.body)
 
 
+    def test_ait_version_resolved_in_built_issue(self):
+        # Production code path: prompt._build_input must produce a non-"unknown"
+        # ait_version. Test via the same import logic.
+        from ait.cli_installation import package_version
+        v = package_version()
+        self.assertNotEqual(v, "unknown")
+        self.assertTrue(v)  # truthy
+
+
 if __name__ == "__main__":
     unittest.main()
