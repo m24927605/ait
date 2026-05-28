@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from typing import Callable, TextIO
 
@@ -8,8 +9,99 @@ from ait.bug_report.builder import build_issue
 from ait.bug_report.config import BugReportPrefs, load_prefs, save_prefs
 from ait.bug_report.flush import decide_prompt
 from ait.bug_report.pending_queue import PendingReport, enqueue
+from ait.bug_report.safety import _safe
 from ait.bug_report.seen_store import record_seen, record_submitted
 from ait.bug_report.submitter import submit
+
+
+def _find_repo_root() -> "str | None":
+    """Walk up from cwd looking for a .ait directory."""
+    from pathlib import Path
+    current = Path.cwd()
+    for candidate in [current, *current.parents]:
+        if (candidate / ".ait").is_dir():
+            return str(candidate)
+    return None
+
+
+@_safe
+def _collect_tier2(prefs: BugReportPrefs) -> dict:
+    """Collect Tier 2 context: install_nonce, daemon log tail, daemon state, phase."""
+    if not prefs.include_tier2:
+        return {}
+    import socket
+    from pathlib import Path
+
+    install_nonce = ""
+    daemon_log_tail = ""
+    daemon_state = ""
+    phase = ""
+
+    repo_root = _find_repo_root()
+    if repo_root:
+        try:
+            from ait.config import load_local_config
+            cfg = load_local_config(repo_root)
+            if cfg and cfg.install_nonce:
+                install_nonce = cfg.install_nonce[:8]
+        except Exception:
+            pass
+
+        try:
+            log_path = Path(repo_root) / ".ait" / "daemon.log"
+            if log_path.exists():
+                lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+                daemon_log_tail = "\n".join(lines[-20:])
+        except Exception:
+            pass
+
+        try:
+            sock_path = Path(repo_root) / ".ait" / "daemon.sock"
+            if sock_path.exists():
+                s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                s.settimeout(0.5)
+                try:
+                    s.connect(str(sock_path))
+                    daemon_state = "running"
+                except (socket.timeout, ConnectionRefusedError, OSError):
+                    daemon_state = "unreachable"
+                finally:
+                    s.close()
+            else:
+                daemon_state = "down"
+        except Exception:
+            daemon_state = ""
+
+    # Phase: prefer AIT_PHASE env var, else first non-option argv token.
+    phase = os.environ.get("AIT_PHASE", "")
+    if not phase:
+        for arg in sys.argv[1:]:
+            if not arg.startswith("-"):
+                phase = arg
+                break
+
+    return {
+        "install_nonce": install_nonce,
+        "daemon_log_tail": daemon_log_tail,
+        "daemon_state": daemon_state,
+        "phase": phase,
+    }
+
+
+@_safe
+def _collect_tier3(prefs: BugReportPrefs) -> dict:
+    """Collect Tier 3 context: whitelisted env vars."""
+    if not prefs.include_tier3:
+        return {}
+    result: dict[str, str] = {}
+    for key in ("PATH", "EDITOR"):
+        val = os.environ.get(key)
+        if val is not None:
+            result[key] = val
+    for key, val in os.environ.items():
+        if key.startswith("AIT_"):
+            result[key] = val
+    return result
 
 
 def _build_input(entries, prefs: BugReportPrefs):
@@ -20,6 +112,10 @@ def _build_input(entries, prefs: BugReportPrefs):
         ait_version = package_version()
     except Exception:
         ait_version = "unknown"
+
+    tier2 = _collect_tier2(prefs) or {}
+    tier3 = _collect_tier3(prefs) or {}
+
     return BuildInput(
         entries=entries,
         ait_version=ait_version,
@@ -28,11 +124,11 @@ def _build_input(entries, prefs: BugReportPrefs):
         argv=list(sys.argv),
         include_tier2=prefs.include_tier2,
         include_tier3=prefs.include_tier3,
-        install_nonce="",
-        daemon_log_tail="",
-        daemon_state="",
-        phase="",
-        env_vars={},
+        install_nonce=tier2.get("install_nonce", ""),
+        daemon_log_tail=tier2.get("daemon_log_tail", ""),
+        daemon_state=tier2.get("daemon_state", ""),
+        phase=tier2.get("phase", ""),
+        env_vars=tier3,
         extra_transcript=None,
         repo_id=None,
     )

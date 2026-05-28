@@ -11,6 +11,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from ait.bug_report import collector as collector_mod
+from ait.bug_report.config import BugReportPrefs
 from ait.bug_report.prompt import interactive_flush
 
 
@@ -65,6 +66,21 @@ class PromptTests(unittest.TestCase):
         # because the user explicitly declined this run.
         from ait.bug_report.pending_queue import list_pending
         self.assertEqual(list_pending(), [])
+
+
+    def test_collect_tier3_env_vars(self):
+        from ait.bug_report.prompt import _collect_tier3
+        os.environ["AIT_FOO_TEST"] = "value"
+        try:
+            envs = _collect_tier3(BugReportPrefs(include_tier3=True))
+            self.assertIn("AIT_FOO_TEST", envs)
+        finally:
+            del os.environ["AIT_FOO_TEST"]
+
+    def test_collect_tier3_respects_opt_out(self):
+        from ait.bug_report.prompt import _collect_tier3
+        envs = _collect_tier3(BugReportPrefs(include_tier3=False))
+        self.assertEqual(envs, {})
 
 
 if __name__ == "__main__":
