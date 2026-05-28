@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import atexit
 from pathlib import Path
 import sys
 
@@ -78,7 +79,28 @@ _HANDLERS = {
 }
 
 
+def _atexit_flush():
+    import datetime as _dt
+    import sys as _sys
+    from ait.bug_report.prompt import interactive_flush
+    now = _dt.datetime.now(_dt.timezone.utc).isoformat().replace("+00:00", "Z")
+    try:
+        is_tty = _sys.stdin.isatty() and _sys.stdout.isatty()
+    except (AttributeError, ValueError):
+        is_tty = False
+    interactive_flush(
+        input_provider=input,
+        is_tty=is_tty,
+        stdout=_sys.stdout,
+        stderr=_sys.stderr,
+        now=now,
+    )
+
+
 def main() -> int:
+    from ait.bug_report.api import install_excepthook
+    install_excepthook()
+    atexit.register(_atexit_flush)
     try:
         parser = build_parser()
         args = parser.parse_args()

@@ -1,0 +1,71 @@
+from __future__ import annotations
+
+import io
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+
+from ait.bug_report import collector as collector_mod
+from ait.bug_report.prompt import interactive_flush
+
+
+def _make_exc():
+    try:
+        raise ValueError("boom")
+    except ValueError as exc:
+        return exc
+
+
+class PromptTests(unittest.TestCase):
+    def setUp(self):
+        self._td = tempfile.TemporaryDirectory()
+        os.environ["XDG_STATE_HOME"] = self._td.name
+        os.environ["XDG_CONFIG_HOME"] = self._td.name
+        collector_mod.reset_for_tests()
+
+    def tearDown(self):
+        del os.environ["XDG_STATE_HOME"]
+        del os.environ["XDG_CONFIG_HOME"]
+        self._td.cleanup()
+
+    def test_non_tty_writes_to_pending(self):
+        c = collector_mod.collector()
+        c.record(category="x", exc=_make_exc(), context=None,
+                 now="2026-05-28T10:00:00Z")
+        out = io.StringIO()
+        # is_tty False on both streams
+        interactive_flush(
+            input_provider=lambda _p: "",
+            is_tty=False,
+            stdout=out,
+            stderr=out,
+            now="2026-05-28T10:00:00Z",
+        )
+        text = out.getvalue()
+        self.assertIn("pending", text.lower())
+
+    def test_tty_no_keypress_to_n(self):
+        c = collector_mod.collector()
+        c.record(category="x", exc=_make_exc(), context=None,
+                 now="2026-05-28T10:00:00Z")
+        out = io.StringIO()
+        interactive_flush(
+            input_provider=lambda _p: "n",
+            is_tty=True,
+            stdout=out,
+            stderr=out,
+            now="2026-05-28T10:00:00Z",
+        )
+        # No submission happened — verify pending NOT written either
+        # because the user explicitly declined this run.
+        from ait.bug_report.pending_queue import list_pending
+        self.assertEqual(list_pending(), [])
+
+
+if __name__ == "__main__":
+    unittest.main()
