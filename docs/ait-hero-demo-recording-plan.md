@@ -58,7 +58,7 @@ The legacy `docs/assets/ait-cross-agent-session.gif` stays — historical v1.
 
 ### Common setup (all three demos)
 
-- **Env.** Python 3.14+, `ait-vcs` via `pipx`, `claude` + `codex` CLIs
+- **Env.** Python 3.11+, `ait-vcs` via `pipx`, `claude` + `codex` CLIs
   authenticated, `node` + `npm` on PATH.
 - **Repo state.** Run the demo's `run.sh` to completion **before**
   recording; confirm `verify.sh` (or the `PASS` line) is green. Export the

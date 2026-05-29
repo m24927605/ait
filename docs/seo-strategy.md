@@ -60,7 +60,7 @@ SEO target is therefore not classical Google traffic. It is:
 
 | Length | Chars | Surfaces (audit list — see §7 baseline) |
 | ------ | ----- | --------------------------------------- |
-| L (~360) | "AI coding agents should work in attempts, share context, then earn apply. ait turns Claude Code, Codex CLI, Aider, Gemini CLI, and Cursor runs into isolated, reviewable attempts with provenance, repo-local memory, agent-to-agent communication, adversarial review, and explicit apply/recover flow on top of Git. Open source (MIT), Python 3.14+, dependency-free, no SaaS, no telemetry." | README hero, PyPI long_description, llms.txt blockquote, JSON-LD `description`, `mkdocs.yml site_description`, facts.md lead |
+| L (~360) | "AI coding agents should work in attempts, share context, then earn apply. ait turns Claude Code, Codex CLI, Aider, Gemini CLI, and Cursor runs into isolated, reviewable attempts with provenance, repo-local memory, agent-to-agent communication, adversarial review, and explicit apply/recover flow on top of Git. Open source (MIT), Python 3.11+, dependency-free, no SaaS, no telemetry." | README hero, PyPI long_description, llms.txt blockquote, JSON-LD `description`, `mkdocs.yml site_description`, facts.md lead |
 | M (~150) | "Run Claude Code, Codex, Aider, Gemini CLI, and Cursor as isolated, reviewable attempts with repo-local memory, agent handoff, and apply/recover. MIT, no SaaS." | `pyproject.toml description`, `npm/ait-vcs/package.json description`, og:description fallback |
 | S (~64) | "AI agents work in attempts, share context, then earn apply" | GitHub repo `description`, og:title fallback |
 | XS (~30) | "Attempts for AI coding agents" | Twitter/X bio (maintainer manual), social embeds |

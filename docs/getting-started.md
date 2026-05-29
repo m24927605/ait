@@ -39,7 +39,7 @@ ait --version
 If you prefer a project virtual environment:
 
 ```bash
-python3.14 -m venv .venv
+python3 -m venv .venv
 .venv/bin/pip install ait-vcs
 .venv/bin/ait --version
 ```
