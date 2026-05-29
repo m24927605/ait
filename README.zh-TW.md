@@ -74,11 +74,7 @@ ait status
 ait apply latest
 ```
 
-需求是 Python 3.14+ 與 Git。如果系統預設 Python 太舊：
-
-```bash
-pipx install --python python3.14 ait-vcs
-```
+需求是 Python 3.11+ 與 Git。
 
 ## 用起來是什麼感覺
 
@@ -239,7 +235,7 @@ ait --version
 專案虛擬環境：
 
 ```bash
-python3.14 -m venv .venv
+python3 -m venv .venv
 .venv/bin/pip install ait-vcs
 .venv/bin/ait --version
 ```
@@ -257,7 +253,7 @@ ait upgrade
 ait upgrade --dry-run
 ```
 
-需求：Python 3.14+、Git、Python 標準庫內建的 SQLite。npm 套件需要 Node.js
+需求：Python 3.11+、Git、Python 標準庫內建的 SQLite。npm 套件需要 Node.js
 18+，並會在 `ait` 指令背後安裝 Python package。
 
 ## 目前狀態與限制

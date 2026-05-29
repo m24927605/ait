@@ -77,11 +77,7 @@ ait status
 ait apply latest
 ```
 
-Requires Python 3.14+ and Git. If your default Python is older:
-
-```bash
-pipx install --python python3.14 ait-vcs
-```
+Requires Python 3.11+ and Git.
 
 ## How it feels to use
 
@@ -244,7 +240,7 @@ ait --version
 Project virtual environment:
 
 ```bash
-python3.14 -m venv .venv
+python3 -m venv .venv
 .venv/bin/pip install ait-vcs
 .venv/bin/ait --version
 ```
@@ -262,7 +258,7 @@ ait upgrade
 ait upgrade --dry-run
 ```
 
-Requirements: Python 3.14+, Git, SQLite from the Python standard library.
+Requirements: Python 3.11+, Git, SQLite from the Python standard library.
 The npm package requires Node.js 18+ and installs the Python package behind the
 `ait` command.
 
