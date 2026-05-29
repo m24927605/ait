@@ -4,11 +4,13 @@ Public entry point: run(args) called by cli/self_update.py.
 """
 from __future__ import annotations
 
+import contextlib
 import datetime as _dt
 import hashlib as _hashlib
 import json as _json
 import os as _os
 import sys
+import tempfile
 import urllib.request
 from pathlib import Path
 
@@ -121,3 +123,24 @@ def download_and_verify(url: str, *, expected_sha256: str,
             f"sha256 mismatch: expected {expected_sha256!r}, got {actual!r}"
         )
     return content
+
+
+def atomic_replace(target: Path, content: bytes) -> None:
+    """Write `content` to a sibling of `target` then atomically rename.
+
+    Atomic on POSIX same-filesystem (os.replace). Tmp is cleaned up
+    on any failure.
+    """
+    target_dir = target.parent
+    target_dir.mkdir(parents=True, exist_ok=True)
+    fd, tmp_str = tempfile.mkstemp(dir=str(target_dir), prefix=".ait.new.")
+    tmp = Path(tmp_str)
+    try:
+        with _os.fdopen(fd, "wb") as fh:
+            fh.write(content)
+        _os.chmod(tmp_str, 0o755)
+        _os.replace(tmp_str, str(target))
+    except Exception:
+        with contextlib.suppress(FileNotFoundError):
+            tmp.unlink()
+        raise
