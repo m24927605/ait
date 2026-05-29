@@ -340,6 +340,46 @@ def _classify_recovery_attempt(attempt, workspace_exists: bool, lease: dict[str,
     return "held", StatusCode.REVIEWABLE, "Latest AIT result is held for review.", "ait recover latest"
 
 
+def _shell_integration_probe() -> dict[str, object]:
+    """Probe which shell helpers the user's shell has.
+
+    Relies on the snippet emitted by `ait shell probe-env` having
+    been eval'd before invoking `ait doctor`. When the snippet was
+    not eval'd, this returns conservatively "MISSING" for every
+    helper — the worst case is one false "missing" warning, never
+    a false "defined". See spec § `ait doctor` shell-integration probe.
+    """
+    def _check(env_var: str) -> str:
+        return "defined" if os.environ.get(env_var) == "1" else "MISSING"
+
+    ait_wrapper = _check("AIT_SHELL_PROBE_AIT")
+    continue_should_cd = _check("AIT_SHELL_PROBE_CONTINUE_SHOULD_CD")
+    continue_reminder = _check("AIT_SHELL_PROBE_CONTINUE_REMINDER")
+    needs_fix = "MISSING" in (continue_should_cd, continue_reminder)
+    return {
+        "ait_wrapper": ait_wrapper,
+        "continue_should_cd": continue_should_cd,
+        "continue_reminder": continue_reminder,
+        "needs_fix": needs_fix,
+    }
+
+
+def _format_shell_integration_probe(probe: dict[str, object]) -> str:
+    lines = [
+        "Shell integration",
+        f"  ait() wrapper:           {probe['ait_wrapper']}",
+        f"  _ait_continue_should_cd: {probe['continue_should_cd']}",
+        f"  _ait_continue_reminder:  {probe['continue_reminder']}",
+    ]
+    if probe.get("needs_fix"):
+        lines.extend([
+            '  fix: eval "$(ait shell probe-env)" && ait doctor',
+            "       to confirm; if still MISSING, re-source your rc or run",
+            "       ait shell install --shell <zsh|bash>",
+        ])
+    return "\n".join(lines)
+
+
 def _format_status_condensed(payload: dict[str, object]) -> str:
     """Spec-blessed condensed status output (target ~13 lines).
 

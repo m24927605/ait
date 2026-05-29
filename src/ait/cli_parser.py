@@ -729,6 +729,10 @@ def build_parser() -> argparse.ArgumentParser:
     shell_install.add_argument("--shell", choices=("zsh", "bash"))
     shell_install.add_argument("--rc-path")
     shell_install.add_argument("--format", choices=("text", "json"), default="text")
+    shell_probe_env = shell_subparsers.add_parser(
+        "probe-env",
+        help="emit a shell snippet that exports AIT_SHELL_PROBE_* env vars",
+    )
     shell_uninstall = shell_subparsers.add_parser("uninstall")
     shell_uninstall.add_argument("--shell", choices=("zsh", "bash"))
     shell_uninstall.add_argument("--rc-path")

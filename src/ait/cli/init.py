@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from ._shared import *
-from ait.cli.status_helpers import _format_status_condensed, _status_payload_with_recovery
+from ait.cli.status_helpers import (
+    _format_shell_integration_probe,
+    _format_status_condensed,
+    _shell_integration_probe,
+    _status_payload_with_recovery,
+)
 
 
 def handle(args, repo_root: Path, parser=None) -> int:
@@ -118,6 +123,7 @@ def handle(args, repo_root: Path, parser=None) -> int:
             print(json.dumps(payload, indent=2))
         else:
             print(_format_adapter_doctor(result, installation=payload["installation"], daemon=payload["daemon"]))
+            print(_format_shell_integration_probe(_shell_integration_probe()))
         return 0 if result.ok else 2
     if args.command == "status":
         from ait.agent_state import inspect_agent_state
@@ -170,7 +176,7 @@ def handle(args, repo_root: Path, parser=None) -> int:
         if args.format == "json":
             print(json.dumps(payload, indent=2))
         else:
-            if getattr(args, "verbose", False) or args.command == "doctor":
+            if getattr(args, "verbose", False):
                 print(_format_status(payload, debug=args.debug))
             else:
                 print(_format_status_condensed(payload))
