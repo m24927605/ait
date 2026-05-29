@@ -58,7 +58,7 @@ python3.14 -m venv .venv
 npm install -g ait-vcs
 
 # 固定 GitHub tag
-pipx install "git+https://github.com/m24927605/ait.git@v1.6.0"
+pipx install "git+https://github.com/m24927605/ait.git@v1.6.1"
 ```
 
 ## 3. 初始化 repo

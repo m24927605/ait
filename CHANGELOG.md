@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## 1.6.1 - 2026-05-29
+
+### Fixed
+
+- `release-binary.yml`: added top-level `permissions: contents: write`
+  so `softprops/action-gh-release@v2` can attach the built binaries to
+  the release. Without it the v1.6.0 run produced all four binaries
+  cleanly but failed at the Upload to release step with "Resource not
+  accessible by integration".
+- `release-binary.yml`: gated the `update-tap` job on a repo-level
+  `AIT_TAP_UPDATE_ENABLED` variable so the binary pipeline doesn't go
+  red while the Homebrew tap repo (`m24927605/homebrew-ait`) and
+  `TAP_PUSH_TOKEN` secret are being set up. Flip the variable to `true`
+  once SETUP.md is done.
+
+This is the first release that ships standalone binaries via the new
+pipeline.
+
 ## 1.6.0 - 2026-05-29
 
 ### Added

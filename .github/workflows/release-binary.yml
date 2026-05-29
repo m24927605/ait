@@ -131,7 +131,12 @@ jobs:
 
   update-tap:
     needs: checksums
-    if: github.event_name == 'release'
+    # Gated on a repo variable so the maintainer can flip it on once
+    # m24927605/homebrew-ait + TAP_PUSH_TOKEN are set up. See
+    # scripts/homebrew-tap-template/SETUP.md for the one-time setup.
+    # Until then this job is skipped to avoid red CI on the binary
+    # pipeline runs.
+    if: github.event_name == 'release' && vars.AIT_TAP_UPDATE_ENABLED == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Resolve tag
