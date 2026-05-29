@@ -398,10 +398,32 @@ def _write_named_review_adapter_config(
 
 
 def _repo_with_reviewable_attempt() -> Path:
+    """Create a fixture repo with one real git commit so the reviewer
+    pipeline can materialize a pinned snapshot for the review.
+
+    `insert_attempt_commit` previously used synthetic '0'*40 / '1'*40 OIDs
+    here. With the reviewer-pinned-snapshot fix (review_adapter materializes
+    a `git worktree add --detach <head_oid>` before the reviewer runs),
+    those fake OIDs would make git reject the snapshot. We now make a real
+    commit so review-adapter integration tests have a valid commit graph.
+    """
     tmp = tempfile.TemporaryDirectory()
     repo_root = Path(tmp.name)
     _TEMP_DIRS.append(tmp)
     init_git_repo(repo_root)
+    # Make one real commit so we have a HEAD oid the reviewer can materialize.
+    (repo_root / "src").mkdir(exist_ok=True)
+    (repo_root / "src" / "example.py").write_text(
+        "def example():\n    return 'fixture'\n", encoding="utf-8"
+    )
+    import subprocess as _sp
+    _sp.run(["git", "add", "src/example.py"], cwd=repo_root, check=True)
+    _sp.run(["git", "commit", "-q", "-m", "fixture"], cwd=repo_root, check=True)
+    head_oid = _sp.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo_root,
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    base_oid = head_oid  # base == head for single-commit fixture (empty diff is fine)
     init_result = init_repo(repo_root)
     conn = connect_db(init_result.db_path)
     try:
@@ -425,7 +447,7 @@ def _repo_with_reviewable_attempt() -> Path:
                 intent_id="repo:01INTENT",
                 agent_id="codex:main",
                 workspace_ref="/tmp/repo:01ATTEMPT",
-                base_ref_oid="0" * 40,
+                base_ref_oid=base_oid,
                 started_at="2026-05-09T00:01:00Z",
                 ownership_token="token",
                 reported_status="finished",
@@ -435,8 +457,8 @@ def _repo_with_reviewable_attempt() -> Path:
         insert_attempt_commit(
             conn,
             attempt_id="repo:01ATTEMPT",
-            commit_oid="1" * 40,
-            base_commit_oid="0" * 40,
+            commit_oid=head_oid,
+            base_commit_oid=base_oid,
             touched_files=("src/example.py",),
         )
     finally:
