@@ -9,6 +9,9 @@ on:
         description: "Release tag to build for (e.g. v1.5.1). Required for workflow_dispatch."
         required: true
 
+permissions:
+  contents: write   # needed by softprops/action-gh-release to attach assets
+
 jobs:
   build:
     strategy:
