@@ -368,3 +368,32 @@ Before publishing npm:
    commit.
 4. From `npm/ait-vcs`, run `npm publish --access public`.
 5. Smoke test with `npm install -g ait-vcs`.
+
+## Binary release pipeline
+
+The binary pipeline (PyInstaller build, checksums, Brew tap update)
+runs via `.github/workflows/release-binary.yml`. It is triggered by
+the same `release: types: [published]` event as the PyPI publish
+workflow.
+
+Before the first release that ships binaries:
+
+1. Create the tap repo: see `scripts/homebrew-tap-template/SETUP.md`.
+2. Generate the `TAP_PUSH_TOKEN` PAT and add it to the main repo's
+   Actions secrets.
+
+Per release:
+
+1. Cut the release as usual (`gh release create vX.Y.Z`).
+2. Watch the `Release Binary` workflow run. Four binaries upload to
+   the release; checksums lands next; tap formula updates.
+3. Smoke-install on at least one platform:
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/m24927605/ait/main/install.sh | sh
+   ait --version       # expect: ait X.Y.Z
+   ```
+4. Smoke `brew upgrade ait` on a Mac you have brew on.
+
+If the build job fails for a platform, fix the cause (typically a
+missing `hiddenimport` in `build/ait.spec`) and re-run via
+`workflow_dispatch`.

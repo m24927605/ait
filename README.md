@@ -223,44 +223,27 @@ provenance, safer apply, cross-agent handoff, and a second-agent review pass.
 
 ## Install
 
-Recommended:
+**Recommended for macOS:**
 
 ```bash
-pipx install ait-vcs
-ait --version
+brew tap m24927605/ait
+brew install ait
 ```
 
-npm wrapper:
+**curl install script (macOS + Linux):**
 
 ```bash
-npm install -g ait-vcs
-ait --version
+curl -fsSL https://raw.githubusercontent.com/m24927605/ait/main/install.sh | sh
 ```
 
-Project virtual environment:
+**pip (any Python ≥ 3.11):**
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install ait-vcs
-.venv/bin/ait --version
+pip install ait-vcs        # or: pipx install ait-vcs
 ```
 
-Pinned GitHub release:
-
-```bash
-pipx install "git+https://github.com/m24927605/ait.git@v1.5.1"
-```
-
-Upgrade:
-
-```bash
-ait upgrade
-ait upgrade --dry-run
-```
-
-Requirements: Python 3.11+, Git, SQLite from the Python standard library.
-The npm package requires Node.js 18+ and installs the Python package behind the
-`ait` command.
+Verify with `ait --version`. See [docs/install.md](docs/install.md)
+for per-platform detail, offline install, and uninstall.
 
 ## Current status and limitations
 
