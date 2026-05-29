@@ -5,9 +5,11 @@ Public entry point: run(args) called by cli/self_update.py.
 from __future__ import annotations
 
 import datetime as _dt
+import hashlib as _hashlib
 import json as _json
 import os as _os
 import sys
+import urllib.request
 from pathlib import Path
 
 
@@ -101,3 +103,21 @@ def is_cache_fresh(*, now: _dt.datetime) -> bool:
         return False
     ttl = int(cached.get("ttl_seconds", _CACHE_TTL_SECONDS))
     return (now - fetched_at).total_seconds() < ttl
+
+
+class ChecksumMismatch(RuntimeError):
+    pass
+
+
+def download_and_verify(url: str, *, expected_sha256: str,
+                        timeout: int = 60) -> bytes:
+    """Download `url` and verify its sha256. Returns the bytes on match,
+    raises ChecksumMismatch otherwise."""
+    with urllib.request.urlopen(url, timeout=timeout) as fh:
+        content = fh.read()
+    actual = _hashlib.sha256(content).hexdigest()
+    if actual.lower() != expected_sha256.lower():
+        raise ChecksumMismatch(
+            f"sha256 mismatch: expected {expected_sha256!r}, got {actual!r}"
+        )
+    return content
