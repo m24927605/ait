@@ -52,6 +52,9 @@ are close to PASS — banned-claim discipline is clean and the demo paths exist.
    `pipx install --python python3.14 ait-vcs`" near every install snippet
    in the four launch-kit surfaces.
 
+   > **Resolved 2026-05-29.** Floor lowered to 3.11 per
+   > `docs/superpowers/specs/2026-05-29-python-floor-3-11-design.md`.
+
 ## High-priority findings (should fix)
 
 - **`src/ait/query.py` does not exist; it is a package, `src/ait/query/`.**

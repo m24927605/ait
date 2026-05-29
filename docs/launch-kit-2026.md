@@ -47,8 +47,7 @@ and notes (`src/ait/memory/recall.py`), alongside live `CLAUDE.md` /
 `AGENTS.md` / `.codex/memory.md` files. You decide what's relevant.
 Demo: `examples/pain-point-demos/04-memory-reuse/`.
 
-Install (requires Python 3.14+; on 3.13 or older use
-`pipx install --python python3.14 ait-vcs`):
+Install (requires Python 3.11+):
 
   pipx install ait-vcs      # or: npm install -g ait-vcs
   cd your-repo
@@ -214,7 +213,7 @@ fake it.
 **Tweet 8 (CTA, 167 chars)**
 
 ```
-Try it on a repo you already trust git on (requires Python 3.14+):
+Try it on a repo you already trust git on (requires Python 3.11+):
 
   pipx install ait-vcs
   cd your-repo
@@ -306,8 +305,7 @@ What AIT does, one pillar per pain:
 
 ---
 
-Install (requires Python 3.14+; on 3.13 or older use
-`pipx install --python python3.14 ait-vcs`):
+Install (requires Python 3.11+):
 
 ```
 pipx install ait-vcs      # or: npm install -g ait-vcs
@@ -423,8 +421,7 @@ What AIT adds, one pillar per pain:
 
 ---
 
-Install (requires Python 3.14+; on 3.13 or older use
-`pipx install --python python3.14 ait-vcs`):
+Install (requires Python 3.11+):
 
 ```
 pipx install ait-vcs      # or: npm install -g ait-vcs
@@ -448,7 +445,7 @@ Provenance and posture, since this sub cares:
   evidence, not a universal quality proof. No recall / precision
   numbers published yet.
 
-Alpha. MIT, Python 3.14+, zero runtime dependencies. Happy to take any
+Alpha. MIT, Python 3.11+, zero runtime dependencies. Happy to take any
 pointed question on the local-only design choice or the daemon
 boundary.
 ```
@@ -498,7 +495,7 @@ AIT 是包在 Claude Code、Codex、Aider、Gemini、Cursor 外面的本機 CLI�
    會搜尋過去 attempts、accepted facts、notes，加上現存的 CLAUDE.md /
    AGENTS.md。你自己判斷哪一條相關。
 
-安裝（需要 Python 3.14+）：
+安裝（需要 Python 3.11+）：
   pipx install ait-vcs
   cd your-repo
   ait init

@@ -8,7 +8,7 @@ Validated on 2026-04-27 with:
 
 - `ait-vcs` local build for `0.54.0`
 - Claude Code `2.1.119`
-- Python 3.14
+- Python 3.14 (any Python ≥ 3.11 works; substitute `python3` if you prefer)
 
 ## Setup
 

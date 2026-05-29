@@ -70,7 +70,9 @@ memory slice.
 
 ## Manual Smoke
 
-Create a temporary Git repository:
+Create a temporary Git repository. Commands use `python3.14` because
+that is the maintainer's local default; any Python ≥ 3.11 works —
+substitute `python3` if you prefer.
 
 ```bash
 tmpdir="$(mktemp -d)"

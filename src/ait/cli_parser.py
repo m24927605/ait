@@ -185,7 +185,7 @@ def build_parser() -> argparse.ArgumentParser:
     session_panes.add_argument("--format", choices=("text", "json"), default="text")
     session_send = session_subparsers.add_parser("send")
     session_send.add_argument("selector", nargs="?", default="latest")
-    session_send.add_argument("message", nargs="?")
+    session_send.add_argument("--message", "-m", default=None)
     session_send.add_argument("--to", dest="send_to")
     session_send.add_argument("--all", action="store_true", dest="send_all")
     session_send.add_argument("--format", choices=("text", "json"), default="text")

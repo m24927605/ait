@@ -24,7 +24,7 @@ hide:
       <a class="ait-button ait-button--ghost" href="https://github.com/m24927605/ait">View on GitHub</a>
     </div>
     <p class="ait-hero__note">
-      Package: <code>ait-vcs</code>. Command: <code>ait</code>. Requires Python 3.14+.
+      Package: <code>ait-vcs</code>. Command: <code>ait</code>. Requires Python 3.11+.
     </p>
   </section>
 

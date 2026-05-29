@@ -22,7 +22,7 @@ hide:
       <a class="ait-button ait-button--ghost" href="https://github.com/m24927605/ait">View on GitHub</a>
     </div>
     <p class="ait-hero__note">
-      套件：<code>ait-vcs</code>。指令：<code>ait</code>。需要 Python 3.14+。
+      套件：<code>ait-vcs</code>。指令：<code>ait</code>。需要 Python 3.11+。
     </p>
   </section>
 

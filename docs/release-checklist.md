@@ -63,7 +63,9 @@ The publish workflow runs the same build/check/smoke guard before trusted
 PyPI publishing. It intentionally does not publish npm; npm publish remains
 manual until the matching PyPI version is visible.
 
-Local equivalent:
+Local equivalent (commands use `python3.14` because that is the
+maintainer's local default; any Python ≥ 3.11 works — substitute
+`python3` if you prefer):
 
 ```bash
 python3.14 -m build

@@ -38,7 +38,7 @@ hero asset is a placeholder.
 | H3 | UX | `getting-started.md.draft` has `exec $SHELL` glued to a previous block, and the demo prompt "Refactor the auth module" is too destructive for a 5-minute happy-path tutorial. | Hoist `exec $SHELL` to its own block with an explanatory line. Swap the demo prompt to something low-risk, e.g. "add a docstring to the top-level CLI function." |
 | H4 | UX | `docs/launch-kit-2026.md` has `AIT_CONTEXT_FILE` and "handoff file" used interchangeably across lines 32, 149, 168, 184, 276, 386, 473. | Pick "handoff file" above the fold in every post; name the env var once per post in body, parenthetically. |
 | H5 | UX | Chinese drafts have 3 specific sentences that read as translated rather than native. Specific quotes and rewrites are in `docs/ait-rebrand-qa-ux.md`. | Apply the rewrites from the UX report. |
-| H6 | Reality | Python 3.14+ floor is in `pyproject.toml:6` but not flagged in any launch-kit one-liner. `pipx install ait-vcs` will silently fail for the typical contributor running 3.11/3.12. | Add a one-line note to each launch post: "Requires Python 3.14+." Same in README install snippet. |
+| H6 | Reality | Python 3.14+ floor is in `pyproject.toml:6` but not flagged in any launch-kit one-liner. `pipx install ait-vcs` will silently fail for the typical contributor running 3.11/3.12. | Resolved 2026-05-29 — floor lowered to 3.11 per `docs/superpowers/specs/2026-05-29-python-floor-3-11-design.md`. |
 | H7 | Reality | 7 additional high-priority command/output divergences across drafts (see Reality report § High-priority findings for full list). | Apply each fix as listed in `docs/ait-rebrand-qa-reality.md`. |
 
 ## What is clean

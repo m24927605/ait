@@ -7,7 +7,7 @@ Validated on 2026-04-27 with:
 
 - `ait-vcs` local build for `0.5.2`
 - Claude Code `2.1.119`
-- Python 3.14
+- Python 3.11+
 
 ## Setup
 
@@ -15,7 +15,7 @@ Use a clean Git repository:
 
 ```bash
 tmpdir="$(mktemp -d)"
-python3.14 -m venv "$tmpdir/venv"
+python3 -m venv "$tmpdir/venv"
 "$tmpdir/venv/bin/python" -m pip install -U pip
 "$tmpdir/venv/bin/python" -m pip install ait-vcs
 

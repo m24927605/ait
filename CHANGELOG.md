@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 1.5.0 - 2026-05-29
+
+### Changed
+
+- Lowered Python floor from 3.14 to 3.11. The codebase only uses 3.11-era
+  features (`tomllib`, `datetime.UTC`); the 3.14 minimum was unnecessarily
+  restrictive and blocked most users at install time. See
+  `docs/superpowers/specs/2026-05-29-python-floor-3-11-design.md`.
+- Refactored `ait session send`: the message moves from a positional
+  argument to a `--message`/`-m` flag (`ait session send latest --to X
+  --message "hello"`). The previous positional form relied on a Python
+  3.13+ argparse behavior that broke interspersed `--to` + positional
+  parsing on 3.11/3.12. Update existing scripts accordingly.
+
 ## 1.4.3 - 2026-05-28
 
 ### Fixed

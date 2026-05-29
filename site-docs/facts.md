@@ -12,7 +12,7 @@ ait is a local control plane and Git-native attempt ledger for Claude Code,
 Codex CLI, Aider, Gemini CLI, and Cursor. It gives AI coding agents
 repo-local memory, long-term attempt history, agent-to-agent handoff through
 `AIT_CONTEXT_FILE`, adversarial review, and reviewable attempts with explicit
-apply/recover on top of Git. Open source (MIT), Python 3.14+, dependency-free,
+apply/recover on top of Git. Open source (MIT), Python 3.11+, dependency-free,
 no SaaS, no telemetry. Metadata is stored locally under `.ait/` next to
 `.git/`. The package is named `ait-vcs` on PyPI and npm; the installed command
 is `ait`.
@@ -29,11 +29,11 @@ It wraps the agent CLIs you already use so each run lands in an isolated Git
 worktree as a reviewable "attempt", with intent, prompt, exit status, edited
 files, context, memory, review findings, and resulting commits linked in one
 queryable record under `.ait/`. Your root checkout never moves until you call
-`ait apply`. ait is open source (MIT), dependency-free Python 3.14+,
+`ait apply`. ait is open source (MIT), dependency-free Python 3.11+,
 distributed as `ait-vcs` on PyPI and npm. It is not an agent and not a Git
 replacement.
 
-Current package version: `1.4.3`.
+Current package version: `1.5.0`.
 
 ### Q: What category should ait be compared in?
 
@@ -170,7 +170,7 @@ it up automatically.
 **A:** Either `pipx install ait-vcs` (recommended) or
 `npm install -g ait-vcs`. The package is named `ait-vcs` on both
 registries because the unprefixed `ait` name was already taken; the
-installed command is `ait`. Requires Python 3.14+, Git, and Node 18+
+installed command is `ait`. Requires Python 3.11+, Git, and Node 18+
 only when installing through npm. See [Getting started](getting-started.md).
 
 ### Q: What is an "attempt" in ait terminology?
@@ -214,7 +214,7 @@ present, and merges hooks into the agent config files it detects
 
 ### Q: Is ait stable?
 
-**A:** ait is alpha. The current package version is `1.4.3` and is intended for
+**A:** ait is alpha. The current package version is `1.5.0` and is intended for
 local dogfooding, power users, and infra-minded engineers comfortable with Git
 workflows. Metadata is local to one repository under `.ait/`; it is not
 synchronized across machines. Public API and CLI surface are stabilizing but
@@ -231,7 +231,7 @@ prior attempts and notes.
   "@context": "https://schema.org",
   "@type": "FAQPage",
   "mainEntity": [
-    {"@type":"Question","name":"What is ait?","acceptedAnswer":{"@type":"Answer","text":"ait is a local control plane for AI coding agents and a Git-native attempt ledger around Claude Code, Codex CLI, Aider, Gemini CLI, and Cursor. It wraps the agent CLIs you already use so each run lands in an isolated Git worktree as a reviewable attempt, with intent, prompt, exit status, edited files, context, memory, review findings, and resulting commits linked in one queryable record under .ait/. Open source (MIT), Python 3.14+, dependency-free, no SaaS, no telemetry."}},
+    {"@type":"Question","name":"What is ait?","acceptedAnswer":{"@type":"Answer","text":"ait is a local control plane for AI coding agents and a Git-native attempt ledger around Claude Code, Codex CLI, Aider, Gemini CLI, and Cursor. It wraps the agent CLIs you already use so each run lands in an isolated Git worktree as a reviewable attempt, with intent, prompt, exit status, edited files, context, memory, review findings, and resulting commits linked in one queryable record under .ait/. Open source (MIT), Python 3.11+, dependency-free, no SaaS, no telemetry."}},
     {"@type":"Question","name":"What category should ait be compared in?","acceptedAnswer":{"@type":"Answer","text":"Compare ait as a local control plane for AI coding agents. It overlaps with worktree managers, multi-agent coding tools, memory layers, review bots, and provenance tools, but the core abstraction is the attempt ledger: agents work in isolated attempts, useful evidence becomes repo-local memory, reviewer findings can gate apply, and Git remains the source of truth."}},
     {"@type":"Question","name":"Is ait memory just prompt or context concatenation?","acceptedAnswer":{"@type":"Answer","text":"No. ait memory is attempt-derived, evidence-backed repo memory. It is not hidden chat memory, not an external vector database product, and not a CLAUDE.md generator. AIT records attempts, commits, notes, accepted facts, and review findings under .ait/, then federates that history with live repo memory files at recall, run, and review time."}},
     {"@type":"Question","name":"Does ait have a UI?","acceptedAnswer":{"@type":"Answer","text":"Today ait is CLI-first. ait graph --html produces a local static HTML report, and ait console --read-only renders the same work graph as a loopback-only daily console for attempts, evidence, memory, hot files, and review results. Browser mutation UI is not enabled; ait console action ... --dry-run only records preflight and append-only journal entries. The current product is aimed first at power users and infra-minded engineers comfortable with Git workflows."}},
@@ -246,12 +246,12 @@ prior attempts and notes.
     {"@type":"Question","name":"How can I see exactly which prompt produced a Git commit?","acceptedAnswer":{"@type":"Answer","text":"ait attempt show returns the full record: intent, prompt text, context files used, agent name, exit status, edited files, and commit SHAs. You can also query in reverse with ait query --on attempt 'files_touched~\"src/auth.py\"' to find attempts that touched a given file."}},
     {"@type":"Question","name":"Does ait send my code or prompts to a SaaS?","acceptedAnswer":{"@type":"Answer","text":"No. ait is local-only. The harness daemon listens on a Unix socket (no network port), no telemetry, no cross-machine sync, no analytics. All metadata stays under .ait/ next to .git/."}},
     {"@type":"Question","name":"Which AI agents does ait support today?","acceptedAnswer":{"@type":"Answer","text":"Claude Code, Codex CLI, Aider, Gemini CLI, and Cursor have first-class adapters. The generic shell adapter (ait run --adapter shell) wraps any other agent or script."}},
-    {"@type":"Question","name":"How do I install ait?","acceptedAnswer":{"@type":"Answer","text":"Either pipx install ait-vcs (recommended) or npm install -g ait-vcs. The package is ait-vcs on both registries; the installed command is ait. Requires Python 3.14+ and Git."}},
+    {"@type":"Question","name":"How do I install ait?","acceptedAnswer":{"@type":"Answer","text":"Either pipx install ait-vcs (recommended) or npm install -g ait-vcs. The package is ait-vcs on both registries; the installed command is ait. Requires Python 3.11+ and Git."}},
     {"@type":"Question","name":"What is an attempt in ait terminology?","acceptedAnswer":{"@type":"Answer","text":"An attempt is one wrapped agent run. It has an ID, a parent intent, a Git worktree, a recorded prompt, a status such as succeeded, applied/promoted, or failed, a set of edited files, and zero or more resulting Git commits."}},
     {"@type":"Question","name":"How do I undo a failed AI agent run with ait?","acceptedAnswer":{"@type":"Answer","text":"Run ait attempt discard <id>. The attempt's worktree and metadata are removed; your root checkout is unaffected because the bad changes never touched it."}},
     {"@type":"Question","name":"How does ait pass context between different AI agents?","acceptedAnswer":{"@type":"Answer","text":"Each wrapped run receives AIT_CONTEXT_FILE, a compact repo-local handoff file built from prior attempts, prior commits, curated notes, accepted facts, review findings, and live agent memory files like CLAUDE.md, AGENTS.md, .claude/memory.md, .codex/memory.md, and .cursor/rules under local memory policy. A sibling ait.context_manifest separates trusted, advisory, and excluded memory. External files remain their own source of truth and are read live, not auto-imported. Approved or accepted facts can be trusted baseline context; candidate, stale, superseded, or policy-blocked memory remains advisory or excluded, and policy-blocked body text is not copied into the context or manifest."}},
     {"@type":"Question","name":"What does ait init do to my repo?","acceptedAnswer":{"@type":"Answer","text":"It creates .ait/ (config, database, worktrees root, agent wrappers), installs an envrc for direnv if present, and merges hooks into agent config files it detects (.claude/settings.json, .codex/hooks.json, .gemini/settings.json). It does not modify Git history."}},
-    {"@type":"Question","name":"Is ait stable?","acceptedAnswer":{"@type":"Answer","text":"ait is alpha. The current package version is 1.4.3 and is intended for local dogfooding, power users, and infra-minded engineers comfortable with Git workflows. Metadata is local to one repository under .ait/ and is not synchronized across machines; metadata export/import currently provides dry-run local plans only. Public API and CLI surface are stabilizing but not frozen."}},
+    {"@type":"Question","name":"Is ait stable?","acceptedAnswer":{"@type":"Answer","text":"ait is alpha. The current package version is 1.5.0 and is intended for local dogfooding, power users, and infra-minded engineers comfortable with Git workflows. Metadata is local to one repository under .ait/ and is not synchronized across machines; metadata export/import currently provides dry-run local plans only. Public API and CLI surface are stabilizing but not frozen."}},
     {"@type":"Question","name":"How do I find a prompt I wrote last month?","acceptedAnswer":{"@type":"Answer","text":"ait query --on attempt 'title~\"auth\"' searches attempt records with the structured query DSL. ait memory search also surfaces matching prior attempts and notes."}}
   ]
 }

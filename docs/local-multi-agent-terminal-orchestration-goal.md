@@ -71,8 +71,8 @@ AIT Local Multi-Agent Terminal Orchestration direction.
   2. Phase 5b：Session panes/send/kill/replay
      - 新增：
        - `ait session panes latest --format json`
-       - `ait session send latest --to <agent> "message"`
-       - `ait session send latest --all "message"`
+       - `ait session send latest --to <agent> --message "message"`
+       - `ait session send latest --all --message "message"`
        - `ait session kill latest --agent <agent>`
        - `ait session replay latest --turn latest`
      - 若 Phase 5a 尚未做 daemon-owned PTY，`send/kill` 可以先限制在可恢復的 foreground/recorded state，但 JSON 必須明確回報 blocking reasons

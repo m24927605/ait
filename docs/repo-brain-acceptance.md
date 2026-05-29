@@ -46,6 +46,9 @@ slice.
 
 ## Manual Smoke
 
+Commands use `python3.14` because that is the maintainer's local
+default; any Python ≥ 3.11 works — substitute `python3` if you prefer.
+
 ```bash
 tmpdir="$(mktemp -d)"
 python3.14 -m venv "$tmpdir/venv"
