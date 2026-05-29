@@ -125,3 +125,53 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/ait-${{ steps.tag.outputs.tag }}-checksums.txt
+
+  update-tap:
+    needs: checksums
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+
+      - uses: actions/checkout@v5
+        with:
+          path: ait
+
+      - name: Checkout tap repo
+        uses: actions/checkout@v5
+        with:
+          repository: m24927605/homebrew-ait
+          token: ${{ secrets.TAP_PUSH_TOKEN }}
+          path: tap
+
+      - name: Download checksums
+        run: |
+          curl -fsSL \
+            "https://github.com/m24927605/ait/releases/download/${{ steps.tag.outputs.tag }}/ait-${{ steps.tag.outputs.tag }}-checksums.txt" \
+            -o checksums.txt
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Render formula
+        run: |
+          python ait/scripts/release-smoke/render_brew_formula.py \
+            --version "${{ steps.tag.outputs.tag }}" \
+            --checksums checksums.txt \
+            --output tap/Formula/ait.rb
+
+      - name: Commit and push
+        working-directory: tap
+        run: |
+          git config user.email "release-bot@users.noreply.github.com"
+          git config user.name "release-bot"
+          git add Formula/ait.rb
+          if git diff --cached --quiet; then
+            echo "No changes — formula already up to date."
+            exit 0
+          fi
+          git commit -m "ait ${{ steps.tag.outputs.tag }}"
+          git push
