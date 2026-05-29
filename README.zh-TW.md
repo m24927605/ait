@@ -237,6 +237,12 @@ curl -fsSL https://raw.githubusercontent.com/m24927605/ait/main/install.sh | sh
 pip install ait-vcs        # 或：pipx install ait-vcs
 ```
 
+如果想固定一個 release tag 以確保可重現安裝：
+
+```bash
+pipx install "git+https://github.com/m24927605/ait.git@v1.5.1"
+```
+
 執行 `ait --version` 確認安裝成功。詳細的各平台說明、離線安裝與解除安裝步驟，
 請參閱 [docs/install.md](docs/install.md)。
 

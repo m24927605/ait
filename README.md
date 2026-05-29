@@ -242,6 +242,12 @@ curl -fsSL https://raw.githubusercontent.com/m24927605/ait/main/install.sh | sh
 pip install ait-vcs        # or: pipx install ait-vcs
 ```
 
+Pin a specific release tag if you want a reproducible install:
+
+```bash
+pipx install "git+https://github.com/m24927605/ait.git@v1.5.1"
+```
+
 Verify with `ait --version`. See [docs/install.md](docs/install.md)
 for per-platform detail, offline install, and uninstall.
 
