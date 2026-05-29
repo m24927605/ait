@@ -251,10 +251,10 @@ class LandingTests(unittest.TestCase):
             debug = io.StringIO()
 
             with chdir(repo_root):
-                with patch("sys.argv", ["ait", "status"]):
+                with patch("sys.argv", ["ait", "status", "--verbose"]):
                     with redirect_stdout(normal):
                         normal_code = cli.main()
-                with patch("sys.argv", ["ait", "status", "--debug"]):
+                with patch("sys.argv", ["ait", "status", "--debug", "--verbose"]):
                     with redirect_stdout(debug):
                         debug_code = cli.main()
 
@@ -297,7 +297,7 @@ class LandingTests(unittest.TestCase):
             text = io.StringIO()
 
             with chdir(repo_root):
-                with patch("sys.argv", ["ait", "status"]):
+                with patch("sys.argv", ["ait", "status", "--verbose"]):
                     with redirect_stdout(text):
                         text_code = cli.main()
             payload = _status_json(repo_root)
@@ -355,7 +355,7 @@ class LandingTests(unittest.TestCase):
             json_out = io.StringIO()
 
             with chdir(repo_root):
-                with patch("sys.argv", ["ait", "status", "--all"]):
+                with patch("sys.argv", ["ait", "status", "--all", "--verbose"]):
                     with redirect_stdout(normal):
                         normal_code = cli.main()
                 with patch("sys.argv", ["ait", "status", "--all", "--debug"]):
@@ -388,7 +388,7 @@ class LandingTests(unittest.TestCase):
             recover_debug = io.StringIO()
 
             with chdir(repo_root):
-                with patch("sys.argv", ["ait", "status", "--debug"]):
+                with patch("sys.argv", ["ait", "status", "--debug", "--verbose"]):
                     with redirect_stdout(status_debug):
                         self.assertEqual(0, cli.main())
                 with patch("sys.argv", ["ait", "recover", "latest", "--debug"]):

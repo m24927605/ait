@@ -1317,7 +1317,7 @@ class CliAdapterTests(unittest.TestCase):
                 ):
                     with redirect_stdout(run_stdout), redirect_stderr(io.StringIO()):
                         run_exit = cli.main()
-                with patch("sys.argv", ["ait", "status"]):
+                with patch("sys.argv", ["ait", "status", "--verbose"]):
                     with redirect_stdout(status_stdout), redirect_stderr(io.StringIO()):
                         status_exit = cli.main()
 
@@ -1353,7 +1353,7 @@ class CliAdapterTests(unittest.TestCase):
                 with patch("sys.argv", ["ait", "status", "--format", "json"]):
                     with redirect_stdout(json_stdout):
                         json_exit = cli.main()
-                with patch("sys.argv", ["ait", "status"]):
+                with patch("sys.argv", ["ait", "status", "--verbose"]):
                     with redirect_stdout(text_stdout):
                         text_exit = cli.main()
 
@@ -1416,7 +1416,7 @@ class CliAdapterTests(unittest.TestCase):
                 with patch("sys.argv", ["ait", "status", "--format", "json"]):
                     with redirect_stdout(json_stdout):
                         json_exit = cli.main()
-                with patch("sys.argv", ["ait", "status"]):
+                with patch("sys.argv", ["ait", "status", "--verbose"]):
                     with redirect_stdout(text_stdout):
                         text_exit = cli.main()
 
@@ -1451,7 +1451,7 @@ class CliAdapterTests(unittest.TestCase):
                 with patch("sys.argv", ["ait", "status", "--format", "json"]):
                     with redirect_stdout(json_stdout):
                         json_exit = cli.main()
-                with patch("sys.argv", ["ait", "status"]):
+                with patch("sys.argv", ["ait", "status", "--verbose"]):
                     with redirect_stdout(text_stdout):
                         text_exit = cli.main()
 
@@ -1488,10 +1488,10 @@ class CliAdapterTests(unittest.TestCase):
                         "ait.cli._installation_payload",
                         return_value={"conflict": False, "path_entries": []},
                     ):
-                        with patch("sys.argv", ["ait", "status"]):
+                        with patch("sys.argv", ["ait", "status", "--verbose"]):
                             with redirect_stdout(stdout), redirect_stderr(stderr):
                                 exit_code = cli.main()
-                        with patch("sys.argv", ["ait", "status"]):
+                        with patch("sys.argv", ["ait", "status", "--verbose"]):
                             with redirect_stdout(io.StringIO()), redirect_stderr(second_stderr):
                                 second_exit_code = cli.main()
             finally:
@@ -1531,7 +1531,7 @@ class CliAdapterTests(unittest.TestCase):
                     with patch("sys.argv", ["ait", "status", "claude-code", "--format", "json"]):
                         with redirect_stdout(json_stdout):
                             json_exit = cli.main()
-                    with patch("sys.argv", ["ait", "status", "claude-code"]):
+                    with patch("sys.argv", ["ait", "status", "claude-code", "--verbose"]):
                         with redirect_stdout(text_stdout), redirect_stderr(io.StringIO()):
                             text_exit = cli.main()
             finally:
@@ -1635,7 +1635,7 @@ class CliAdapterTests(unittest.TestCase):
             os.environ["PATH"] = str(bin_dir) + os.pathsep + "/usr/bin:/bin"
             try:
                 with chdir(repo_root):
-                    with patch("sys.argv", ["ait", "status", "--all"]):
+                    with patch("sys.argv", ["ait", "status", "--all", "--verbose"]):
                         with redirect_stdout(stdout), redirect_stderr(stderr):
                             exit_code = cli.main()
             finally:
@@ -1665,7 +1665,7 @@ class CliAdapterTests(unittest.TestCase):
             stdout = io.StringIO()
 
             with chdir(repo_root):
-                with patch("sys.argv", ["ait", "status", "--all"]):
+                with patch("sys.argv", ["ait", "status", "--all", "--verbose"]):
                     with redirect_stdout(stdout), redirect_stderr(io.StringIO()):
                         exit_code = cli.main()
 
