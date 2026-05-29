@@ -156,6 +156,9 @@ def _adapter_wrapper_script(adapter: AgentAdapter, real_binary: str) -> str:
         "  exit 126\n"
         "fi\n"
         'ait_wrapper_should_passthrough() {\n'
+        '  if [ "${AIT_BYPASS:-}" = "1" ] || [ "${AIT_BYPASS:-}" = "true" ]; then\n'
+        "    return 0\n"
+        "  fi\n"
         '  if [ "${AIT_WRAPPER_BYPASS:-}" = "1" ] || [ "${AIT_WRAPPER_BYPASS:-}" = "true" ]; then\n'
         "    return 0\n"
         "  fi\n"

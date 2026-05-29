@@ -355,6 +355,15 @@ def build_parser() -> argparse.ArgumentParser:
     continue_parser.add_argument("--shell-hook", action="store_true", help=argparse.SUPPRESS)
     continue_parser.add_argument("--shell-reminder", action="store_true", help=argparse.SUPPRESS)
 
+    subparsers.add_parser(
+        "off",
+        help="disable AIT auto-wrap for this shell (sets AIT_BYPASS=1)",
+    )
+    subparsers.add_parser(
+        "on",
+        help="re-enable AIT auto-wrap for this shell (unsets AIT_BYPASS)",
+    )
+
     agent_continue_parser = subparsers.add_parser("agent-continue", help=argparse.SUPPRESS)
     agent_continue_parser.add_argument("--adapter", required=True)
     agent_continue_parser.add_argument("--real-binary", required=True)

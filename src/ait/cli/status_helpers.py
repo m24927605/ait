@@ -91,7 +91,24 @@ def _status_payload(
     payload["agent_cli_ready"] = payload["ok"]
     payload["agent_cli_message"] = _agent_cli_message(payload)
     payload["bypass_detection"] = _bypass_detection_payload(payload, result)
+    payload["wrap_behavior"] = _wrap_behavior_payload(payload)
     return payload
+
+
+def _wrap_behavior_payload(payload: dict[str, object]) -> dict[str, str]:
+    adapter_name = str(payload.get("adapter", "claude-code"))
+    command = _agent_command_name(adapter_name)
+    if payload.get("path_wrapper_active"):
+        current = f"wrapped ({command} in this shell enters AIT)"
+    elif payload.get("wrapper_installed"):
+        current = f"unwrapped ({command} not on PATH ahead of .ait/bin)"
+    else:
+        current = "not configured"
+    return {
+        "current": current,
+        "disable_once": f"AIT_BYPASS=1 {command} ...",
+        "disable_shell": "ait off    (re-enable: ait on)",
+    }
 
 def _active_binary_detail(detail: str | None, command_name: str) -> str | None:
     if not detail or detail == f"{command_name} not found on PATH":
