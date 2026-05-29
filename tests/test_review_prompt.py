@@ -35,7 +35,6 @@ class ReviewPromptTests(unittest.TestCase):
             target=result.target,
             assessment=result.assessment,
             baseline_ref=baseline_ref,
-            budget="standard",
             profiles=("security",),
         )
 
@@ -64,7 +63,10 @@ class ReviewPromptTests(unittest.TestCase):
             )
         )
 
-    def test_reviewer_brief_budget_truncates_large_context(self) -> None:
+    def test_reviewer_brief_advertises_snapshot_path_and_full_diff(self) -> None:
+        # Spec: the brief no longer embeds (or truncates) a diff. Instead it
+        # points the reviewer at the pinned read-only snapshot and the
+        # precomputed full diff file in the reviewer run directory.
         repo_root = _repo_with_prompt_context(raw_trace_ref=None, large_fact=True)
 
         result = create_deterministic_review(repo_root, "latest-reviewable")
@@ -76,11 +78,14 @@ class ReviewPromptTests(unittest.TestCase):
             target=result.target,
             assessment=result.assessment,
             baseline_ref=baseline_ref,
-            budget="quick",
         )
 
-        self.assertLessEqual(len(brief), 4000)
-        self.assertIn("reviewer brief truncated by budget", brief)
+        self.assertIn("## Code Snapshot", brief)
+        self.assertIn("snapshot_path: ./src/", brief)
+        self.assertIn("diff_file: ./diff.patch", brief)
+        # The diff is NOT embedded in the brief anymore.
+        self.assertNotIn("## Changed Diff Excerpts", brief)
+        self.assertNotIn("reviewer brief truncated by budget", brief)
 
     def test_adversarial_review_artifact_links_context_manifest_without_blocked_body(self) -> None:
         repo_root = _repo_with_prompt_context(raw_trace_ref=".ait/traces/producer.jsonl")

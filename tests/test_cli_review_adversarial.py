@@ -194,10 +194,26 @@ def _review_json(repo_root: Path, adapter: str) -> tuple[int, dict[str, object]]
 
 
 def _repo_with_reviewable_attempt() -> Path:
+    """Create a fixture repo with a real git commit so the reviewer
+    can materialize the pinned snapshot (see review_adapter.run_review_adapter).
+    """
     tmp = tempfile.TemporaryDirectory()
     repo_root = Path(tmp.name)
     _TEMP_DIRS.append(tmp)
     _git(repo_root, "init")
+    _git(repo_root, "config", "user.email", "t@example.com")
+    _git(repo_root, "config", "user.name", "Test")
+    (repo_root / "src").mkdir(exist_ok=True)
+    (repo_root / "src" / "example.py").write_text(
+        "def example():\n    return 'fixture'\n", encoding="utf-8"
+    )
+    _git(repo_root, "add", "src/example.py")
+    _git(repo_root, "commit", "-q", "-m", "fixture")
+    head_oid = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo_root,
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    base_oid = head_oid
     init_result = init_repo(repo_root)
     conn = connect_db(init_result.db_path)
     try:
@@ -221,7 +237,7 @@ def _repo_with_reviewable_attempt() -> Path:
                 intent_id="repo:01INTENT",
                 agent_id="codex:main",
                 workspace_ref="/tmp/repo:01ATTEMPT",
-                base_ref_oid="0" * 40,
+                base_ref_oid=base_oid,
                 started_at="2026-05-09T00:01:00Z",
                 ownership_token="token",
                 reported_status="finished",
@@ -231,8 +247,8 @@ def _repo_with_reviewable_attempt() -> Path:
         insert_attempt_commit(
             conn,
             attempt_id="repo:01ATTEMPT",
-            commit_oid="1" * 40,
-            base_commit_oid="0" * 40,
+            commit_oid=head_oid,
+            base_commit_oid=base_oid,
             touched_files=("src/example.py",),
         )
     finally:

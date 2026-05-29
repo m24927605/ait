@@ -237,6 +237,8 @@ def _run_real_reviewer_benchmark_payload(
                     review_id=review_id,
                     adapter=reviewer_adapter,
                     brief=brief,
+                    attempt_head_oid="",
+                    baseline_ref_oid="",
                     timeout_seconds=timeout_seconds,
                 )
                 first_adapter_result = first_adapter_result or adapter_result
