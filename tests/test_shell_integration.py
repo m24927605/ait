@@ -73,5 +73,21 @@ class ShellIntegrationTests(unittest.TestCase):
             self.assertIn("_ait_continue_should_cd", text)
 
 
+class ShellHelperGuardTests(unittest.TestCase):
+    def test_zsh_wrapper_guards_continue_helper_call(self) -> None:
+        snippet = shell_snippet("zsh")
+        self.assertIn("command -v _ait_continue_should_cd", snippet)
+
+    def test_bash_wrapper_guards_continue_helper_call(self) -> None:
+        snippet = shell_snippet("bash")
+        self.assertIn("command -v _ait_continue_should_cd", snippet)
+
+    def test_invariant_documented_in_module_docstring(self) -> None:
+        import ait.shell_integration as mod
+
+        self.assertIsNotNone(mod.__doc__)
+        self.assertIn("command -v", mod.__doc__ or "")
+
+
 if __name__ == "__main__":
     unittest.main()

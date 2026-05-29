@@ -1,3 +1,17 @@
+"""ait shell integration.
+
+INVARIANT: code emitted into the user's rc must never make an
+unconditional call to a helper function it defines. Every call site
+of a helper must be guarded with `command -v <helper> >/dev/null &&`
+so a partial source, a sub-shell that lost function inheritance, or
+a post-upgrade rc out of sync still leaves the wrapper functional —
+falling through to `command ait` rather than printing a scary
+`command not found` to stderr.
+
+Reproduced 2026-05-29 in a new-user session; documented in
+`docs/superpowers/specs/2026-05-30-ux-friction-fix-design.md` § P0.1.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -131,7 +145,8 @@ def _ait_command_function_lines() -> list[str]:
         "}",
         "",
         "ait() {",
-        '  if _ait_continue_should_cd "$@"; then',
+        '  if command -v _ait_continue_should_cd >/dev/null 2>&1 \\',
+        '     && _ait_continue_should_cd "$@"; then',
         "    local ait_shell_script",
         '    if ait_shell_script="$(command ait continue "${@:2}" --shell-hook 2>/dev/null)" && [ -n "$ait_shell_script" ]; then',
         '      eval "$ait_shell_script"',
