@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 
-TARGETS = ("macos-arm64", "macos-x86_64", "linux-x86_64", "linux-arm64")
+TARGETS = ("macos-arm64", "linux-x86_64", "linux-arm64")
 
 _TEMPLATE = """\
 class Ait < Formula
@@ -27,10 +27,7 @@ class Ait < Formula
       url "https://github.com/m24927605/ait/releases/download/{version_tag}/ait-{version_tag}-macos-arm64"
       sha256 "{macos_arm64}"
     end
-    on_intel do
-      url "https://github.com/m24927605/ait/releases/download/{version_tag}/ait-{version_tag}-macos-x86_64"
-      sha256 "{macos_x86_64}"
-    end
+    # macos-x86_64 not produced — Intel Mac users install via pip.
   end
 
   on_linux do
@@ -83,7 +80,6 @@ def render_formula(*, version: str, checksums: dict[str, str]) -> str:
         version_tag=version,
         version_no_v=version_no_v,
         macos_arm64=checksums["macos-arm64"],
-        macos_x86_64=checksums["macos-x86_64"],
         linux_x86_64=checksums["linux-x86_64"],
         linux_arm64=checksums["linux-arm64"],
     )

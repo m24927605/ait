@@ -20,8 +20,8 @@ jobs:
         include:
           - os: macos-latest
             target: macos-arm64
-          - os: macos-13
-            target: macos-x86_64
+          # macos-x86_64 dropped 2026-05-29: 10x runner cost + 15-30min
+          # queue. Intel Mac users install via pip; see docs/install.md.
           - os: ubuntu-latest
             target: linux-x86_64
           - os: ubuntu-24.04-arm

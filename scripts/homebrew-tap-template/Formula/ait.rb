@@ -11,10 +11,7 @@ class Ait < Formula
       url "https://github.com/m24927605/ait/releases/download/v1.5.0/ait-v1.5.0-macos-arm64"
       sha256 "0000000000000000000000000000000000000000000000000000000000000000"
     end
-    on_intel do
-      url "https://github.com/m24927605/ait/releases/download/v1.5.0/ait-v1.5.0-macos-x86_64"
-      sha256 "0000000000000000000000000000000000000000000000000000000000000000"
-    end
+    # macos-x86_64 not produced — Intel Mac users install via pip.
   end
 
   on_linux do
