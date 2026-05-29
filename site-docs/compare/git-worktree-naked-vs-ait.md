@@ -11,7 +11,7 @@ description: >-
 ait turns Claude Code, Codex CLI, Aider, Gemini CLI, and Cursor runs into
 isolated, reviewable attempts with worktree isolation, attempt provenance,
 cross-agent memory, and explicit apply/recover on top of Git. Open source
-(MIT), Python 3.14+, dependency-free, no SaaS, no telemetry.
+(MIT), Python 3.11+, dependency-free, no SaaS, no telemetry.
 
 If you already use `git worktree add` to run parallel AI agents, this
 page is for you. It compares the raw worktree workflow with the same

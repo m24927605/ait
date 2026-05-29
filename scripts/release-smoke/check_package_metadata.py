@@ -31,8 +31,8 @@ def _metadata_errors(repo_root: Path) -> list[str]:
         errors.append(f"project.version {project.get('version')!r} != npm version {package.get('version')!r}")
     if project.get("description") != package.get("description"):
         errors.append("pyproject and npm descriptions differ")
-    if project.get("requires-python") != ">=3.14":
-        errors.append("pyproject requires-python must remain honest as >=3.14 for this slice")
+    if project.get("requires-python") != ">=3.11":
+        errors.append("pyproject requires-python must remain honest as >=3.11 for this slice")
     if package.get("bin", {}).get("ait") != "bin/ait.js":
         errors.append("npm package must expose ait via bin/ait.js")
     package_files = set(package.get("files", []))

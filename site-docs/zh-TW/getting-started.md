@@ -39,7 +39,7 @@ pipx install ait-vcs
 ait --version
 ```
 
-套件名稱是 `ait-vcs`，指令是 `ait`。需求：Python 3.14+ 與 Git。
+套件名稱是 `ait-vcs`，指令是 `ait`。需求：Python 3.11+ 與 Git。
 
 如果系統預設 Python 太舊：
 
@@ -58,7 +58,7 @@ python3.14 -m venv .venv
 npm install -g ait-vcs
 
 # 固定 GitHub tag
-pipx install "git+https://github.com/m24927605/ait.git@v1.4.3"
+pipx install "git+https://github.com/m24927605/ait.git@v1.5.0"
 ```
 
 ## 3. 初始化 repo

@@ -12,5 +12,5 @@
   <text x="120" y="340" font-family="Menlo, Consolas, monospace" font-size="34" fill="#c9d1d9">local control plane for AI agents</text>
   <text x="120" y="385" font-family="Menlo, Consolas, monospace" font-size="34" fill="#c9d1d9">attempt ledger + review gate</text>
   <text x="120" y="475" font-family="Menlo, Consolas, monospace" font-size="22" fill="#7d8590">Claude Code  ·  Codex  ·  Aider  ·  Gemini CLI  ·  Cursor</text>
-  <text x="120" y="535" font-family="Menlo, Consolas, monospace" font-size="18" fill="#6e7681">github.com/m24927605/ait  ·  MIT  ·  Python 3.14+  ·  no SaaS</text>
+  <text x="120" y="535" font-family="Menlo, Consolas, monospace" font-size="18" fill="#6e7681">github.com/m24927605/ait  ·  MIT  ·  Python 3.11+  ·  no SaaS</text>
 </svg>

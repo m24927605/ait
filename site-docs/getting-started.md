@@ -39,7 +39,7 @@ pipx install ait-vcs
 ait --version
 ```
 
-The package is `ait-vcs`. The command is `ait`. Requirements: Python 3.14+ and
+The package is `ait-vcs`. The command is `ait`. Requirements: Python 3.11+ and
 Git.
 
 If your default Python is older:
@@ -59,7 +59,7 @@ python3.14 -m venv .venv
 npm install -g ait-vcs
 
 # pinned GitHub tag
-pipx install "git+https://github.com/m24927605/ait.git@v1.4.3"
+pipx install "git+https://github.com/m24927605/ait.git@v1.5.0"
 ```
 
 ## 3. Initialize a repo
