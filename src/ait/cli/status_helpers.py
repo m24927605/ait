@@ -166,7 +166,18 @@ def _status_payload_with_recovery(payload: dict[str, object], repo_root: str | P
 
 
 def _recovery_dashboard_payload(repo_root: str | Path) -> dict[str, object]:
-    root = Path(repo_root).resolve()
+    # When invoked from inside an attempt worktree (e.g. cwd is
+    # `<host>/.ait/workspaces/attempt-<n>-<ulid>/...`), the literal
+    # path has no `.ait/state.sqlite3`, which used to surface as a
+    # confusing "not_initialized" — even though the host repo IS
+    # initialized. resolve_repo_root walks via `git --git-common-dir`
+    # and returns the host root. Fall back to the literal path when
+    # we are not in any git repo so the genuine not-initialized case
+    # still reports correctly.
+    try:
+        root = resolve_repo_root(repo_root)
+    except ValueError:
+        root = Path(repo_root).resolve()
     db_path = root / ".ait" / "state.sqlite3"
     if not db_path.exists():
         return {
