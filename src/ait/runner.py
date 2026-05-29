@@ -30,7 +30,8 @@ from ait.runner_transcript import (
     _strip_terminal_control,
     _write_command_transcript,
 )
-from ait.workspace import WorkspaceError, create_attempt_commit
+from ait.banner import print_attempt_banner
+from ait.workspace import WorkspaceError, create_attempt_commit, get_base_ref
 from ait.workspace_lease import update_workspace_lease
 
 
@@ -226,6 +227,19 @@ def run_agent_command(
             },
         )
     )
+    try:
+        _, target_ref_name = get_base_ref(root)
+        workspace_rel = os.path.relpath(str(workspace), start=str(root))
+        print_attempt_banner(
+            attempt_id=attempt.attempt_id,
+            workspace_rel=workspace_rel,
+            head="detached",
+            target=target_ref_name or "main",
+        )
+    except Exception:
+        # Never fail the run on a banner emission error.
+        pass
+
     with harness_context as harness:
         try:
             if should_capture_tty:
