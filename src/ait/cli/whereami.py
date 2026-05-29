@@ -15,23 +15,45 @@ def handle(args, repo_root: Path, parser=None) -> int:
         print(json.dumps(payload, indent=2))
     else:
         print(_format_whereami(payload))
-    return 0 if state.current_state != "not_git_repository" else 2
+    # whereami reports a fact; not being in an attempt is not an
+    # error. Exit 0 in both states. Internal failures bubble up to
+    # main() as exceptions, never as a non-zero whereami exit.
+    return 0
 
 
 def _format_whereami(payload: dict[str, object]) -> str:
-    context = payload.get("detected_context", {})
-    context = context if isinstance(context, dict) else {}
-    lines = [
-        f"State: {payload.get('current_state')}",
-        f"Repo: {payload.get('repo_root')}",
-        f"Worktree: {context.get('workspace_ref') or payload.get('worktree', {}).get('path') if isinstance(payload.get('worktree'), dict) else ''}",
-        f"Primary: {context.get('is_primary_worktree')}",
-        f"AIT workspace: {context.get('is_ait_workspace')}",
-        f"Attempt: {context.get('attempt_id') or 'none'}",
-        f"Branch: {context.get('current_branch') or 'detached'}",
-        f"Target: {context.get('target_branch') or 'unknown'}",
-        f"Ahead: {context.get('ahead_by', 0)}",
-    ]
-    if context.get("dirty"):
-        lines.append("Dirty: true")
-    return "\n".join(lines)
+    context = payload.get("detected_context") or {}
+    if not isinstance(context, dict):
+        context = {}
+    repo_root = payload.get("repo_root") or "<unknown>"
+
+    if context.get("is_ait_workspace"):
+        attempt_id = str(context.get("attempt_id") or "?")
+        short_id = attempt_id.split(":")[-1][:9].upper()
+        target = context.get("target_branch") or "unknown"
+        head = context.get("current_branch") or "detached"
+        dirty = bool(context.get("dirty"))
+        dirty_files = context.get("dirty_tracked_files") or []
+        dirty_count = len(dirty_files) if isinstance(dirty_files, list) else 0
+        if dirty:
+            dirty_str = (
+                f"yes ({dirty_count} file{'s' if dirty_count != 1 else ''})"
+                if dirty_count
+                else "yes"
+            )
+        else:
+            dirty_str = "no"
+        workspace_ref = context.get("workspace_ref") or "<unknown>"
+        return "\n".join([
+            f"Inside AIT attempt {short_id}",
+            f"  target     {target}",
+            f"  HEAD       {head}",
+            f"  dirty      {dirty_str}",
+            f"  workspace  {workspace_ref}",
+            f"  repo       {repo_root}",
+        ])
+
+    return "\n".join([
+        "Not in an AIT attempt.",
+        f"  repo: {repo_root} (primary checkout)",
+    ])
