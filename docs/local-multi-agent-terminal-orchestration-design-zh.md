@@ -77,8 +77,8 @@ ait session attach latest --agent claude-code
 ait session attach latest --read-only
 ait session detach latest
 ait session panes latest --format json
-ait session send latest --to claude-code "review the latest finding"
-ait session send latest --all "what risks do you see?"
+ait session send latest --to claude-code --message "review the latest finding"
+ait session send latest --all --message "what risks do you see?"
 ait session kill latest --agent codex
 ait session replay latest --turn latest
 ```

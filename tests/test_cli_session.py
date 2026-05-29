@@ -771,8 +771,8 @@ class CliSessionTests(unittest.TestCase):
             killed_raw = (repo / killed_pane["provenance_refs"]["raw_trace_ref"]).read_text(encoding="utf-8")
             self.assertIn("fake:codex ready", killed_raw)
 
-            send = _run_cli_json(repo, "session", "send", "latest", "--to", "fake:claude", "hello", "--format", "json")
-            send_all = _run_cli_json(repo, "session", "send", "latest", "--all", "hello all", "--format", "json")
+            send = _run_cli_json(repo, "session", "send", "latest", "--to", "fake:claude", "--message", "hello", "--format", "json")
+            send_all = _run_cli_json(repo, "session", "send", "latest", "--all", "--message", "hello all", "--format", "json")
             kill = _run_cli_json(repo, "session", "kill", "latest", "--agent", "fake:claude", "--format", "json")
             self.assertFalse(send["delivered"])
             self.assertFalse(send_all["delivered"])
