@@ -144,3 +144,35 @@ def atomic_replace(target: Path, content: bytes) -> None:
         with contextlib.suppress(FileNotFoundError):
             tmp.unlink()
         raise
+
+
+class InstallPathNotWritable(RuntimeError):
+    pass
+
+
+def check_install_path_writable(target: Path) -> None:
+    """Raise InstallPathNotWritable if we can't write into target.parent."""
+    if not _os.access(str(target.parent), _os.W_OK):
+        raise InstallPathNotWritable(
+            f"cannot write to {target.parent}\n"
+            f"re-run with sudo, or move ait to a user-owned path."
+        )
+
+
+def refuse_with_message(method: str, *, stdout=None) -> int:
+    """Print the right refusal message and return exit code 1."""
+    out = stdout if stdout is not None else sys.stdout
+    if method == "pip":
+        print(
+            "You installed ait via pip. Run `pip install --upgrade ait-vcs` instead.",
+            file=out,
+        )
+    elif method == "brew":
+        print(
+            "You installed ait via Homebrew. Run `brew upgrade ait` instead.",
+            file=out,
+        )
+    else:
+        print(f"ait self-update is not supported for install method: {method}",
+              file=out)
+    return 1
