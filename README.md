@@ -245,7 +245,7 @@ pip install ait-vcs        # or: pipx install ait-vcs
 Pin a specific release tag if you want a reproducible install:
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v1.5.1"
+pipx install "git+https://github.com/m24927605/ait.git@v1.6.0"
 ```
 
 Verify with `ait --version`. See [docs/install.md](docs/install.md)
