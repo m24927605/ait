@@ -18,6 +18,11 @@ Full release gate:
 PYTHONPATH=src .venv/bin/pytest -q
 ```
 
+CI's `ci.yml` test job runs the **fast** path —
+`pytest -m "not (slow or daemon or subprocess or release)"`. The full
+suite is a **manual** local gate the maintainer runs before tagging
+a release, per the no-auto-CI policy.
+
 Migration fixture gate:
 
 ```bash
