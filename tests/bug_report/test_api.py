@@ -14,6 +14,15 @@ from ait.bug_report.api import report_internal_error
 
 class ApiTests(unittest.TestCase):
     def setUp(self):
+        # tests/conftest.py sets AIT_BUG_REPORT=never globally to stop
+        # subprocess tests polluting ~/.local/state/ait/. This test
+        # class needs the pipeline alive to assert on it — opt back in.
+        _orig = os.environ.pop("AIT_BUG_REPORT", None)
+        self.addCleanup(
+            lambda: os.environ.__setitem__("AIT_BUG_REPORT", _orig)
+            if _orig is not None
+            else os.environ.pop("AIT_BUG_REPORT", None)
+        )
         self._td = tempfile.TemporaryDirectory()
         os.environ["XDG_STATE_HOME"] = self._td.name
         os.environ["XDG_CONFIG_HOME"] = self._td.name
