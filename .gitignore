@@ -2,8 +2,14 @@
 .venv/
 __pycache__/
 *.py[cod]
-build/
 dist/
+# PyInstaller output dirs and setuptools artifacts (inside build/)
+build/dist/
+build/build/
+build/lib/
+build/bdist.*/
+# Generated at build time by build/build_binary.sh
+src/ait/_frozen_version.py
 *.egg-info/
 npm/ait-vcs/libexec/
 npm/ait-vcs/node_modules/

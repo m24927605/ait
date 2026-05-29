@@ -54,6 +54,10 @@ are close to PASS — banned-claim discipline is clean and the demo paths exist.
 
    > **Resolved 2026-05-29.** Floor lowered to 3.11 per
    > `docs/superpowers/specs/2026-05-29-python-floor-3-11-design.md`.
+   > Standalone binary release (Spec B) — see
+   > `docs/superpowers/specs/2026-05-29-standalone-binary-design.md` —
+   > additionally ships `brew install ait` and curl|sh paths so install
+   > works without any Python at all.
 
 ## High-priority findings (should fix)
 

@@ -218,43 +218,33 @@ apply、跨 agent handoff，以及讓第二個 agent 先審一次。
 
 ## 安裝
 
-建議使用 pipx：
+**macOS 建議方式：**
 
 ```bash
-pipx install ait-vcs
-ait --version
+brew tap m24927605/ait
+brew install ait
 ```
 
-npm wrapper：
+**curl 安裝腳本（macOS + Linux）：**
 
 ```bash
-npm install -g ait-vcs
-ait --version
+curl -fsSL https://raw.githubusercontent.com/m24927605/ait/main/install.sh | sh
 ```
 
-專案虛擬環境：
+**pip（任何 Python ≥ 3.11）：**
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install ait-vcs
-.venv/bin/ait --version
+pip install ait-vcs        # 或：pipx install ait-vcs
 ```
 
-固定 GitHub release：
+如果想固定一個 release tag 以確保可重現安裝：
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v1.5.1"
+pipx install "git+https://github.com/m24927605/ait.git@v1.6.0"
 ```
 
-升級：
-
-```bash
-ait upgrade
-ait upgrade --dry-run
-```
-
-需求：Python 3.11+、Git、Python 標準庫內建的 SQLite。npm 套件需要 Node.js
-18+，並會在 `ait` 指令背後安裝 Python package。
+執行 `ait --version` 確認安裝成功。詳細的各平台說明、離線安裝與解除安裝步驟，
+請參閱 [docs/install.md](docs/install.md)。
 
 ## 目前狀態與限制
 

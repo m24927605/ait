@@ -12,6 +12,12 @@ import tomllib
 
 
 def package_version() -> str:
+    if getattr(sys, "frozen", False):
+        try:
+            from ait._frozen_version import __version__
+            return __version__
+        except ImportError:
+            return "unknown"
     try:
         return metadata.version("ait-vcs")
     except metadata.PackageNotFoundError:

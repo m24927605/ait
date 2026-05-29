@@ -2,6 +2,50 @@
 
 ## Unreleased
 
+## 1.6.0 - 2026-05-29
+
+### Added
+
+- **Standalone binary release pipeline.** AIT now ships as a single-file
+  native executable for macOS (arm64 + x86_64) and Linux (x86_64 + arm64)
+  via three distribution channels, in addition to the existing pip and
+  npm channels:
+  - **Homebrew tap** (recommended for macOS): `brew tap m24927605/ait && brew install ait`
+  - **curl install script**: `curl -fsSL https://raw.githubusercontent.com/m24927605/ait/main/install.sh | sh`
+  - **GitHub Releases**: direct binary downloads with SHA256 checksums
+  - **pip**: unchanged — `pip install ait-vcs` still works
+- **`ait self-update`** subcommand: built-in updater for the binary path.
+  Detects how AIT was installed (pip / brew / standalone binary / unknown)
+  and dispatches the correct upgrade flow — refuses cleanly when invoked
+  from a pip or brew install with a pointer to the right command, or
+  performs an atomic-replace update for binary installs. Flags:
+  `--check`, `--yes`, `--force`, `--json`. Verifies SHA256 against the
+  release's checksums.txt. 1-hour cache on the GitHub Releases API.
+  See `docs/self-update.md`.
+- New CI workflow `release-binary.yml`: 4-platform PyInstaller build
+  matrix, sha256 aggregation, automatic Brew tap formula update on every
+  release tag. macOS targets are ad-hoc codesigned so they run cleanly
+  via `brew install`.
+- `build/build_binary.sh`: local reproducible build entry that injects
+  `src/ait/_frozen_version.py` from `pyproject.toml` at build time.
+- `scripts/release-smoke/binary_smoke.py`: hermetic smoke for built
+  binaries (--version, bug-report list, init in a fresh repo).
+- `scripts/release-smoke/render_brew_formula.py`: renders the Brew
+  Formula from a version + checksums file (used by CI).
+- `scripts/homebrew-tap-template/`: maintainer scaffolding for the
+  separate `m24927605/homebrew-ait` tap repo, including a SETUP.md walking
+  through the one-time tap creation and TAP_PUSH_TOKEN provisioning.
+- `docs/install.md`: per-platform install detail, checksum verification,
+  offline install, and uninstall.
+
+### Changed
+
+- README install section restructured to three paths (brew / curl|sh /
+  pip) with brew recommended for macOS.
+- `cli_installation.package_version()` honors `sys.frozen` and reads
+  the embedded `ait._frozen_version` module when running as a PyInstaller
+  binary; falls back to the existing pyproject.toml reader in dev.
+
 ## 1.5.1 - 2026-05-29
 
 ### Fixed
