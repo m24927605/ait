@@ -759,4 +759,15 @@ def build_parser() -> argparse.ArgumentParser:
     bug_report_replay.add_argument("fingerprint", nargs="?", default=None)
     bug_report_replay.add_argument("--all", dest="all_flag", action="store_true")
 
+    self_update_parser = subparsers.add_parser("self-update",
+                                               help="update the ait binary in-place")
+    self_update_parser.add_argument("--check", action="store_true",
+                                    help="check for updates without downloading")
+    self_update_parser.add_argument("--yes", action="store_true",
+                                    help="skip the confirmation prompt")
+    self_update_parser.add_argument("--force", action="store_true",
+                                    help="update even if current >= latest")
+    self_update_parser.add_argument("--json", action="store_true",
+                                    help="machine-readable output for agents")
+
     return parser
