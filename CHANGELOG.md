@@ -2,6 +2,67 @@
 
 ## Unreleased
 
+## 1.7.0 - 2026-05-30
+
+UX friction fix release. Batches three tiers of fixes
+(`docs/superpowers/specs/2026-05-30-ux-friction-fix-design.md`) into
+one minor bump. Additive only — no breaking changes.
+
+### Added
+
+- **`ait off` / `ait on`** — per-shell bypass verbs. Print eval-able
+  shell snippets that the `ait()` function intercepts to set / unset
+  `AIT_BYPASS=1` in the parent shell. `ait off` disables auto-wrap
+  for the current shell; `ait on` re-enables it.
+- **`AIT_BYPASS=1`** env var — first-class per-invocation bypass.
+  Recognised by the adapter wrapper alongside the legacy
+  `AIT_WRAPPER_BYPASS` name, which still works for backward
+  compatibility.
+- **Attempt session entry banner** — 5-line stderr banner printed
+  before the wrapped agent execs. Shows attempt id, workspace path,
+  HEAD/target, the `ait apply` flow, and the two bypass entries.
+  Skip with `AIT_NO_BANNER=1` or when stderr is not a TTY.
+- **`--review auto`** (new `ait run` default behaviour) — skips
+  reviewer entirely when 100% of the attempt's changed files match
+  the docs glob set. **`--review always`** forces the policy
+  default profile regardless of file mix. Default glob set covers
+  `*.md`, `*.rst`, `*.txt`, `docs/**`, `site-docs/**`, `LICENSE*`,
+  `CHANGELOG*`, `README*`; override per-repo via
+  `.ait/config.json` `[review].auto_skip_globs`.
+- **`ait status` condensed default** (~17 lines) grouped under
+  `Repo` / `Workspace` / `Wrap behavior` blocks. The pre-1.7 30+
+  line dump is preserved as `ait status --verbose` (`-v`); `ait
+  doctor` continues to use the verbose form.
+- **`ait shell probe-env`** — emits a shell snippet that the user
+  eval's so `ait doctor` can report which shell-integration helpers
+  are currently defined in the active shell.
+- **`Shell integration` block in `ait doctor`** output — reports
+  `ait()` wrapper, `_ait_continue_should_cd`, and
+  `_ait_continue_reminder` state and a copy-pasteable fix line.
+  Never modifies the user's rc files.
+
+### Changed
+
+- **`ait whereami`** redesigned. Inside an attempt: 6-line summary
+  (attempt id, target, HEAD, dirty, workspace, repo). Outside:
+  2-line "Not in an AIT attempt." + repo line. Exit code is **0
+  in both states** — `whereami` reports a fact, not an error.
+  (Previously exit 2 outside a git repo.)
+
+### Fixed
+
+- **`ait status` from inside an attempt workspace** no longer
+  reports `not_initialized`. The recovery dashboard now resolves
+  the host repo via `git --git-common-dir` and looks for
+  `.ait/state.sqlite3` at the host root, not at the workspace path.
+- **`_ait_continue_should_cd: command not found`** zsh warning on
+  every `ait` invocation. The `ait()` wrapper now `command -v`
+  guards the helper call before invoking it, so partial sources or
+  rc drift fall through to `command ait` cleanly instead of
+  printing a scary warning. Module docstring documents the
+  invariant: emitted shell code must never unconditionally call
+  helpers it defines.
+
 ## 1.6.1 - 2026-05-29
 
 ### Fixed

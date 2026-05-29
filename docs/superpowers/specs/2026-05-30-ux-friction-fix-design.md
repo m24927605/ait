@@ -321,15 +321,16 @@ recommend; the user runs the fix.
 Decision criterion: **what stops a new user from abandoning AIT in the
 first hour and from filing an issue saying it's broken.**
 
-### P0 — first-hour abandonment fixes (target: 1.6.2)
+### P0 — first-hour abandonment fixes (shipped: 1.7.0)
 
-| # | Item | Why P0 | Effort |
-|---|---|---|---|
-| P0.1 | `command -v` guards around shell-integration helper calls (O3) | Most direct "broken install" signal a new user can see | ~1h |
-| P0.2 | Worktree-aware root resolver wired into `ait status` (O2) | Second-largest "I should re-init" misdirection | ~half day |
-| P0.3 | Banner on attempt session entry (O1) | Closes the half-conversation reconciliation cost | ~half day |
+| # | Item | Why P0 | Effort | Shipped |
+|---|---|---|---|---|
+| P0.1 | `command -v` guards around shell-integration helper calls (O3) | Most direct "broken install" signal a new user can see | ~1h | ✅ `9103e38` |
+| P0.2 | Worktree-aware root resolver wired into `ait status` (O2) | Second-largest "I should re-init" misdirection | ~half day | ✅ `dd0b8de` |
+| P0.3 | Banner on attempt session entry (O1) | Closes the half-conversation reconciliation cost | ~half day | ✅ `74258f2` |
 
-**Total**: ~1.5 engineering days.
+**Total**: ~1.5 engineering days. Rolled into 1.7.0 instead of a
+standalone 1.6.2 patch.
 
 #### Release-note one-liners (per item)
 
@@ -347,27 +348,27 @@ P0.3  feat(ui): print a 4-line box-drawing banner on attempt session
       HEAD/target, and the `ait apply` path to land commits.
 ```
 
-### P1 — first-day issue-filing fixes (target: 1.7.0)
+### P1 — first-day issue-filing fixes (shipped: 1.7.0)
 
-| # | Item | Why P1 |
-|---|---|---|
-| P1.1 | Two bypass entries: `AIT_BYPASS=1` env + `ait off`/`on` verbs; `ait --help` first-class; `Wrap behavior` section in `ait status` (O4) | Closes the phantom-verb contract break |
-| P1.2 | Docs-only auto-skip review + `--review` flag on `run` and `apply` (§6) | Stops reviewer running on README changes — would otherwise feel like a broken tool |
-| P1.3 | Banner gains 5th line documenting `ait off` and `AIT_BYPASS=1` | Composes P0.3 + P1.1 into one complete entry-time signal |
+| # | Item | Why P1 | Shipped |
+|---|---|---|---|
+| P1.1 | Two bypass entries: `AIT_BYPASS=1` env + `ait off`/`on` verbs; `ait --help` first-class; `Wrap behavior` section in `ait status` (O4) | Closes the phantom-verb contract break | ✅ `577f339` |
+| P1.2 | Docs-only auto-skip review + `--review` flag on `run` (§6) | Stops reviewer running on README changes — would otherwise feel like a broken tool | ✅ `bf82e90` (apply-side flag deferred — apply doesn't trigger review) |
+| P1.3 | Banner gains 5th line documenting `ait off` and `AIT_BYPASS=1` | Composes P0.3 + P1.1 into one complete entry-time signal | ✅ `3377800` |
 
 **Total**: ~1 engineering day.
 
-### P2 — first-week polish (target: 1.7.x patches)
+### P2 — first-week polish (shipped: 1.7.0)
 
-| # | Item |
-|---|---|
-| P2.1 | `ait status` condensed default (10-15 lines); `--verbose` preserves 30+ line dump |
-| P2.2 | `ait whereami` redesigned (5-line workspace summary, exit 0 in/out) |
-| P2.3 | `ait doctor` shell-integration probe; reports + recommends, never auto-modifies rc |
-| P2.4 | `.ait/config.json` `[review].auto_skip_globs` override |
-| P2.5 | Install invariant documented in `src/ait/shell_integration.py` module docstring |
+| # | Item | Shipped |
+|---|---|---|
+| P2.1 | `ait status` condensed default (~17 lines); `--verbose` preserves 30+ line dump | ✅ `fb71870` |
+| P2.2 | `ait whereami` redesigned (6-line / 2-line, exit 0 in/out) | ✅ `e707aa2` |
+| P2.3 | `ait doctor` shell-integration probe; reports + recommends, never auto-modifies rc | ✅ `62397aa` |
+| P2.4 | `.ait/config.json` `[review].auto_skip_globs` override | ✅ shipped as part of `bf82e90` (P1.2) |
+| P2.5 | Install invariant documented in `src/ait/shell_integration.py` module docstring | ✅ shipped as part of `9103e38` (P0.1) |
 
-**Total**: ~1-2 engineering days, spread across point releases.
+**Total**: ~1-2 engineering days, batched into 1.7.0.
 
 ## Non-goals (this spec)
 
