@@ -6,8 +6,13 @@ from ait.dev_server import DEFAULT_DEV_PORTS, DevServerError, start_dev_server
 from ait.cleanup import CleanupPolicy, cleanup_repo
 from ait.landing import ApplyError, apply_attempt, apply_result_payload
 from ait.policy import run_apply_policy, run_auto_prune
-from ait.review import create_command_reviewer_review, create_deterministic_review, create_fake_reviewer_review
-from ait.review_policy import review_policy_requires_escalation, run_review_policy
+from ait.review import create_command_reviewer_review, create_deterministic_review, create_fake_reviewer_review, load_review_target
+from ait.review_policy import (
+    is_docs_only_change,
+    load_review_policy,
+    review_policy_requires_escalation,
+    run_review_policy,
+)
 from ait.review_queue import enqueue_review
 from ait.run_report import refresh_run_reports
 
@@ -71,7 +76,32 @@ def handle(args, repo_root: Path, parser=None) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return 2
         run_apply = run_apply_policy(repo_root, args.apply)
-        run_review = run_review_policy(repo_root, args.review)
+        review_arg = getattr(args, "review", None)
+        if review_arg in (None, "auto"):
+            # Docs-only auto-skip: if 100% of changed files match the
+            # auto_skip_globs, no review profile is run. Otherwise
+            # fall through to the policy's default mode.
+            try:
+                target = load_review_target(repo_root, result.attempt_id)
+                policy = load_review_policy(repo_root)
+                if is_docs_only_change(
+                    changed_files=tuple(target.changed_files),
+                    globs=policy.auto_skip_globs,
+                ):
+                    run_review = "never"
+                else:
+                    run_review = run_review_policy(repo_root, None)
+            except Exception:
+                # Conservative fallback: if we can't determine
+                # changed files, defer to the policy default.
+                run_review = run_review_policy(repo_root, None)
+        elif review_arg == "always":
+            # Force the policy default profile regardless of file mix.
+            run_review = run_review_policy(repo_root, None)
+            if run_review == "never":
+                run_review = "light"
+        else:
+            run_review = run_review_policy(repo_root, review_arg)
         review_result = None
         review_error = None
         require_review_gate = False

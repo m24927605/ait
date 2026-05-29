@@ -466,7 +466,16 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--description")
     run_parser.add_argument("--commit-message")
     run_parser.add_argument("--no-auto-commit", action="store_true")
-    run_parser.add_argument("--review", choices=("never", "light", "adversarial", "risk-based"))
+    run_parser.add_argument(
+        "--review",
+        choices=("auto", "never", "always", "light", "adversarial", "risk-based"),
+        help=(
+            "review orchestration. 'auto' (default-when-policy-nonNever) skips when "
+            "100%% of changed files match the docs glob set; 'never' skips "
+            "unconditionally; 'always' forces the policy default profile; "
+            "the others force-select a specific profile."
+        ),
+    )
     run_parser.add_argument("--review-adapter")
     run_parser.add_argument("--review-budget", choices=("quick", "standard", "deep"), default="standard")
     run_parser.add_argument(

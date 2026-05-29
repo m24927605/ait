@@ -22,6 +22,28 @@ from ait.policy import repo_policy
 
 REVIEW_DEFAULT_MODES = {"never", "risk-based", "light", "adversarial", "multi"}
 RUN_REVIEW_MODES = {"never", "risk-based", "light", "adversarial"}
+DEFAULT_AUTO_SKIP_GLOBS: tuple[str, ...] = (
+    "**/*.md",
+    "**/*.rst",
+    "**/*.txt",
+    "docs/**",
+    "site-docs/**",
+    "LICENSE*",
+    "CHANGELOG*",
+    "README*",
+)
+
+
+def is_docs_only_change(
+    *,
+    changed_files: tuple[str, ...],
+    globs: tuple[str, ...],
+) -> bool:
+    """Return True iff `changed_files` is non-empty and every path
+    matches at least one pattern in `globs`."""
+    if not changed_files:
+        return False
+    return all(_matches_any(path, globs) for path in changed_files)
 PROFILE_VALUES = {"security", "regression", "maintainability", "release"}
 DEFAULT_REQUIRED_PROFILES = {
     "auth/**": ("security", "regression"),
@@ -75,6 +97,7 @@ class ReviewPolicy:
     required_profiles: dict[str, tuple[str, ...]] | None = None
     baseline: ReviewBaselinePolicy = ReviewBaselinePolicy()
     adapters: dict[str, ReviewAdapterPolicy] | None = None
+    auto_skip_globs: tuple[str, ...] = DEFAULT_AUTO_SKIP_GLOBS
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,6 +238,11 @@ def load_review_policy(repo_root: str | Path) -> ReviewPolicy:
         adapter_config = payload.get("review_adapters")
     if not review and adapter_config is None:
         return ReviewPolicy()
+    raw_globs = review.get("auto_skip_globs")
+    if isinstance(raw_globs, list) and all(isinstance(p, str) for p in raw_globs):
+        auto_skip_globs = tuple(raw_globs)
+    else:
+        auto_skip_globs = DEFAULT_AUTO_SKIP_GLOBS
     baseline = review.get("baseline")
     baseline_payload = baseline if isinstance(baseline, dict) else {}
     default_mode = str(review.get("default_mode", "never")).strip().lower()
@@ -243,6 +271,7 @@ def load_review_policy(repo_root: str | Path) -> ReviewPolicy:
             ),
         ),
         adapters=_adapter_policies(adapter_config),
+        auto_skip_globs=auto_skip_globs,
     )
 
 
