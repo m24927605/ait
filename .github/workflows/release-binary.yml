@@ -89,3 +89,39 @@ jobs:
         with:
           name: ait-${{ steps.tag.outputs.tag }}-${{ matrix.target }}
           path: dist/ait-${{ steps.tag.outputs.tag }}-${{ matrix.target }}
+
+  checksums:
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Resolve tag
+        id: tag
+        run: echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+
+      - name: Download release binaries
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p dist
+          gh release download "${{ steps.tag.outputs.tag }}" \
+            -R "${{ github.repository }}" \
+            -p 'ait-*-macos-arm64' \
+            -p 'ait-*-macos-x86_64' \
+            -p 'ait-*-linux-x86_64' \
+            -p 'ait-*-linux-arm64' \
+            -D dist/
+
+      - name: Generate SHA256
+        run: |
+          cd dist
+          sha256sum ait-${{ steps.tag.outputs.tag }}-* \
+            > ait-${{ steps.tag.outputs.tag }}-checksums.txt
+          cat ait-${{ steps.tag.outputs.tag }}-checksums.txt
+
+      - name: Upload checksums to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/ait-${{ steps.tag.outputs.tag }}-checksums.txt
