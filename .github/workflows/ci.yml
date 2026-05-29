@@ -2,7 +2,13 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -16,6 +22,8 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install package and test dependencies
         run: |
@@ -32,8 +40,11 @@ jobs:
           git config --global user.email "ci@ait.test"
           git config --global user.name "AIT CI"
 
-      - name: Run tests
-        run: pytest -q
+      - name: Run fast PR tests
+        # The full suite is a manual pre-tag local gate (see
+        # docs/release-checklist.md). Auto-markers are assigned in
+        # tests/conftest.py:_FILE_MARKS.
+        run: pytest -q -m "not (slow or daemon or subprocess or release)"
 
       - name: Set up Node.js
         uses: actions/setup-node@v5
@@ -54,6 +65,8 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install release smoke dependencies
         run: |

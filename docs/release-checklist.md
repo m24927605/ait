@@ -18,6 +18,11 @@ Full release gate:
 PYTHONPATH=src .venv/bin/pytest -q
 ```
 
+CI's `ci.yml` test job runs the **fast** path —
+`pytest -m "not (slow or daemon or subprocess or release)"`. The full
+suite is a **manual** local gate the maintainer runs before tagging
+a release, per the no-auto-CI policy.
+
 Migration fixture gate:
 
 ```bash
@@ -371,29 +376,48 @@ Before publishing npm:
 
 ## Binary release pipeline
 
-The binary pipeline (PyInstaller build, checksums, Brew tap update)
-runs via `.github/workflows/release-binary.yml`. It is triggered by
-the same `release: types: [published]` event as the PyPI publish
-workflow.
+The binary pipeline at `.github/workflows/release-binary.yml` is
+**opt-in** via `workflow_dispatch`. It no longer fires automatically
+on release publish, per the no-auto-CI policy at
+`memory/feedback_no_github_cicd_runs.md`. PyPI publish still fires
+automatically on release; binaries are a separate, deliberate step.
+
+Three target platforms after the macos-13 drop on 2026-05-29:
+`macos-arm64`, `linux-x86_64`, `linux-arm64`. Intel Mac users install
+via pip; see `docs/install.md`.
 
 Before the first release that ships binaries:
 
 1. Create the tap repo: see `scripts/homebrew-tap-template/SETUP.md`.
 2. Generate the `TAP_PUSH_TOKEN` PAT and add it to the main repo's
    Actions secrets.
+3. In repo Settings → Variables, set `AIT_TAP_UPDATE_ENABLED=true` so
+   the `update-tap` job actually runs.
 
-Per release:
+Per release that ships binaries:
 
-1. Cut the release as usual (`gh release create vX.Y.Z`).
-2. Watch the `Release Binary` workflow run. Four binaries upload to
-   the release; checksums lands next; tap formula updates.
-3. Smoke-install on at least one platform:
+1. Tag + create the GitHub release as usual (`gh release create
+   vX.Y.Z ...`). This runs PyPI publish + npm smoke but NOT
+   `release-binary.yml`.
+2. After the release is published, manually trigger the binary build:
+   ```bash
+   gh workflow run release-binary.yml -f tag=vX.Y.Z
+   ```
+3. Watch the three-platform matrix complete. Binaries upload directly
+   to the existing release via `tag_name: <tag>`.
+4. Checksums + (when `vars.AIT_TAP_UPDATE_ENABLED == 'true'`) Brew tap
+   update follow automatically.
+5. Smoke-install on at least one platform:
    ```bash
    curl -fsSL https://raw.githubusercontent.com/m24927605/ait/main/install.sh | sh
    ait --version       # expect: ait X.Y.Z
    ```
-4. Smoke `brew upgrade ait` on a Mac you have brew on.
+6. Smoke `brew upgrade ait` on a Mac you have brew on (if tap update
+   is enabled).
+
+If a release ships only pip (docs change, version bump, etc.), skip
+step 2 entirely — no binary, no cost.
 
 If the build job fails for a platform, fix the cause (typically a
-missing `hiddenimport` in `build/ait.spec`) and re-run via
-`workflow_dispatch`.
+missing `hiddenimport` in `build/ait.spec`) and re-trigger via
+`gh workflow run release-binary.yml -f tag=vX.Y.Z`.

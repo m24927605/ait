@@ -1,12 +1,14 @@
 name: Release Binary
 
 on:
-  release:
-    types: [published]
+  # release trigger intentionally removed 2026-05-29 — see
+  # docs/superpowers/specs/2026-05-29-cicd-optimization-design.md and
+  # memory/feedback_no_github_cicd_runs.md. Binary builds are now
+  # opt-in: maintainer runs `gh workflow run release-binary.yml -f tag=vX.Y.Z`.
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to build for (e.g. v1.5.1). Required for workflow_dispatch."
+        description: "Release tag to build for (e.g. v1.6.2). Required."
         required: true
 
 permissions:
@@ -20,8 +22,8 @@ jobs:
         include:
           - os: macos-latest
             target: macos-arm64
-          - os: macos-13
-            target: macos-x86_64
+          # macos-x86_64 dropped 2026-05-29: 10x runner cost + 15-30min
+          # queue. Intel Mac users install via pip; see docs/install.md.
           - os: ubuntu-latest
             target: linux-x86_64
           - os: ubuntu-24.04-arm
@@ -33,15 +35,12 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Resolve tag
         id: tag
-        run: |
-          if [ -n "${{ github.event.release.tag_name }}" ]; then
-            echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
-          else
-            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
-          fi
+        run: echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
 
       - name: Install build deps
         run: |
@@ -81,28 +80,20 @@ jobs:
             dist/ait-${{ steps.tag.outputs.tag }}-${{ matrix.target }}
 
       - name: Upload to release
-        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: dist/ait-${{ steps.tag.outputs.tag }}-${{ matrix.target }}
-
-      - name: Upload as workflow artifact
-        if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ait-${{ steps.tag.outputs.tag }}-${{ matrix.target }}
-          path: dist/ait-${{ steps.tag.outputs.tag }}-${{ matrix.target }}
+          tag_name: ${{ steps.tag.outputs.tag }}
 
   checksums:
     needs: build
-    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
       - name: Resolve tag
         id: tag
-        run: echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+        run: echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
 
       - name: Download release binaries
         env:
@@ -112,7 +103,6 @@ jobs:
           gh release download "${{ steps.tag.outputs.tag }}" \
             -R "${{ github.repository }}" \
             -p 'ait-*-macos-arm64' \
-            -p 'ait-*-macos-x86_64' \
             -p 'ait-*-linux-x86_64' \
             -p 'ait-*-linux-arm64' \
             -D dist/
@@ -128,6 +118,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/ait-${{ steps.tag.outputs.tag }}-checksums.txt
+          tag_name: ${{ steps.tag.outputs.tag }}
 
   update-tap:
     needs: checksums
@@ -136,12 +127,12 @@ jobs:
     # scripts/homebrew-tap-template/SETUP.md for the one-time setup.
     # Until then this job is skipped to avoid red CI on the binary
     # pipeline runs.
-    if: github.event_name == 'release' && vars.AIT_TAP_UPDATE_ENABLED == 'true'
+    if: vars.AIT_TAP_UPDATE_ENABLED == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Resolve tag
         id: tag
-        run: echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+        run: echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
 
       - uses: actions/checkout@v5
         with:
@@ -163,6 +154,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Render formula
         run: |

@@ -44,7 +44,15 @@ os="$(uname -s | tr '[:upper:]' '[:lower:]')"
 arch="$(uname -m)"
 case "$os/$arch" in
     darwin/arm64)               target="macos-arm64" ;;
-    darwin/x86_64)              target="macos-x86_64" ;;
+    darwin/x86_64)
+        cat >&2 <<'MSG'
+Intel Mac is not supported by the standalone binary.
+Install via pip instead:
+  pip install ait-vcs       # or: pipx install ait-vcs
+See https://github.com/m24927605/ait/blob/main/docs/install.md
+MSG
+        exit 1
+        ;;
     linux/x86_64|linux/amd64)   target="linux-x86_64" ;;
     linux/aarch64|linux/arm64)  target="linux-arm64" ;;
     test/PLATFORM)              target="PLATFORM" ;;   # for tests

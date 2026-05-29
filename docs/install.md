@@ -88,9 +88,18 @@ sha256sum -c <(grep ait-v1.5.1-linux-x86_64 ait-v1.5.1-checksums.txt)
 | Target | Binary name | Built on |
 |---|---|---|
 | macOS arm64 (Apple Silicon) | `ait-<tag>-macos-arm64` | macos-latest |
-| macOS x86_64 (Intel) | `ait-<tag>-macos-x86_64` | macos-13 |
+| macOS Intel (x86_64) | — (use pip) | n/a |
 | Linux x86_64 | `ait-<tag>-linux-x86_64` | ubuntu-latest |
 | Linux arm64 | `ait-<tag>-linux-arm64` | ubuntu-24.04-arm |
+
+**Intel Mac users**: the standalone binary is not produced for Intel
+Mac. The GitHub-hosted Intel Mac runner has both a 10× cost multiplier
+and a 15–30 minute queue. Apple Silicon now covers the great majority
+of new Macs. Use the pip path on Intel:
+
+```bash
+pip install ait-vcs       # or: pipx install ait-vcs
+```
 
 Windows: not supported in v1; use the pip path under WSL or native
 Python 3.11+.

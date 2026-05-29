@@ -18,6 +18,14 @@ from ait.bug_report.pending_queue import list_pending
 
 class EndToEndTests(unittest.TestCase):
     def setUp(self):
+        # See test_api.py for rationale: conftest disables AIT_BUG_REPORT
+        # globally; this class needs it alive to assert on the pipeline.
+        _orig = os.environ.pop("AIT_BUG_REPORT", None)
+        self.addCleanup(
+            lambda: os.environ.__setitem__("AIT_BUG_REPORT", _orig)
+            if _orig is not None
+            else os.environ.pop("AIT_BUG_REPORT", None)
+        )
         self._td = tempfile.TemporaryDirectory()
         os.environ["XDG_STATE_HOME"] = self._td.name
         os.environ["XDG_CONFIG_HOME"] = self._td.name
