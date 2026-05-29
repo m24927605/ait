@@ -48,6 +48,16 @@ class RenderAttemptBannerTests(unittest.TestCase):
         )
         self.assertIn("01HZ", text)
 
+    def test_banner_mentions_ait_off_and_ait_bypass(self) -> None:
+        text = render_attempt_banner(
+            attempt_id="repo:01HZX9TYE",
+            workspace_rel=".ait/workspaces/attempt-0001-01hzx9tye",
+            head="detached",
+            target="main",
+        )
+        self.assertIn("ait off", text)
+        self.assertIn("AIT_BYPASS=1", text)
+
 
 class PrintAttemptBannerTests(unittest.TestCase):
     def _make_fake_tty(self) -> io.StringIO:

@@ -55,7 +55,9 @@ def render_attempt_banner(
     body_lines = [
         f"workspace: {workspace_rel}",
         f"HEAD: {head} · target: {target}",
-        f"Commits land on `{target}` only after you run `ait apply`.",
+        f"Commits land on `{target}` only after `ait apply`.",
+        "Bypass once: AIT_BYPASS=1 <agent> …",
+        "Bypass shell: `ait off`  ·  re-enable: `ait on`",
     ]
 
     rendered_body = []
