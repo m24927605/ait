@@ -67,8 +67,17 @@ def run_review_adapter(
     review_id: str,
     adapter: str,
     brief: str,
+    attempt_head_oid: str,
+    baseline_ref_oid: str,
     timeout_seconds: int | float | None = None,
 ) -> ReviewAdapterResult:
+    """Run a reviewer adapter against a pinned read-only snapshot of the attempt.
+
+    Materializes a git worktree at ``attempt_head_oid`` under
+    ``<cwd>/src`` and writes the full ``baseline_ref_oid..attempt_head_oid``
+    diff to ``<cwd>/diff.patch``. The snapshot is cleaned up unconditionally
+    on exit so review runs never leak git worktree state.
+    """
     adapter_name = adapter.strip()
     local_cli_command = _LOCAL_CLI_REVIEW_ADAPTERS.get(adapter_name)
     config = resolve_review_adapter_policy(repo_root, adapter_name)
@@ -108,23 +117,31 @@ def run_review_adapter(
         name: bool(name in env)
         for name in env_blocklist
     }
+
+    snapshot_path = cwd / "src"
+    _materialize_snapshot(root, snapshot_path, attempt_head_oid)
     try:
-        completed = subprocess.run(
-            list(command),
-            cwd=cwd,
-            input=brief,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=timeout,
-            env=env,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise ReviewAdapterError(f"review adapter timed out after {timeout} seconds") from exc
-    except OSError as exc:
-        raise ReviewAdapterError(
-            _adapter_start_error(adapter_name=adapter_name, command=command, exc=exc)
-        ) from exc
+        _write_full_diff(root, cwd, baseline_ref_oid, attempt_head_oid)
+        try:
+            completed = subprocess.run(
+                list(command),
+                cwd=cwd,
+                input=brief,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=timeout,
+                env=env,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise ReviewAdapterError(f"review adapter timed out after {timeout} seconds") from exc
+        except OSError as exc:
+            raise ReviewAdapterError(
+                _adapter_start_error(adapter_name=adapter_name, command=command, exc=exc)
+            ) from exc
+    finally:
+        _cleanup_snapshot(root, snapshot_path)
+
     return ReviewAdapterResult(
         command=command,
         cwd=str(cwd),
@@ -135,6 +152,117 @@ def run_review_adapter(
         resolved_binary_path=resolved_binary_path,
         blocked_env=blocked_env,
     )
+
+
+def _materialize_snapshot(
+    repo_root: Path, snapshot_path: Path, head_oid: str
+) -> None:
+    """Create a detached read-only worktree at ``head_oid`` under ``snapshot_path``.
+
+    Raises ReviewAdapterError if git cannot produce the worktree, leaving the
+    caller's cwd untouched. The caller is responsible for cleanup via
+    ``_cleanup_snapshot`` even when this function succeeded.
+    """
+    if not head_oid:
+        # No commit to materialize (e.g., benchmark fixture or attempt without
+        # commits). The caller's brief should already steer the reviewer away
+        # from referencing a snapshot in that case.
+        return
+    if snapshot_path.exists():
+        # Stale snapshot from a prior crashed run — try to clean it up first.
+        _cleanup_snapshot(repo_root, snapshot_path)
+    try:
+        completed = subprocess.run(
+            ["git", "worktree", "add", "--detach", str(snapshot_path), head_oid],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ReviewAdapterError(
+            f"failed to materialize review snapshot at {head_oid}: {exc}"
+        ) from exc
+    if completed.returncode != 0:
+        message = (completed.stderr or completed.stdout or "").strip()
+        raise ReviewAdapterError(
+            f"git worktree add failed for commit {head_oid}: {message}"
+        )
+
+
+def _cleanup_snapshot(repo_root: Path, snapshot_path: Path) -> None:
+    """Best-effort removal of the snapshot worktree. Never raises."""
+    if not snapshot_path.exists():
+        return
+    try:
+        subprocess.run(
+            ["git", "worktree", "remove", "--force", str(snapshot_path)],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    # If git left the directory in place (e.g., worktree was already pruned),
+    # finish the job manually so the next run can recreate it.
+    if snapshot_path.exists():
+        shutil.rmtree(snapshot_path, ignore_errors=True)
+    # Drop any stale worktree metadata that didn't get cleared by remove --force.
+    try:
+        subprocess.run(
+            ["git", "worktree", "prune"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def _write_full_diff(
+    repo_root: Path, cwd: Path, base_oid: str, head_oid: str
+) -> None:
+    """Write the complete ``base_oid..head_oid`` diff to ``<cwd>/diff.patch``.
+
+    Best-effort: if either OID is missing or git rejects the request, write a
+    short explanatory text in place of the patch so the reviewer can still
+    locate the file but knows the diff is unavailable.
+    """
+    patch_path = cwd / "diff.patch"
+    if not base_oid or not head_oid:
+        patch_path.write_text(
+            f"# diff unavailable: base_oid={base_oid!r} head_oid={head_oid!r}\n",
+            encoding="utf-8",
+        )
+        return
+    try:
+        completed = subprocess.run(
+            ["git", "diff", "--no-ext-diff", "--no-color", base_oid, head_oid],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        patch_path.write_text(
+            f"# diff unavailable: {exc}\n",
+            encoding="utf-8",
+        )
+        return
+    if completed.returncode != 0:
+        message = (completed.stderr or completed.stdout or "").strip()
+        patch_path.write_text(
+            f"# diff unavailable: git diff exited {completed.returncode}: {message}\n",
+            encoding="utf-8",
+        )
+        return
+    patch_path.write_text(completed.stdout, encoding="utf-8")
 
 
 def _adapter_command(adapter: str) -> tuple[str, ...]:

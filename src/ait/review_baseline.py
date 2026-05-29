@@ -5,7 +5,6 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
-import subprocess
 from typing import TYPE_CHECKING
 
 from ait.db import (
@@ -32,11 +31,8 @@ class ReviewBaselineSnapshot:
     baseline_policy_hash: str
 
 
-BRIEF_BUDGET_CHARS = {
-    "quick": 4000,
-    "standard": 8000,
-    "deep": 16000,
-}
+SNAPSHOT_DIRNAME = "src"
+SNAPSHOT_DIFF_FILENAME = "diff.patch"
 
 
 def create_review_baseline_snapshot(
@@ -61,7 +57,6 @@ def create_review_baseline_snapshot(
         "excluded_sources_summary": live_context["excluded_sources_summary"],
         "live_memory_context_manifest": live_context["source_manifest"],
         "selected_facts": [],
-        "changed_diff_excerpts": _changed_diff_excerpts(repo_root, conn, target),
         "prior_failed_attempts": _prior_failed_attempts(conn, target),
         "prior_review_findings": _prior_review_findings(conn, target),
         "test_evidence": _test_evidence(repo_root, target),
@@ -107,12 +102,10 @@ def render_reviewer_brief(
     target: "ReviewTarget",
     assessment: RiskAssessment,
     baseline_ref: str,
-    budget: str = "standard",
     profiles: tuple[str, ...] = (),
 ) -> str:
     root = Path(repo_root).resolve()
     baseline_payload = _read_json(root / baseline_ref)
-    limit = BRIEF_BUDGET_CHARS.get(budget, BRIEF_BUDGET_CHARS["standard"])
     lines = [
         "# AIT Reviewer Brief",
         "",
@@ -128,6 +121,19 @@ def render_reviewer_brief(
         f"- workspace_ref: {target.workspace_ref}",
         f"- base_ref_oid: {target.base_ref_oid}",
         f"- base_ref_name: {target.base_ref_name or ''}",
+        f"- target_head_oid: {target.target_head_oid or ''}",
+        "",
+        "## Code Snapshot",
+        "The reviewed commit is materialized as a pinned read-only worktree in your run directory.",
+        "Open files there directly; do not assume the diff below is exhaustive.",
+        "",
+        f"- snapshot_path: ./{SNAPSHOT_DIRNAME}/",
+        f"- diff_file: ./{SNAPSHOT_DIFF_FILENAME}",
+        f"- base_ref_oid: {target.base_ref_oid}",
+        f"- head_ref_oid: {target.target_head_oid or ''}",
+        "",
+        "To recompute the diff yourself (no truncation):",
+        f"  git -C ./{SNAPSHOT_DIRNAME} diff {target.base_ref_oid} {target.target_head_oid or ''}",
         "",
         "## Changed Files",
         *[f"- {path}" for path in target.changed_files],
@@ -137,7 +143,6 @@ def render_reviewer_brief(
         f"- risk_score: {assessment.risk_score}",
         f"- suggested_mode: {assessment.suggested_mode}",
         f"- profiles: {', '.join(profiles) if profiles else 'regression'}",
-        f"- budget: {budget}",
         "",
         "Risk reasons:",
         *[
@@ -154,9 +159,6 @@ def render_reviewer_brief(
     lines.extend(_trusted_fact_lines(baseline_payload))
     lines.extend(
         [
-            "",
-            "## Changed Diff Excerpts",
-            *_changed_diff_lines(baseline_payload, budget=budget),
             "",
             "## Prior Failed Attempts",
             *_prior_failed_attempt_lines(baseline_payload),
@@ -183,7 +185,7 @@ def render_reviewer_brief(
             "```",
         ]
     )
-    return _truncate_brief("\n".join(lines).rstrip() + "\n", limit)
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def write_review_context_manifest(
@@ -279,49 +281,6 @@ def _fact_excluded_reason(fact, policy) -> str | None:
     if transcript_excluded(" ".join([fact.body, fact.summary]), policy):
         return "excluded_content"
     return None
-
-
-def _changed_diff_excerpts(
-    repo_root: Path,
-    conn: sqlite3.Connection,
-    target: ReviewTarget,
-) -> list[dict[str, object]]:
-    excerpts: list[dict[str, object]] = []
-    for commit in list_attempt_commits(conn, target.attempt_id):
-        completed = subprocess.run(
-            [
-                "git",
-                "show",
-                "--format=",
-                "--no-ext-diff",
-                "--unified=3",
-                commit.commit_oid,
-                "--",
-                *target.changed_files,
-            ],
-            cwd=repo_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if completed.returncode != 0:
-            excerpts.append(
-                {
-                    "commit_oid": commit.commit_oid,
-                    "available": False,
-                    "error": (completed.stderr or completed.stdout).strip(),
-                }
-            )
-            continue
-        text = completed.stdout.strip()
-        excerpts.append(
-            {
-                "commit_oid": commit.commit_oid,
-                "available": True,
-                "diff": _truncate_text(text, 12000),
-            }
-        )
-    return excerpts
 
 
 def _advisory_sources(target: ReviewTarget) -> list[dict[str, object]]:
@@ -510,29 +469,6 @@ def _trusted_fact_lines(payload: dict[str, object]) -> list[str]:
     ]
 
 
-def _changed_diff_lines(payload: dict[str, object], *, budget: str) -> list[str]:
-    excerpts = [item for item in payload.get("changed_diff_excerpts", []) if isinstance(item, dict)]
-    if not excerpts:
-        return ["- none"]
-    cap = {"quick": 1400, "standard": 3000, "deep": 7000}.get(budget, 3000)
-    lines: list[str] = []
-    for excerpt in excerpts:
-        commit_oid = excerpt.get("commit_oid")
-        if not excerpt.get("available"):
-            lines.append(f"- commit {commit_oid}: diff unavailable ({excerpt.get('error') or 'unknown error'})")
-            continue
-        diff = _truncate_text(str(excerpt.get("diff") or ""), cap)
-        lines.extend(
-            [
-                f"- commit {commit_oid}:",
-                "```diff",
-                diff or "(empty diff)",
-                "```",
-            ]
-        )
-    return lines
-
-
 def _prior_failed_attempt_lines(payload: dict[str, object]) -> list[str]:
     attempts = [item for item in payload.get("prior_failed_attempts", []) if isinstance(item, dict)]
     if not attempts:
@@ -633,13 +569,6 @@ def _output_schema_example() -> dict[str, object]:
             }
         ],
     }
-
-
-def _truncate_brief(text: str, limit: int) -> str:
-    if len(text) <= limit:
-        return text
-    suffix = "\n[reviewer brief truncated by budget]\n"
-    return text[: max(0, limit - len(suffix))].rstrip() + suffix
 
 
 def _truncate_text(text: str, limit: int) -> str:

@@ -74,7 +74,10 @@ class ReviewBaselineTests(unittest.TestCase):
         self.assertEqual("repo:01FAILED", payload["prior_failed_attempts"][0]["attempt_id"])
         self.assertEqual(["src/example.py"], payload["prior_failed_attempts"][0]["overlap"])
 
-    def test_baseline_records_diff_prior_findings_and_test_evidence(self) -> None:
+    def test_baseline_records_prior_findings_and_test_evidence(self) -> None:
+        # Per the reviewer-pinned-snapshot fix: the diff is no longer embedded
+        # in the brief OR the baseline payload. The reviewer reads the diff
+        # from the materialized snapshot's diff.patch file instead.
         repo_root = _repo_with_real_commit_context()
 
         result = create_deterministic_review(repo_root, "latest-reviewable")
@@ -82,8 +85,7 @@ class ReviewBaselineTests(unittest.TestCase):
         baseline_ref = result.review.baseline_ref
         assert baseline_ref is not None
         payload = json.loads((repo_root / baseline_ref).read_text(encoding="utf-8"))
-        diff = payload["changed_diff_excerpts"][0]["diff"]
-        self.assertIn("+    return 'new'", diff)
+        self.assertNotIn("changed_diff_excerpts", payload)
         self.assertEqual("repo:review-old", payload["prior_review_findings"][0]["review_id"])
         self.assertEqual("src/example.py", payload["prior_review_findings"][0]["path"])
         self.assertEqual(2, payload["test_evidence"]["observed_commands_run"])
@@ -97,10 +99,12 @@ class ReviewBaselineTests(unittest.TestCase):
             target=result.target,
             assessment=result.assessment,
             baseline_ref=baseline_ref,
-            budget="deep",
         )
-        self.assertIn("## Changed Diff Excerpts", brief)
-        self.assertIn("+    return 'new'", brief)
+        self.assertNotIn("## Changed Diff Excerpts", brief)
+        self.assertNotIn("+    return 'new'", brief)
+        self.assertIn("## Code Snapshot", brief)
+        self.assertIn("snapshot_path: ./src/", brief)
+        self.assertIn("diff_file: ./diff.patch", brief)
         self.assertIn("## Prior Failed Attempts", brief)
         self.assertIn("## Prior Review Findings", brief)
         self.assertIn("Prior regression", brief)

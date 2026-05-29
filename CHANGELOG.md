@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## 1.5.1 - 2026-05-29
+
+### Fixed
+
+- Adversarial reviewer now sees the actual code under review. Previously,
+  the reviewer ran in an empty cwd with workspace reads denied; its only
+  view of the change was a per-tier truncated diff embedded in the brief,
+  which routinely dropped whole files and produced "can't read the
+  implementation" findings that defeated the review gate. Root-cause fix:
+  before launching the reviewer, AIT now materializes the attempt's head
+  commit as a pinned read-only `git worktree` at
+  `.ait/reviewer-runs/<review_id>/src/` and writes the complete
+  `base..head` diff to `<run>/diff.patch`. The brief becomes small and
+  stable — metadata + facts + test evidence + a pointer to the snapshot
+  and the base/head refs — with no character budget left to tune. The
+  snapshot is removed after every review run (including failures). See
+  `src/ait/review_adapter.py`, `src/ait/review_baseline.py`,
+  `src/ait/review.py`.
+
 ## 1.5.0 - 2026-05-29
 
 ### Changed

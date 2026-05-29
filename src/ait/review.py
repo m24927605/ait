@@ -180,7 +180,6 @@ def create_fake_reviewer_review(
             target=target,
             assessment=assessment,
             baseline_ref=baseline.baseline_ref,
-            budget=budget,
             profiles=profiles,
         )
         _write_text_artifact(init_result.repo_root / brief_ref, brief)
@@ -315,7 +314,6 @@ def create_command_reviewer_review(
             target=target,
             assessment=assessment,
             baseline_ref=baseline.baseline_ref,
-            budget=budget,
             profiles=profiles,
         )
         _write_text_artifact(init_result.repo_root / brief_ref, brief)
@@ -338,6 +336,8 @@ def create_command_reviewer_review(
                 review_id=review_id,
                 adapter=reviewer_adapter,
                 brief=brief,
+                attempt_head_oid=target.target_head_oid or "",
+                baseline_ref_oid=target.base_ref_oid,
             )
             if adapter_result.returncode != 0:
                 parse_error = f"reviewer adapter exited with code {adapter_result.returncode}"
@@ -477,7 +477,6 @@ def execute_queued_review(repo_root: str | Path, review_id: str) -> Deterministi
             target=target,
             assessment=assessment,
             baseline_ref=baseline_ref,
-            budget=running.budget,
             profiles=profiles,
         )
         _write_text_artifact(init_result.repo_root / brief_ref, brief)
@@ -505,6 +504,8 @@ def execute_queued_review(repo_root: str | Path, review_id: str) -> Deterministi
                     review_id=review_id,
                     adapter=adapter,
                     brief=brief,
+                    attempt_head_oid=target.target_head_oid or "",
+                    baseline_ref_oid=target.base_ref_oid,
                 )
                 raw_output = adapter_result.stdout
                 if adapter_result.returncode != 0:

@@ -192,7 +192,7 @@ class ReviewBenchmarkTests(unittest.TestCase):
     def test_mock_real_reviewer_dogfood_records_adapter_metadata(self) -> None:
         timeouts = []
 
-        def fake_run_adapter(repo_root, *, review_id, adapter, brief, timeout_seconds=None):
+        def fake_run_adapter(repo_root, *, review_id, adapter, brief, attempt_head_oid="", baseline_ref_oid="", timeout_seconds=None):
             timeouts.append(timeout_seconds)
             return ReviewAdapterResult(
                 command=("mock-reviewer", "--token", "sk-test-secret123456"),
@@ -232,7 +232,7 @@ class ReviewBenchmarkTests(unittest.TestCase):
     def test_real_reviewer_dogfood_records_unavailable_once_without_repeating_timeout(self) -> None:
         calls = []
 
-        def fake_run_adapter(repo_root, *, review_id, adapter, brief, timeout_seconds=None):
+        def fake_run_adapter(repo_root, *, review_id, adapter, brief, attempt_head_oid="", baseline_ref_oid="", timeout_seconds=None):
             calls.append(review_id)
             raise ReviewAdapterError("review adapter timed out after 1 seconds")
 
@@ -280,7 +280,7 @@ class ReviewBenchmarkTests(unittest.TestCase):
         self.assertIn("--dogfood", payload["error"])
 
     def test_review_benchmark_cli_mock_real_adapter_dogfood_json_smoke(self) -> None:
-        def fake_run_adapter(repo_root, *, review_id, adapter, brief, timeout_seconds=None):
+        def fake_run_adapter(repo_root, *, review_id, adapter, brief, attempt_head_oid="", baseline_ref_oid="", timeout_seconds=None):
             return ReviewAdapterResult(
                 command=("mock-reviewer",),
                 cwd=str(repo_root),
