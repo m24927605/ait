@@ -662,6 +662,11 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser.add_argument("--no-interactive", action="store_true")
     status_parser.add_argument("--all", action="store_true", dest="all_adapters")
     status_parser.add_argument("--debug", action="store_true", help="include recovery and workspace decision details")
+    status_parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="emit the legacy 30+ line dump (pre-1.7 default)",
+    )
 
     upgrade_parser = subparsers.add_parser("upgrade")
     upgrade_parser.add_argument("--dry-run", action="store_true")

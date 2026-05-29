@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ._shared import *
-from ait.cli.status_helpers import _status_payload_with_recovery
+from ait.cli.status_helpers import _format_status_condensed, _status_payload_with_recovery
 
 
 def handle(args, repo_root: Path, parser=None) -> int:
@@ -170,7 +170,10 @@ def handle(args, repo_root: Path, parser=None) -> int:
         if args.format == "json":
             print(json.dumps(payload, indent=2))
         else:
-            print(_format_status(payload, debug=args.debug))
+            if getattr(args, "verbose", False) or args.command == "doctor":
+                print(_format_status(payload, debug=args.debug))
+            else:
+                print(_format_status_condensed(payload))
             _maybe_emit_automation_hint(args, repo_root, result)
         return 0
     if args.command == "repair":

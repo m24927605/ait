@@ -340,6 +340,122 @@ def _classify_recovery_attempt(attempt, workspace_exists: bool, lease: dict[str,
     return "held", StatusCode.REVIEWABLE, "Latest AIT result is held for review.", "ait recover latest"
 
 
+def _format_status_condensed(payload: dict[str, object]) -> str:
+    """Spec-blessed condensed status output (target ~13 lines).
+
+    Three named blocks: Repo, Workspace, Wrap behavior. Trailing OK
+    when healthy; otherwise a single-line failure reason.
+
+    See docs/superpowers/specs/2026-05-30-ux-friction-fix-design.md
+    § `ait status` redesigned output.
+    """
+    detected = (
+        payload.get("agent_state", {}).get("detected_context", {})
+        if isinstance(payload.get("agent_state"), dict)
+        else {}
+    )
+    repo_root = detected.get("repo_root") or "<unknown repo>"
+
+    lines: list[str] = []
+    version = _ait_version_label()
+    install_method = _detect_install_method()
+    bin_path = sys.argv[0] if sys.argv and sys.argv[0] else "ait"
+    lines.append(f"AIT {version} · {install_method} · {bin_path}")
+    lines.append("")
+
+    # Repo block
+    lines.append(f"Repo {repo_root}")
+    lines.append(_kv("initialized", "yes" if payload.get("git_repo") else "no"))
+    daemon = payload.get("daemon") or {}
+    if isinstance(daemon, dict) and daemon.get("running"):
+        lines.append(_kv("daemon", f"running (pid {daemon.get('pid')})"))
+    else:
+        lines.append(_kv("daemon", "not running"))
+    memory = payload.get("memory") or {}
+    if isinstance(memory, dict):
+        issues = memory.get("lint_issue_count", 0)
+        lines.append(
+            _kv("memory", f"{memory.get('health', 'unknown')} ({issues} lint issues)")
+        )
+    lines.append(_kv("attempts", _format_attempts_summary(payload.get("recovery"))))
+    lines.append("")
+
+    # Workspace block
+    workspace_line, workspace_details = _workspace_summary(detected)
+    lines.append(workspace_line)
+    lines.extend(workspace_details)
+    lines.append("")
+
+    # Wrap behavior block (introduced in P1.1)
+    wb = payload.get("wrap_behavior") or {}
+    if isinstance(wb, dict) and wb:
+        lines.append("Wrap behavior")
+        lines.append(_kv("current", str(wb.get("current", "unknown"))))
+        lines.append(_kv("disable once", str(wb.get("disable_once", ""))))
+        lines.append(_kv("disable shell", str(wb.get("disable_shell", ""))))
+        lines.append("")
+
+    if payload.get("ok") and payload.get("agent_cli_ready"):
+        lines.append("OK")
+    else:
+        lines.append(f"NOT OK: {payload.get('agent_cli_message') or 'see --verbose'}")
+
+    return "\n".join(lines)
+
+
+def _kv(key: str, value: str) -> str:
+    return f"  {key:<14}{value}"
+
+
+def _ait_version_label() -> str:
+    try:
+        return metadata.version("ait")
+    except metadata.PackageNotFoundError:
+        return "unknown"
+
+
+def _detect_install_method() -> str:
+    exe = Path(sys.argv[0]).resolve() if sys.argv and sys.argv[0] else Path()
+    parts = exe.parts
+    if "pipx" in parts:
+        return "pipx"
+    if "Homebrew" in parts or "homebrew" in parts:
+        return "brew"
+    if ".venv" in parts:
+        return "dev"
+    return "pip"
+
+
+def _format_attempts_summary(recovery: object) -> str:
+    if not isinstance(recovery, dict):
+        return "unknown"
+    active = recovery.get("active_count", 0)
+    archived = recovery.get("archived_count", 0)
+    return f"{active} active, {archived} archived"
+
+
+def _workspace_summary(detected: dict[str, object]) -> tuple[str, list[str]]:
+    if detected.get("is_ait_workspace"):
+        attempt_id = str(detected.get("attempt_id") or "?")
+        short_id = attempt_id.split(":")[-1][:9].upper()
+        target = detected.get("target_branch") or "unknown"
+        head = detected.get("current_branch") or "detached"
+        dirty = detected.get("dirty")
+        dirty_str = "yes" if dirty else "no"
+        return (
+            f"Workspace ⟶  attempt {short_id} (you are here)",
+            [
+                _kv("target", str(target)),
+                _kv("HEAD", str(head)),
+                _kv("dirty", dirty_str),
+            ],
+        )
+    return (
+        "Workspace ⟶  primary checkout (no active attempt)",
+        [_kv("next", "run `claude` to enter an attempt")],
+    )
+
+
 def _format_status(payload: dict[str, object], *, debug: bool = False) -> str:
     binary_label = "Real Claude binary" if payload["adapter"] == "claude-code" else "Real agent binary"
     installation = payload.get("installation")
