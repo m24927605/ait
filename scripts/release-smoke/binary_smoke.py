@@ -18,6 +18,8 @@ class SmokeFailure(RuntimeError):
 
 def smoke(binary_path: Path) -> int:
     """Return 0 on success; raise SmokeFailure on any check failure."""
+    # Subprocess steps run in a temp cwd, so the binary path must be absolute.
+    binary_path = binary_path.resolve()
     with tempfile.TemporaryDirectory() as td:
         env = {
             "HOME": td,
