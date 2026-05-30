@@ -86,6 +86,22 @@ class _LocalRunHarness:
         )
 
 
+def _resolve_agent_id(agent_id: str | None, adapter) -> str:
+    """Normalize `agent_id` to the storage form `<harness>:<name>`.
+
+    Empty/None → adapter.default_agent_id.
+    Already qualified (contains `:`) → returned as-is (the user may
+    intentionally pick a different harness like `manual:reviewer`).
+    Bare slug → prefixed with `adapter.name:` so the operator can pass
+    `--agent backend-architect` instead of `--agent claude-code:backend-architect`.
+    """
+    if not agent_id:
+        return adapter.default_agent_id
+    if ":" in agent_id:
+        return agent_id
+    return f"{adapter.name}:{agent_id}"
+
+
 def _bind_to_existing_intent(repo_root: Path, intent_id_arg: str) -> IntentResult:
     """Resolve a user-supplied intent identifier to an IntentResult.
 
@@ -141,7 +157,7 @@ def run_agent_command(
         command_stdin=command_stdin,
         stdio_is_tty=stdio_is_tty,
     )
-    resolved_agent_id = agent_id or adapter.default_agent_id
+    resolved_agent_id = _resolve_agent_id(agent_id, adapter)
     resolved_with_context = with_context or adapter.default_with_context
     if (
         effective_stdin_mode == "inherit"
