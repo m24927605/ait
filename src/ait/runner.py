@@ -9,9 +9,10 @@ import time
 
 from ait.bug_report.api import report_internal_error
 from ait.adapters import doctor_automation, get_adapter
-from ait.app import AttemptShowResult, create_attempt, create_intent, show_attempt, verify_attempt
+from ait.app import AttemptShowResult, IntentResult, create_attempt, create_intent, init_repo, show_attempt, verify_attempt
 from ait.daemon import start_daemon
-from ait.db import connect_db, get_attempt
+from ait.db import connect_db, get_attempt, get_intent
+from ait.idresolver import resolve_intent_id
 from ait.db.core import utc_now
 from ait.events import process_event
 from ait.harness import AitHarness, HarnessError
@@ -85,10 +86,30 @@ class _LocalRunHarness:
         )
 
 
+def _bind_to_existing_intent(repo_root: Path, intent_id_arg: str) -> IntentResult:
+    """Resolve a user-supplied intent identifier to an IntentResult.
+
+    Raises ValueError if the intent cannot be found in this repo.
+    """
+    init_result = init_repo(repo_root)
+    conn = connect_db(init_result.db_path)
+    try:
+        resolved = resolve_intent_id(conn, intent_id_arg)
+        record = get_intent(conn, resolved)
+        if record is None:
+            raise ValueError(f"Unknown intent: {intent_id_arg!r}")
+        if record.status in {"abandoned", "superseded"}:
+            raise ValueError(f"Intent {resolved} is {record.status}")
+    finally:
+        conn.close()
+    return IntentResult(intent_id=resolved, repo_id=init_result.repo_id)
+
+
 def run_agent_command(
     repo_root: str | Path,
     *,
-    intent_title: str,
+    intent_title: str | None = None,
+    intent_id: str | None = None,
     command: list[str],
     agent_id: str | None = None,
     adapter_name: str | None = None,
@@ -104,8 +125,8 @@ def run_agent_command(
     extra_env: dict[str, str] | None = None,
     stdin_mode: str = "auto",
 ) -> RunResult:
-    if not intent_title.strip():
-        raise ValueError("intent title must not be empty")
+    if not intent_id and (not intent_title or not intent_title.strip()):
+        raise ValueError("either intent_id or intent_title must be provided")
     if not command:
         raise ValueError("command must not be empty")
     if stdin_mode not in ("auto", "inherit", "none"):
@@ -156,12 +177,15 @@ def run_agent_command(
             file=sys.stderr,
         )
 
-    intent = create_intent(
-        root,
-        title=intent_title,
-        description=description,
-        kind=kind or f"{adapter.name}-run",
-    )
+    if intent_id is not None:
+        intent = _bind_to_existing_intent(root, intent_id)
+    else:
+        intent = create_intent(
+            root,
+            title=intent_title,
+            description=description,
+            kind=kind or f"{adapter.name}-run",
+        )
     attempt = create_attempt(root, intent_id=intent.intent_id, agent_id=resolved_agent_id)
     update_workspace_lease(
         attempt.workspace_ref,
@@ -198,6 +222,11 @@ def run_agent_command(
     env = {
         **os.environ,
         "AIT_INTENT_ID": intent.intent_id,
+        # AIT_INTENT mirrors AIT_INTENT_ID; the adapter_wrapper.py shim
+        # reads `$AIT_INTENT` when re-execing `ait run` so it can
+        # forward the parent attempt's intent through wrapper recursion.
+        # See docs/superpowers/specs/2026-05-30-ux-friction-fix-design.md.
+        "AIT_INTENT": intent.intent_id,
         "AIT_ATTEMPT_ID": attempt.attempt_id,
         "AIT_WORKSPACE_REF": attempt.workspace_ref,
         **adapter.env,

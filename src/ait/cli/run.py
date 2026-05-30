@@ -17,6 +17,26 @@ from ait.review_queue import enqueue_review
 from ait.run_report import refresh_run_reports
 
 
+_ULID_LEN = 26
+
+
+def _looks_like_intent_id(value: object) -> bool:
+    """Heuristic: does this string look like an intent ID rather than a title?
+
+    Accepts bare ULID (26 chars), `intent:<ulid>` prefixed, and the
+    `<repo_id>:<ulid>` storage form. Rejects empty / None / prose with
+    spaces / strings shorter or longer than a ULID body.
+    """
+    if not isinstance(value, str) or not value:
+        return False
+    if " " in value:
+        return False
+    if ":" in value:
+        # Either "intent:<ulid>" or "<repo_id>:<ulid>" — both are valid.
+        return True
+    return len(value) == _ULID_LEN and value.isalnum()
+
+
 def handle(args, repo_root: Path, parser=None) -> int:
     if args.command == "run":
         output_format = _resolve_cli_output_format(getattr(args, "format", None))
@@ -26,9 +46,19 @@ def handle(args, repo_root: Path, parser=None) -> int:
         command = args.run_command
         if command and command[0] == "--":
             command = command[1:]
-        intent_title = args.intent
+        # `--intent` is overloaded: when it looks like an intent ID
+        # (bare ULID, `intent:<ulid>`, or `<repo_id>:<ulid>`), bind
+        # to that existing intent. Otherwise treat as the title of a
+        # freshly-created intent.
+        intent_arg = args.intent
         intent_inferred = False
-        if not intent_title and not _has_agent_run_hint(args):
+        intent_id_explicit: str | None = None
+        if _looks_like_intent_id(intent_arg):
+            intent_id_explicit = intent_arg
+            intent_title = None
+        else:
+            intent_title = intent_arg
+        if not intent_title and not intent_id_explicit and not _has_agent_run_hint(args):
             try:
                 records = start_dev_server(
                     repo_root,
@@ -54,13 +84,14 @@ def handle(args, repo_root: Path, parser=None) -> int:
                         )
                     )
             return 0
-        if not intent_title:
+        if not intent_title and not intent_id_explicit:
             intent_title = _inferred_run_intent_title(args)
             intent_inferred = True
         try:
             result = run_agent_command(
                 repo_root,
                 intent_title=intent_title,
+                intent_id=intent_id_explicit,
                 agent_id=args.agent,
                 command=command,
                 adapter_name=args.adapter,
