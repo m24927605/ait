@@ -86,6 +86,24 @@ class _LocalRunHarness:
         )
 
 
+def _enoent_command_hint(*, command: list[str], adapter) -> str:
+    """Suggest the correct `-- <agent> -p "<prompt>"` form when the
+    operator's positional looks like a prose prompt rather than a
+    binary name. Returns "" when no hint applies (shell adapter, or
+    command[0] is a plausible binary name).
+    """
+    if not adapter.command_name or not command:
+        return ""
+    first = command[0]
+    if " " not in first:
+        return ""
+    snippet = first[:80] + ("…" if len(first) > 80 else "")
+    return (
+        f"\nhint: positional looks like a prose prompt; "
+        f"did you mean `ait run [opts] -- {adapter.command_name} -p \"{snippet}\"`?"
+    )
+
+
 def _resolve_agent_id(agent_id: str | None, adapter) -> str:
     """Normalize `agent_id` to the storage form `<harness>:<name>`.
 
@@ -311,11 +329,12 @@ def run_agent_command(
                     if not capture_command_output and adapter.name != "cursor":
                         _replay_completed_output(completed)
         except OSError as exc:
+            hint = _enoent_command_hint(command=command, adapter=adapter)
             completed = subprocess.CompletedProcess(
                 command,
                 127,
                 "",
-                f"ait run failed: command not executable: {command[0]} ({exc})\n",
+                f"ait run failed: command not executable: {command[0]} ({exc}){hint}\n",
             )
             raw_trace_text = completed.stderr or ""
         if should_capture_output:
