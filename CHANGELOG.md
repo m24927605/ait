@@ -2,6 +2,48 @@
 
 ## Unreleased
 
+## 1.7.1 - 2026-05-30
+
+Runner-side cascade fixes for `ait run` flags that silently did
+nothing or produced misleading errors. Surfaced by a real-user
+SLICE_01 reproduction. Additive only.
+
+### Fixed
+
+- **`--intent <id>` now binds to an existing intent** when the value
+  looks like a ULID (bare 26-char, `intent:<ulid>`, or
+  `<repo_id>:<ulid>`). Previously the value was always consumed as
+  the *title* of a freshly-minted intent — so a `--intent
+  01HZX9TYE...` user got a brand-new intent record with the ULID as
+  its title text. Prose values still create a fresh intent as
+  before. `runner.run_agent_command` now takes both `intent_title`
+  and `intent_id` kwargs; existing kwarg callers unaffected.
+- **`--agent <bare-slug>` auto-prepends the adapter harness.** E.g.
+  `--adapter claude-code --agent backend-architect` now resolves to
+  `claude-code:backend-architect` instead of failing
+  `_validate_agent_id`. Already-qualified forms (`manual:reviewer`)
+  pass through unchanged.
+- **`AIT_INTENT` env var is now exported** alongside `AIT_INTENT_ID`
+  so the adapter_wrapper.py shim's re-exec path forwards the
+  parent's intent correctly (the shim reads `$AIT_INTENT`, not
+  `$AIT_INTENT_ID`).
+- **ENOENT-127 error message now hints at the prompt-wrap form**
+  when the positional looks like prose (contains spaces) and the
+  adapter has a `command_name`. E.g. `ait run --adapter claude-code
+  "implement..."` now suggests `ait run [opts] -- claude -p "..."`
+  instead of just `command not executable`.
+
+### Added
+
+- **Nested-wrap warning.** When `ait run --adapter claude-code` is
+  invoked from inside an existing attempt's child process (i.e.
+  AIT_ATTEMPT_ID is set in the operator's env) and the inner adapter
+  is one with OAuth/session boundaries (claude-code, codex, gemini),
+  AIT prints a one-line stderr warning pointing at `AIT_BYPASS=1`
+  and `ait off`. The shim's own by-design re-exec is exempt via a
+  new `AIT_SHIM_REENTRY=1` marker so this warning fires only on
+  operator-typed nested invocations.
+
 ## 1.7.0 - 2026-05-30
 
 UX friction fix release. Batches three tiers of fixes
