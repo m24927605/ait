@@ -213,6 +213,13 @@ def _adapter_wrapper_script(adapter: AgentAdapter, real_binary: str) -> str:
         "else\n"
         '  AIT_WRAPPER_FORMAT=json\n'
         "fi\n"
+        # Mark this exec as the shim's by-design recursion path so the
+        # nested-wrap warning in runner._maybe_warn_nested_wrap stays
+        # silent. Operator-manual nested `ait run` (from inside a
+        # wrapped claude session, tool-called) won't have this marker
+        # and will surface the warning.
+        "AIT_SHIM_REENTRY=1\n"
+        "export AIT_SHIM_REENTRY\n"
         'exec "$AIT_WRAPPER_AIT_COMMAND" '
         f"run --adapter {shlex.quote(adapter.name)} --format \"$AIT_WRAPPER_FORMAT\" "
         '--intent "$AIT_INTENT" --commit-message "$AIT_COMMIT_MESSAGE" -- '

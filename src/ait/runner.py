@@ -86,6 +86,40 @@ class _LocalRunHarness:
         )
 
 
+_NESTED_WRAP_AUTH_ADAPTERS = frozenset({"claude-code", "codex", "gemini"})
+
+
+def _maybe_warn_nested_wrap(adapter, *, stream=None) -> None:
+    """Warn when this `ait run` is spawned from inside an existing
+    attempt's child process — i.e., a wrapped agent (claude / codex /
+    gemini) has tool-called `ait run` again. The nested wrapped agent
+    typically loses its parent OAuth/session context and fails with
+    confusing auth errors. AIT can't recover the auth; this warning
+    just makes the failure mode obvious.
+
+    Suppressed when AIT_SHIM_REENTRY=1 is set — that marker is added
+    by the adapter_wrapper.py shim's own re-exec path (which IS the
+    by-design recursion, distinct from operator-manual nesting).
+    """
+    if stream is None:
+        stream = sys.stderr
+    if adapter.name not in _NESTED_WRAP_AUTH_ADAPTERS:
+        return
+    parent_attempt = os.environ.get("AIT_ATTEMPT_ID")
+    if not parent_attempt:
+        return
+    if os.environ.get("AIT_SHIM_REENTRY"):
+        return
+    print(
+        f"ait warning: spawning a nested wrapped {adapter.name} session "
+        f"from inside attempt {parent_attempt!r}. "
+        f"The inner agent may lose its parent OAuth context and fail "
+        f"with auth errors. To bypass: prefix with `AIT_BYPASS=1`, or "
+        f"run `ait off` in the outer shell first.",
+        file=stream,
+    )
+
+
 def _enoent_command_hint(*, command: list[str], adapter) -> str:
     """Suggest the correct `-- <agent> -p "<prompt>"` form when the
     operator's positional looks like a prose prompt rather than a
@@ -167,6 +201,7 @@ def run_agent_command(
         raise ValueError(f"stdin_mode must be 'auto', 'inherit', or 'none', got: {stdin_mode!r}")
 
     adapter = get_adapter(adapter_name)
+    _maybe_warn_nested_wrap(adapter)
     stdio_is_tty = _stdio_is_tty()
     effective_stdin_mode = _resolve_stdin_mode(
         adapter_name=adapter.name,
