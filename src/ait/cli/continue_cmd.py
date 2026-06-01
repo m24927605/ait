@@ -193,15 +193,22 @@ def _handle_agent_continue(args, repo_root: Path) -> int:
     if agent_args and agent_args[0] == "--":
         agent_args = agent_args[1:]
     try:
-        result = build_continue_result(repo_root, selector="latest")
+        current_repo_root = init_repo(repo_root).repo_root
+        result = build_continue_result(
+            current_repo_root,
+            selector="latest",
+            include_recent_fallback=False,
+        )
     except (SessionError, ValueError):
         return AGENT_CONTINUE_NO_TARGET
     if result.target_type != "attempt_resume" or result.resume is None:
         return AGENT_CONTINUE_NO_TARGET
+    if not _same_resolved_path(current_repo_root, result.resume.repo_root):
+        return AGENT_CONTINUE_NO_TARGET
     if result.resume.status not in _AUTO_CONTINUE_STATUSES:
         return AGENT_CONTINUE_NO_TARGET
     return _launch_agent_in_resume_workspace(
-        repo_root,
+        current_repo_root,
         resume=result.resume,
         adapter_name=str(args.adapter),
         real_binary=str(args.real_binary),
@@ -217,6 +224,13 @@ def _launch_agent_in_resume_workspace(
     real_binary: str,
     agent_args: tuple[str, ...],
 ) -> int:
+    try:
+        current_repo_root = init_repo(repo_root).repo_root
+    except ValueError:
+        return AGENT_CONTINUE_NO_TARGET
+    if not _same_resolved_path(current_repo_root, resume.repo_root):
+        return AGENT_CONTINUE_NO_TARGET
+
     binary = Path(real_binary)
     if not binary.is_file() or not os.access(binary, os.X_OK):
         print(
@@ -251,6 +265,10 @@ def _launch_agent_in_resume_workspace(
     except KeyboardInterrupt:
         exit_code = 130
     return _finish_agent_continue(repo_root, resume=resume, adapter_name=adapter_name, exit_code=exit_code)
+
+
+def _same_resolved_path(left: str | Path, right: str | Path) -> bool:
+    return Path(left).resolve() == Path(right).resolve()
 
 
 def _attempt_label(resume: ResumeResult) -> str:

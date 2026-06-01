@@ -240,7 +240,7 @@ pip install ait-vcs        # 或：pipx install ait-vcs
 如果想固定一個 release tag 以確保可重現安裝：
 
 ```bash
-pipx install "git+https://github.com/m24927605/ait.git@v1.7.1"
+pipx install "git+https://github.com/m24927605/ait.git@v1.7.2"
 ```
 
 執行 `ait --version` 確認安裝成功。詳細的各平台說明、離線安裝與解除安裝步驟，

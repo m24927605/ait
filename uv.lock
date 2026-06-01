@@ -1,8 +1,8 @@
 version = 1
-revision = 3
-requires-python = ">=3.14"
+revision = 2
+requires-python = ">=3.11"
 
 [[package]]
 name = "ait-vcs"
-version = "1.4.1"
+version = "1.7.2"
 source = { editable = "." }

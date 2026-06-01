@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -246,6 +247,152 @@ class CliContinueTests(unittest.TestCase):
                 "codex: continue interrupted work",
                 _git(attempt.workspace_ref, "log", "-1", "--format=%s"),
             )
+
+    def test_agent_continue_is_repo_scoped_and_ignores_recent_activity_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            state_dir = root / "state"
+            repo_a = root / "repo-a"
+            repo_b = root / "repo-b"
+            repo_a.mkdir()
+            repo_b.mkdir()
+            _init_git_repo(repo_a)
+            _init_git_repo(repo_b)
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            capture = root / "agent-launched.txt"
+            real_codex = bin_dir / "codex"
+            real_codex.write_text(
+                "#!/bin/sh\n"
+                "printf 'pwd=%s\\nrepo=%s\\nworkspace=%s\\n' "
+                '"$PWD" "${AIT_RESUME_REPO_ROOT:-}" "${AIT_WORKSPACE_REF:-}" '
+                '> "$AIT_TEST_CAPTURE"\n'
+                "printf 'launched\\n' > launched.txt\n",
+                encoding="utf-8",
+            )
+            real_codex.chmod(0o755)
+
+            with patch.dict(
+                os.environ,
+                {
+                    "AIT_STATE_DIR": str(state_dir),
+                    "AIT_TEST_CAPTURE": str(capture),
+                    "AIT_RESUME_REPO_ROOT": "",
+                },
+                clear=False,
+            ):
+                intent_a = create_intent(
+                    repo_a,
+                    title="Interrupted elsewhere",
+                    description=None,
+                    kind="demo",
+                )
+                attempt_a = create_attempt(
+                    repo_a,
+                    intent_id=intent_a.intent_id,
+                    agent_id="codex:worker",
+                )
+                init_repo(repo_b)
+                with chdir(repo_b):
+                    with patch(
+                        "sys.argv",
+                        [
+                            "ait",
+                            "agent-continue",
+                            "--adapter",
+                            "codex",
+                            "--real-binary",
+                            str(real_codex),
+                            "--",
+                        ],
+                    ):
+                        exit_code = cli.main()
+                    cwd_after = Path.cwd().resolve()
+
+            self.assertEqual(75, exit_code)
+            self.assertEqual(repo_b.resolve(), cwd_after)
+            self.assertFalse(capture.exists())
+            self.assertFalse(Path(attempt_a.workspace_ref, "launched.txt").exists())
+
+    def test_agent_continue_resumes_current_repo_when_recent_activity_elsewhere_is_newer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            state_dir = root / "state"
+            repo_a = root / "repo-a"
+            repo_b = root / "repo-b"
+            repo_a.mkdir()
+            repo_b.mkdir()
+            _init_git_repo(repo_a)
+            _init_git_repo(repo_b)
+            _git(repo_b, "config", "user.email", "test@example.com")
+            _git(repo_b, "config", "user.name", "Test User")
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            capture = root / "agent-launched.txt"
+            real_codex = bin_dir / "codex"
+            real_codex.write_text(
+                "#!/bin/sh\n"
+                "printf 'pwd=%s\\nrepo=%s\\nworkspace=%s\\n' "
+                '"$PWD" "${AIT_RESUME_REPO_ROOT:-}" "${AIT_WORKSPACE_REF:-}" '
+                '> "$AIT_TEST_CAPTURE"\n'
+                "printf 'continued\\n' > continued.txt\n",
+                encoding="utf-8",
+            )
+            real_codex.chmod(0o755)
+
+            with patch.dict(
+                os.environ,
+                {
+                    "AIT_STATE_DIR": str(state_dir),
+                    "AIT_TEST_CAPTURE": str(capture),
+                    "AIT_RESUME_REPO_ROOT": "",
+                },
+                clear=False,
+            ):
+                intent_b = create_intent(
+                    repo_b,
+                    title="Current interrupted",
+                    description=None,
+                    kind="demo",
+                )
+                attempt_b = create_attempt(
+                    repo_b,
+                    intent_id=intent_b.intent_id,
+                    agent_id="codex:worker",
+                )
+                intent_a = create_intent(
+                    repo_a,
+                    title="Newer elsewhere",
+                    description=None,
+                    kind="demo",
+                )
+                attempt_a = create_attempt(
+                    repo_a,
+                    intent_id=intent_a.intent_id,
+                    agent_id="codex:worker",
+                )
+                with chdir(repo_b):
+                    with patch(
+                        "sys.argv",
+                        [
+                            "ait",
+                            "agent-continue",
+                            "--adapter",
+                            "codex",
+                            "--real-binary",
+                            str(real_codex),
+                            "--",
+                        ],
+                    ):
+                        exit_code = cli.main()
+
+            self.assertEqual(0, exit_code)
+            self.assertTrue(Path(attempt_b.workspace_ref, "continued.txt").exists())
+            self.assertFalse(Path(attempt_a.workspace_ref, "continued.txt").exists())
+            capture_text = capture.read_text(encoding="utf-8")
+            self.assertIn(f"pwd={attempt_b.workspace_ref}", capture_text)
+            self.assertIn(f"repo={repo_b.resolve()}", capture_text)
+            self.assertIn(f"workspace={attempt_b.workspace_ref}", capture_text)
 
     def test_agent_continue_returns_no_target_for_ready_to_apply_attempt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

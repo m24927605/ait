@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 1.7.2 - 2026-06-01
+
+### Fixed
+
+- Safety fix: prevent wrapper auto-continue (`ait agent-continue`) from
+  resuming recoverable attempts from another repository via global recent
+  activity fallback. Manual `ait continue` keeps the cross-repo recent
+  fallback, but automatic adapter wrapper resume is now strictly scoped to
+  the current resolved repo root.
+
 ## 1.7.1 - 2026-05-30
 
 Runner-side cascade fixes for `ait run` flags that silently did

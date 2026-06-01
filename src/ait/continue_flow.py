@@ -74,8 +74,13 @@ def build_continue_result(
     repo_root: str | Path,
     *,
     selector: str = "latest",
+    include_recent_fallback: bool = True,
 ) -> ContinueResult:
-    roots, candidates = _rooted_continue_candidates(repo_root, selector=selector)
+    roots, candidates = _rooted_continue_candidates(
+        repo_root,
+        selector=selector,
+        include_recent_fallback=include_recent_fallback,
+    )
     if not candidates:
         return ContinueResult(
             selector=selector,
@@ -113,6 +118,7 @@ def _rooted_continue_candidates(
     repo_root: str | Path,
     *,
     selector: str,
+    include_recent_fallback: bool,
 ) -> tuple[tuple[Path, ...], list[_Candidate]]:
     roots: list[Path] = []
     first_error: ValueError | None = None
@@ -128,6 +134,10 @@ def _rooted_continue_candidates(
         for candidate in _continue_candidates(root, selector)
     ]
     if current_candidates or selector != "latest":
+        return tuple(roots), current_candidates
+    if not include_recent_fallback:
+        if not roots and first_error is not None:
+            raise first_error
         return tuple(roots), current_candidates
 
     seen = {str(root) for root in roots}
