@@ -46,7 +46,15 @@ from ait.query import QueryError, execute_query, list_shortcut_expression, parse
 from ait.repo import resolve_repo_root
 from ait.review import latest_review_summary
 from ait.shell_integration import shell_snippet
+from ait.workspace import get_workspaces_root
 from ait.workspace_lease import lease_payload, workspace_lease_path
+from ait.cleanup import (
+    DEFAULT_FAILED_RETENTION_DAYS,
+    classify_terminal,
+    cleanup_policy_from_config,
+    path_is_inside,
+    safe_resolve_workspace_ref,
+)
 
 from ait.cli.adapter_helpers import _agent_cli_message, _agent_cli_summary, _agent_command_name, _doctor_next_steps
 from ait.cli.runtime_helpers import _format_daemon_lines
@@ -200,6 +208,7 @@ def _recovery_dashboard_payload(repo_root: str | Path) -> dict[str, object]:
         return {
             "status": "not_initialized",
             "message": "AIT has no recorded attempts in this repo.",
+            "cleanup_hint": _empty_cleanup_hint(),
             "decision_report": decision_payload(
                 decision_report(
                     subject="status",
@@ -219,6 +228,7 @@ def _recovery_dashboard_payload(repo_root: str | Path) -> dict[str, object]:
             return {
                 "status": "empty",
                 "message": "AIT has no recorded attempts in this repo.",
+                "cleanup_hint": _empty_cleanup_hint(),
                 "decision_report": decision_payload(
                     decision_report(
                         subject="status",
@@ -237,10 +247,11 @@ def _recovery_dashboard_payload(repo_root: str | Path) -> dict[str, object]:
     finally:
         conn.close()
     changed_files = tuple(sorted({path for commit in commits for path in commit.touched_files}))
-    lease = lease_payload(attempt.workspace_ref)
-    workspace = Path(attempt.workspace_ref)
-    dev_servers = _dev_server_payload(root, attempt.workspace_ref)
-    status, code, message, next_command = _classify_recovery_attempt(attempt, workspace.exists(), lease)
+    cleanup_hint = _compute_cleanup_hint(attempts, root)
+    workspace_exists, lease, dev_servers, lease_path_str = _safe_workspace_fields(
+        root, attempt.workspace_ref
+    )
+    status, code, message, next_command = _classify_recovery_attempt(attempt, workspace_exists, lease)
     integration = _integration_artifact_payload(root, attempt.id)
     if integration:
         status = str(integration.get("decision_report", {}).get("decision") or status) if isinstance(integration.get("decision_report"), dict) else status
@@ -263,8 +274,8 @@ def _recovery_dashboard_payload(repo_root: str | Path) -> dict[str, object]:
             "attempt_handle": identity.handle,
             "attempt_description": identity.deterministic_description,
             "workspace_ref": attempt.workspace_ref,
-            "workspace_exists": workspace.exists(),
-            "lease_path": str(workspace_lease_path(attempt.workspace_ref)),
+            "workspace_exists": workspace_exists,
+            "lease_path": lease_path_str,
             "lease": lease or {},
             "dev_servers": dev_servers,
             "apply_readiness": status,
@@ -277,7 +288,7 @@ def _recovery_dashboard_payload(repo_root: str | Path) -> dict[str, object]:
             "attempt_description": identity.deterministic_description,
             "reported_status": attempt.reported_status,
             "verified_status": attempt.verified_status,
-            "workspace_exists": workspace.exists(),
+            "workspace_exists": workspace_exists,
             "changed_files_count": len(changed_files),
             "integration": integration or {},
             "review": review,
@@ -286,6 +297,7 @@ def _recovery_dashboard_payload(repo_root: str | Path) -> dict[str, object]:
     return {
         "status": status,
         "message": message,
+        "cleanup_hint": cleanup_hint,
         "attempt_id": attempt.id,
         "attempt_handle": identity.handle,
         "attempt_description": identity.deterministic_description,
@@ -294,14 +306,170 @@ def _recovery_dashboard_payload(repo_root: str | Path) -> dict[str, object]:
         "verified_status": attempt.verified_status,
         "changed_files": list(changed_files),
         "workspace_ref": attempt.workspace_ref,
-        "workspace_exists": workspace.exists(),
+        "workspace_exists": workspace_exists,
         "lease": lease,
-        "lease_path": str(workspace_lease_path(attempt.workspace_ref)),
+        "lease_path": lease_path_str,
         "dev_servers": dev_servers,
         "integration": integration or {},
         "review": review,
         "next_step": next_command,
         "decision_report": decision_payload(report),
+    }
+
+
+_RECLAIM_PRECEDENCE = {"reclaimable": 3, "retained_succeeded": 2, "not_reclaimable": 1}
+
+_REF_ERRORS = (OSError, ValueError, RuntimeError, TypeError)
+
+
+def _safe_workspace_fields(root: Path, workspace_ref) -> tuple[bool, object, object, str]:
+    """Read latest-attempt workspace fields without crashing on malformed refs.
+
+    ``ait status`` is read-only and must never fail on a malformed/hostile
+    ``workspace_ref`` (e.g. embedded null byte). Returns
+    ``(exists, lease, dev_servers, lease_path_str)`` with safe fallbacks.
+    """
+    try:
+        exists = Path(workspace_ref).exists()
+    except _REF_ERRORS:
+        exists = False
+    try:
+        lease = lease_payload(workspace_ref)
+    except _REF_ERRORS:
+        lease = None
+    try:
+        dev_servers = _dev_server_payload(root, workspace_ref)
+    except _REF_ERRORS:
+        dev_servers = []
+    try:
+        lease_path_str = str(workspace_lease_path(workspace_ref))
+    except _REF_ERRORS:
+        lease_path_str = ""
+    return exists, lease, dev_servers, lease_path_str
+
+
+def _cleanup_hint_lines(cleanup_hint: object) -> list[str]:
+    """Text lines for the cleanup hint. Empty when nothing to surface.
+
+    Only emits counts (never the raw ref), so no escaping of hostile DB
+    values is needed here — anomaly detail lives in JSON.
+    """
+    if not isinstance(cleanup_hint, dict):
+        return []
+    lines: list[str] = []
+    reclaimable = cleanup_hint.get("reclaimable_worktrees", 0)
+    retained = cleanup_hint.get("retained_succeeded_worktrees", 0)
+    anomalous = cleanup_hint.get("anomalous_refs", 0)
+    if reclaimable:
+        lines.append(
+            f"清理：約 {reclaimable} 個 worktree 可回收，跑 ait cleanup 確認、--apply 回收"
+        )
+    if retained:
+        lines.append(
+            f"清理：{retained} 個 succeeded 保留中，apply 或 discard 後 ait cleanup 回收"
+        )
+    if anomalous:
+        lines.append(
+            f"清理：偵測到 {anomalous} 個異常 worktree 參照（corrupted/不安全），"
+            "ait status --format json 看 cleanup_hint.anomalies 詳情"
+        )
+    if cleanup_hint.get("config_warning"):
+        lines.append("清理：cleanup config 無效，ait cleanup 可能失敗，請修正 .ait/config.json")
+    return lines
+
+
+def _empty_cleanup_hint() -> dict[str, object]:
+    return {
+        "reclaimable_worktrees": 0,
+        "retained_succeeded_worktrees": 0,
+        "anomalous_refs": 0,
+        "config_warning": False,
+        "next_steps": [],
+        "anomalies": [],
+    }
+
+
+def _cleanup_retention_days(repo_root: Path) -> tuple[int, bool]:
+    """Return (retention_days, config_warning). Read-only: never raises."""
+    try:
+        policy = cleanup_policy_from_config(repo_root)
+        return int(policy.older_than_days), False
+    except Exception:
+        return DEFAULT_FAILED_RETENTION_DAYS, True
+
+
+def _classify_workspace_ref(workspace_ref, workspaces_root: Path) -> tuple[str, object]:
+    """Classify a DB workspace_ref for status counting.
+
+    Returns one of:
+    - ("anomalous", reason)  — relative/unresolvable/outside-root/exists-error
+    - ("missing", None)      — in-root but the worktree no longer exists
+    - ("count", resolved)    — in-root and present; eligible for counting
+    """
+    try:
+        candidate = Path(workspace_ref)
+    except (TypeError, ValueError):
+        return "anomalous", "resolve-error"
+    if not candidate.is_absolute():
+        return "anomalous", "relative-ref"
+    resolved = safe_resolve_workspace_ref(workspace_ref)
+    if resolved is None:
+        return "anomalous", "resolve-error"
+    if not path_is_inside(resolved, workspaces_root):
+        return "anomalous", "outside-root"
+    try:
+        exists = resolved.exists()
+    except OSError:
+        return "anomalous", "exists-error"
+    if not exists:
+        return "missing", None
+    return "count", resolved
+
+
+def _cleanup_next_steps(reclaimable: int, retained: int, config_warning: bool) -> list[str]:
+    steps: list[str] = []
+    if reclaimable > 0:
+        steps.append("ait cleanup  # 查看精確清單")
+        steps.append("ait cleanup --apply  # 回收")
+    if retained > 0:
+        steps.append("ait attempt list --verified-status succeeded")
+        steps.append("ait apply <attempt> 或 ait attempt discard <attempt>，再 ait cleanup --apply")
+    if config_warning:
+        steps.append("cleanup config 無效，ait cleanup 可能失敗，請修正 .ait/config.json")
+    return steps
+
+
+def _compute_cleanup_hint(attempts, root: Path) -> dict[str, object]:
+    retention_days, config_warning = _cleanup_retention_days(root)
+    workspaces_root = get_workspaces_root(root).resolve()
+    by_path: dict[str, str] = {}  # resolved-path str -> best category (dedupe + precedence)
+    anomalies: dict[str, dict[str, object]] = {}  # raw ref str -> anomaly record
+    for attempt in attempts:
+        kind, payload = _classify_workspace_ref(attempt.workspace_ref, workspaces_root)
+        if kind == "anomalous":
+            anomalies.setdefault(
+                str(attempt.workspace_ref),
+                {
+                    "attempt_id": attempt.id,
+                    "workspace_ref": str(attempt.workspace_ref),
+                    "reason": payload,
+                },
+            )
+        elif kind == "count":
+            category = classify_terminal(attempt, retention_days=retention_days).category
+            key = str(payload)
+            if _RECLAIM_PRECEDENCE[category] > _RECLAIM_PRECEDENCE.get(by_path.get(key, ""), 0):
+                by_path[key] = category
+        # "missing" → skip (worktree gone, neither reclaimable nor anomalous)
+    reclaimable = sum(1 for category in by_path.values() if category == "reclaimable")
+    retained = sum(1 for category in by_path.values() if category == "retained_succeeded")
+    return {
+        "reclaimable_worktrees": reclaimable,
+        "retained_succeeded_worktrees": retained,
+        "anomalous_refs": len(anomalies),
+        "config_warning": config_warning,
+        "next_steps": _cleanup_next_steps(reclaimable, retained, config_warning),
+        "anomalies": list(anomalies.values()),
     }
 
 
@@ -418,6 +586,9 @@ def _format_status_condensed(payload: dict[str, object]) -> str:
             _kv("memory", f"{memory.get('health', 'unknown')} ({issues} lint issues)")
         )
     lines.append(_kv("attempts", _format_attempts_summary(payload.get("recovery"))))
+    _recovery = payload.get("recovery")
+    if isinstance(_recovery, dict):
+        lines.extend(_cleanup_hint_lines(_recovery.get("cleanup_hint")))
     lines.append("")
 
     # Workspace block
@@ -605,6 +776,7 @@ def _format_status_current_work(recovery: object, *, debug: bool = False) -> lis
     if next_step:
         lines.append(f"Next: {next_step}")
     lines.append("Adapter health: run ait doctor for install and wrapper checks")
+    lines.extend(_cleanup_hint_lines(recovery.get("cleanup_hint")))
     if debug:
         lines.append("Recovery debug:")
         lines.append(f"  Canonical ID: {recovery.get('attempt_id')}")

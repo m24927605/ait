@@ -319,16 +319,36 @@ def _lease_cleanup_block(lease, attempt: AttemptRecord | None) -> tuple[str, str
     return None
 
 
-def _terminal_decision(attempt: AttemptRecord, policy: CleanupPolicy) -> tuple[str, str]:
+@dataclass(frozen=True, slots=True)
+class TerminalDecision:
+    """Read-only classification of an attempt's terminal cleanup category.
+
+    Shared by cleanup (for its remove/retain decision + reason) and by
+    ``ait status`` (for read-only reclaimable counting), so the two never
+    drift. Only covers the terminal-status layer; cleanup's lease/dirty/
+    dev-server/orphan protections live outside this in ``_evaluate_worktree``.
+    """
+
+    category: str  # "reclaimable" | "retained_succeeded" | "not_reclaimable"
+    reason: str  # promoted | discarded | reviewable | stale-failed | retention-window
+
+
+def classify_terminal(attempt: AttemptRecord, *, retention_days: int) -> TerminalDecision:
     if attempt.verified_status in {"promoted", "discarded"}:
-        return "remove", attempt.verified_status
+        return TerminalDecision("reclaimable", attempt.verified_status)
     if attempt.verified_status == "succeeded":
-        return "retain", "reviewable"
+        return TerminalDecision("retained_succeeded", "reviewable")
     if attempt.verified_status == "failed" or attempt.reported_status == "crashed":
-        if _older_than_retention(attempt, policy.older_than_days):
-            return "remove", "stale-failed"
-        return "retain", "retention-window"
-    return "retain", "reviewable"
+        if _older_than_retention(attempt, retention_days):
+            return TerminalDecision("reclaimable", "stale-failed")
+        return TerminalDecision("not_reclaimable", "retention-window")
+    return TerminalDecision("not_reclaimable", "reviewable")
+
+
+def _terminal_decision(attempt: AttemptRecord, policy: CleanupPolicy) -> tuple[str, str]:
+    decision = classify_terminal(attempt, retention_days=policy.older_than_days)
+    action = "remove" if decision.category == "reclaimable" else "retain"
+    return action, decision.reason
 
 
 def _has_active_dev_server(workspaces_root: Path, worktree_path: Path) -> bool:
@@ -497,12 +517,38 @@ def _path_size(path: Path) -> int:
     return total
 
 
-def _path_is_inside(path: Path, parent: Path) -> bool:
+def path_is_inside(path: Path, parent: Path) -> bool:
+    """Whether resolved ``path`` is within resolved ``parent``.
+
+    Catches resolve()/relative_to filesystem errors (not just ``ValueError``)
+    so read-only callers like ``ait status`` never crash on hostile refs.
+    """
     try:
         path.resolve().relative_to(parent.resolve())
-    except ValueError:
+    except (ValueError, OSError, RuntimeError):
         return False
     return True
+
+
+def _path_is_inside(path: Path, parent: Path) -> bool:
+    return path_is_inside(path, parent)
+
+
+def safe_resolve_workspace_ref(workspace_ref: str | Path) -> Path | None:
+    """Resolve a DB ``workspace_ref`` without crashing on malformed values.
+
+    Returns the resolved absolute Path, or ``None`` when the ref is relative
+    or cannot be resolved (``OSError``/``RuntimeError``/``ValueError``/
+    ``TypeError`` — e.g. an embedded null byte). Containment is not checked
+    here; callers decide what to do with the result.
+    """
+    try:
+        path = Path(workspace_ref)
+        if not path.is_absolute():
+            return None
+        return path.resolve()
+    except (OSError, RuntimeError, ValueError, TypeError):
+        return None
 
 
 def _git(cwd: Path, *args: str, allow_failure: bool = False) -> subprocess.CompletedProcess[str]:
