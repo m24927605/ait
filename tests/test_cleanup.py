@@ -19,7 +19,13 @@ from ait.app import (
     discard_attempt,
     promote_attempt,
 )
-from ait.cleanup import CleanupPolicy, cleanup_policy_from_config, cleanup_repo
+from ait.cleanup import (
+    CleanupItem,
+    CleanupPolicy,
+    _delete_worktree_item,
+    cleanup_policy_from_config,
+    cleanup_repo,
+)
 from ait.db import connect_db, update_attempt
 from ait.workspace_lease import create_workspace_lease
 
@@ -407,6 +413,140 @@ class CleanupTests(unittest.TestCase):
             self.assertEqual("skip", item.action)
             self.assertEqual("outside-ait-root", item.reason)
             self.assertFalse(item.deleted)
+
+    def test_cleanup_skips_symlink_worktree_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            create_intent(repo_root, title="Initialize AIT", description=None, kind="test")
+            ws_root = repo_root / ".ait" / "workspaces"
+            ws_root.mkdir(parents=True, exist_ok=True)
+            target = repo_root.parent / f"{repo_root.name}-link-target"
+            target.mkdir()
+            (target / "keep.txt").write_text("keep\n", encoding="utf-8")
+            link = ws_root / "attempt-symlink"
+            link.symlink_to(target, target_is_directory=True)
+
+            report = cleanup_repo(
+                repo_root, CleanupPolicy(apply=True, include_orphans=True, force=True)
+            )
+
+            self.assertTrue(target.exists())
+            self.assertTrue(link.is_symlink())
+            symlink_items = [it for it in report.items if it.reason == "symlink-skip"]
+            self.assertEqual(1, len(symlink_items))
+            self.assertEqual("skip", symlink_items[0].action)
+            self.assertFalse(symlink_items[0].deleted)
+
+    def test_cleanup_skips_symlink_artifact_without_deleting_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            intent = create_intent(repo_root, title="Keep artifact", description=None, kind="test")
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+            workspace = Path(attempt.workspace_ref)
+            _set_attempt_status(
+                repo_root,
+                attempt.attempt_id,
+                reported_status="finished",
+                verified_status="succeeded",
+                ended_at=_iso_now(),
+            )
+            target = repo_root.parent / f"{repo_root.name}-venv-target"
+            target.mkdir()
+            (target / "lib.txt").write_text("keep\n", encoding="utf-8")
+            (workspace / ".venv").symlink_to(target, target_is_directory=True)
+
+            report = cleanup_repo(repo_root, CleanupPolicy(apply=True, artifacts=True))
+
+            self.assertTrue(target.exists())
+            self.assertTrue((workspace / ".venv").is_symlink())
+            artifacts = [it for it in report.items if it.kind == "artifact"]
+            self.assertTrue(any(a.reason == "symlink-skip" for a in artifacts))
+            self.assertFalse(any(a.deleted for a in artifacts))
+
+    def test_cleanup_does_not_size_external_workspace_ref(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            intent = create_intent(repo_root, title="No size outside", description=None, kind="test")
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+            outside = repo_root.parent / f"{repo_root.name}-big-outside"
+            outside.mkdir()
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            try:
+                with conn:
+                    conn.execute(
+                        "UPDATE attempts SET workspace_ref = ? WHERE id = ?",
+                        (str(outside), attempt.attempt_id),
+                    )
+            finally:
+                conn.close()
+
+            with patch("ait.cleanup._path_size", return_value=0) as size_spy:
+                report = cleanup_repo(
+                    repo_root, CleanupPolicy(apply=False, force=True, include_orphans=True)
+                )
+
+            sized = {str(call.args[0]) for call in size_spy.call_args_list}
+            self.assertNotIn(str(outside.resolve()), sized)
+            item = _item_for_attempt(report, attempt.attempt_id)
+            self.assertEqual("outside-ait-root", item.reason)
+            self.assertEqual(0, item.bytes)
+
+    def test_cleanup_reports_anomalous_relative_ref_without_crashing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            _init_git_repo(repo_root)
+            intent = create_intent(repo_root, title="Anomalous", description=None, kind="test")
+            attempt = create_attempt(repo_root, intent_id=intent.intent_id)
+            conn = connect_db(repo_root / ".ait" / "state.sqlite3")
+            try:
+                with conn:
+                    conn.execute(
+                        "UPDATE attempts SET workspace_ref = ? WHERE id = ?",
+                        ("relative/corrupt-ref", attempt.attempt_id),
+                    )
+            finally:
+                conn.close()
+
+            report = cleanup_repo(
+                repo_root, CleanupPolicy(apply=True, force=True, include_orphans=True)
+            )
+
+            item = _item_for_attempt(report, attempt.attempt_id)
+            self.assertEqual("skip", item.action)
+            self.assertEqual("anomalous-ref", item.reason)
+            self.assertEqual(0, item.bytes)
+            self.assertFalse(item.deleted)
+
+    def test_delete_worktree_item_rejects_symlink_at_delete_time(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ws_root = Path(tmp) / "workspaces"
+            ws_root.mkdir()
+            target = Path(tmp) / "target"
+            target.mkdir()
+            (target / "keep.txt").write_text("keep\n", encoding="utf-8")
+            link = ws_root / "attempt-swapped"
+            link.symlink_to(target, target_is_directory=True)
+            item = CleanupItem(
+                path=str(link),
+                kind="worktree",
+                attempt_id="a",
+                reported_status="finished",
+                verified_status="promoted",
+                action="remove",
+                reason="promoted",
+                dirty=False,
+                bytes=0,
+            )
+
+            result = _delete_worktree_item(item, None, ws_root)
+
+            self.assertEqual("skip", result.action)
+            self.assertEqual("delete-time-unsafe", result.reason)
+            self.assertFalse(result.deleted)
+            self.assertTrue(target.exists())
 
     def test_cli_cleanup_json_outputs_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

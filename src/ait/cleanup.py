@@ -131,19 +131,18 @@ def cleanup_repo(repo_root: str | Path, policy: CleanupPolicy) -> CleanupReport:
     finally:
         conn.close()
 
-    attempts_by_workspace = {
-        str(Path(attempt.workspace_ref).resolve()): attempt for attempt in attempts
-    }
-    candidate_paths = _workspace_candidate_paths(workspaces_root, attempts)
+    candidates = _workspace_candidates(workspaces_root, attempts)
     items: list[CleanupItem] = []
     removed_any_worktree = False
 
     if policy.worktrees:
-        for path in candidate_paths:
-            attempt = attempts_by_workspace.get(str(path.resolve()))
-            item = _evaluate_worktree(workspaces_root, path, attempt, policy)
+        for candidate in candidates:
+            if candidate.anomaly_reason is not None or candidate.path is None:
+                items.append(_anomalous_item(candidate))
+                continue
+            item = _evaluate_worktree(workspaces_root, candidate.path, candidate.attempt, policy)
             if policy.apply and item.action == "remove":
-                item = _delete_worktree_item(item, attempt)
+                item = _delete_worktree_item(item, candidate.attempt, workspaces_root)
                 removed_any_worktree = removed_any_worktree or item.deleted
             items.append(item)
 
@@ -157,7 +156,7 @@ def cleanup_repo(repo_root: str | Path, policy: CleanupPolicy) -> CleanupReport:
             if not _path_is_inside(worktree_path, workspaces_root) or not worktree_path.exists():
                 continue
             for artifact_path in _artifact_candidate_paths(worktree_path, policy.artifact_allowlist):
-                artifact = _evaluate_artifact(workspaces_root, artifact_path, worktree_item)
+                artifact = _evaluate_artifact(worktree_path, artifact_path, worktree_item)
                 if policy.apply and artifact.action == "remove":
                     artifact = _delete_artifact_item(artifact)
                 items.append(artifact)
@@ -173,7 +172,7 @@ def cleanup_repo(repo_root: str | Path, policy: CleanupPolicy) -> CleanupReport:
         mode="apply" if policy.apply else "dry-run",
         repo_root=str(root),
         workspaces_root=str(workspaces_root),
-        scanned_count=len(candidate_paths),
+        scanned_count=len(candidates),
         remove_count=remove_count,
         skip_count=skip_count,
         reclaimed_bytes=reclaimed_bytes,
@@ -206,16 +205,62 @@ def _coerce_artifact_allowlist(value: object) -> tuple[str, ...]:
     return tuple(names) or DEFAULT_ARTIFACT_ALLOWLIST
 
 
-def _workspace_candidate_paths(workspaces_root: Path, attempts: tuple[AttemptRecord, ...]) -> tuple[Path, ...]:
-    paths: dict[str, Path] = {}
+@dataclass(frozen=True, slots=True)
+class _Candidate:
+    path: Path | None  # original (unresolved) path; None when the ref isn't a valid Path
+    raw_ref: str  # raw workspace_ref / dir name, for anomalous reporting
+    attempt: AttemptRecord | None
+    anomaly_reason: str | None  # set when the ref can't be safely resolved
+
+
+def _workspace_candidates(
+    workspaces_root: Path, attempts: tuple[AttemptRecord, ...]
+) -> tuple[_Candidate, ...]:
+    """Collect cleanup candidates without crashing or following symlinks.
+
+    Keeps the ORIGINAL (unresolved) path so symlinked worktrees are detected
+    later; dedupes by resolved path (or raw ref for unresolvable values);
+    emits anomalous candidates for malformed/relative refs instead of raising.
+    """
+    by_key: dict[str, _Candidate] = {}
     for attempt in attempts:
-        path = Path(attempt.workspace_ref).resolve()
-        paths[str(path)] = path
+        raw = str(attempt.workspace_ref)
+        resolved = safe_resolve_workspace_ref(attempt.workspace_ref)
+        if resolved is None:
+            by_key.setdefault(f"anomalous:{raw}", _Candidate(None, raw, attempt, "anomalous-ref"))
+            continue
+        try:
+            original = Path(attempt.workspace_ref)
+        except (ValueError, TypeError):
+            original = resolved
+        # DB-backed attempts win over later orphan entries at the same path.
+        by_key[str(resolved)] = _Candidate(original, raw, attempt, None)
     if workspaces_root.exists():
         for child in workspaces_root.iterdir():
-            if child.is_dir() and child.name.startswith("attempt-"):
-                paths[str(child.resolve())] = child.resolve()
-    return tuple(paths[key] for key in sorted(paths))
+            if not child.name.startswith("attempt-"):
+                continue
+            if not (child.is_symlink() or child.is_dir()):
+                continue
+            # Symlinks keep a raw key so they are never deduped with (or treated
+            # as) their resolved target inside workspaces_root.
+            key = f"symlink:{child}" if child.is_symlink() else str(child.resolve())
+            by_key.setdefault(key, _Candidate(child, str(child), None, None))
+    return tuple(by_key[key] for key in sorted(by_key))
+
+
+def _anomalous_item(candidate: _Candidate) -> CleanupItem:
+    attempt = candidate.attempt
+    return CleanupItem(
+        path=candidate.raw_ref,
+        kind="worktree" if attempt is not None else "orphan",
+        attempt_id=attempt.id if attempt is not None else None,
+        reported_status=attempt.reported_status if attempt is not None else None,
+        verified_status=attempt.verified_status if attempt is not None else None,
+        action="skip",
+        reason=candidate.anomaly_reason or "anomalous-ref",
+        dirty=False,
+        bytes=0,
+    )
 
 
 def _evaluate_worktree(
@@ -224,10 +269,16 @@ def _evaluate_worktree(
     attempt: AttemptRecord | None,
     policy: CleanupPolicy,
 ) -> CleanupItem:
+    if path.is_symlink():
+        # A symlinked worktree candidate is unsafe: never follow/size/delete it
+        # (it could resolve into another worktree or outside the repo).
+        return _skip_item(path, attempt, "symlink-skip")
     resolved = path.resolve()
+    if not path_is_inside(resolved, workspaces_root):
+        # Containment BEFORE sizing: never recursively walk an external path
+        # that a corrupted workspace_ref points at (DoS / privacy).
+        return _skip_item(resolved, attempt, "outside-ait-root")
     size = _path_size(resolved)
-    if not _path_is_inside(resolved, workspaces_root):
-        return _item(resolved, attempt, "skip", "outside-ait-root", size=size)
     lease = read_workspace_lease(resolved)
     lease_block = _lease_cleanup_block(lease, attempt)
     if lease_block is not None:
@@ -410,7 +461,32 @@ def _item(
     )
 
 
-def _delete_worktree_item(item: CleanupItem, attempt: AttemptRecord | None) -> CleanupItem:
+def _skip_item(path: Path, attempt: AttemptRecord | None, reason: str, *, size: int = 0) -> CleanupItem:
+    """Build a skip item for either a DB-backed attempt or an orphan (None)."""
+    if attempt is None:
+        return CleanupItem(
+            path=str(path),
+            kind="orphan",
+            attempt_id=None,
+            reported_status=None,
+            verified_status=None,
+            action="skip",
+            reason=reason,
+            dirty=False,
+            bytes=size,
+        )
+    return _item(path, attempt, "skip", reason, size=size)
+
+
+def _delete_worktree_item(
+    item: CleanupItem, attempt: AttemptRecord | None, workspaces_root: Path
+) -> CleanupItem:
+    # Delete-time containment recheck: between evaluation and deletion the path
+    # could have been swapped for a symlink or moved outside workspaces_root.
+    # Re-verify against item.path (the evaluated path) before any destructive op.
+    target = Path(item.path)
+    if target.is_symlink() or not path_is_inside(target, workspaces_root):
+        return _replace_item(item, action="skip", reason="delete-time-unsafe", deleted=False)
     try:
         if attempt is None:
             shutil.rmtree(item.path, ignore_errors=False)
@@ -428,20 +504,36 @@ def _artifact_candidate_paths(worktree_path: Path, allowlist: tuple[str, ...]) -
         if "/" in name or name in {"", ".", ".."}:
             continue
         candidate = worktree_path / name
-        if candidate.exists():
-            paths.append(candidate.resolve())
+        # Keep the ORIGINAL candidate (not resolved) so symlinks are detected in
+        # _evaluate_artifact and deletion targets the link, not its target.
+        # is_symlink() also catches broken symlinks that exists() would miss.
+        if candidate.is_symlink() or candidate.exists():
+            paths.append(candidate)
     return tuple(paths)
 
 
-def _evaluate_artifact(workspaces_root: Path, path: Path, worktree_item: CleanupItem) -> CleanupItem:
-    if not _path_is_inside(path, workspaces_root):
+def _evaluate_artifact(worktree_path: Path, path: Path, worktree_item: CleanupItem) -> CleanupItem:
+    if path.is_symlink():
+        # A symlinked artifact is unsafe: it could resolve into another worktree
+        # and be sized/deleted as the target. Skip without resolving.
         return _replace_item(
             worktree_item,
             path=str(path),
             kind="artifact",
             action="skip",
-            reason="outside-ait-root",
-            bytes=_path_size(path),
+            reason="symlink-skip",
+            bytes=0,
+        )
+    if not path_is_inside(path, worktree_path):
+        # Containment relative to the OWNING worktree (not just workspaces_root),
+        # and BEFORE sizing — never walk a path outside the worktree.
+        return _replace_item(
+            worktree_item,
+            path=str(path),
+            kind="artifact",
+            action="skip",
+            reason="outside-worktree",
+            bytes=0,
         )
     return CleanupItem(
         path=str(path),

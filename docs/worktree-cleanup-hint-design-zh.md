@@ -143,10 +143,15 @@ _format_status_current_work(...))` 包含後者輸出。故：
 （置 `workspace.py` 或小 util 模組），status（與未來 Follow-up 的 cleanup 硬化）共用。**error
 語意**：catch `(ValueError, OSError, RuntimeError)` → `False`（滿足「fs 錯誤不弄壞唯讀 status」）。
 
-## Follow-up（獨立 robustness 硬化，不阻塞核心）
+## Follow-up（cleanup 引擎 robustness 硬化）
+
+> **✅ 已實作（2026-06）**：本段全部 6 項已落地於 `cleanup.py` + `tests/test_cleanup.py`
+> （`_workspace_candidates` candidate model、containment 前置、symlink 安全、delete-time
+> recheck、anomalous-ref item）。新增 skip reason：`symlink-skip`、`outside-worktree`、
+> `anomalous-ref`、`delete-time-unsafe`；CLI/decision-report 形狀不變。
 
 以下為 18 輪 design review 挖出的 **cleanup 刪除路徑既有技術債**，與核心 status 提示（唯讀、
-不刪）獨立。建議另開切片實作，本切片**不**納入（避免無限精細化阻塞核心）。各項已有明確方向：
+不刪）獨立。各項方向：
 
 1. **containment DoS（所有 `_path_size` 前先 containment）**：`_evaluate_worktree`
    （`cleanup.py:226-230`）現 `_path_size` 在 `_path_is_inside` 前——corrupted/外部 ref 遞迴
