@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+## 1.8.0 - 2026-06-08
+
+### Added
+
+- **`ait status` now surfaces reclaimable worktrees.** A new `cleanup_hint`
+  block (JSON + text) counts reclaimable / retained-succeeded / anomalous
+  worktrees so you know when `.ait/workspaces/` has accumulated stale
+  worktrees worth reclaiming. Deletion stays user-driven via
+  `ait cleanup --apply` — there is no background auto-delete (rejected after
+  design review for TOCTOU races with `resume`/`recover`/`continue` reentry).
+  The hint counts are an optimistic upper bound (status does not run the
+  per-worktree dirty/lease/dev-server checks); `ait cleanup` dry-run is the
+  precise source. JSON adds `cleanup_hint.anomalies` detail; read-only
+  `ait status` never crashes on a malformed `workspace_ref`.
+
+### Fixed
+
+- **Cleanup engine ref/symlink/containment hardening.** The cleanup deletion
+  path now checks containment *before* sizing (never recursively walks a path
+  outside `.ait/workspaces`), skips symlinked worktree candidates and
+  symlinked artifacts (never follows/sizes/deletes the target; artifact
+  containment is relative to the owning worktree), safe-resolves
+  malformed/relative `workspace_ref` values (emits `anomalous-ref` skip items
+  instead of raising), and re-verifies containment at delete time to close a
+  TOCTOU window. New skip reasons: `symlink-skip`, `outside-worktree`,
+  `anomalous-ref`, `delete-time-unsafe`. CLI/decision-report shape unchanged.
+
 ## 1.7.2 - 2026-06-01
 
 ### Fixed
